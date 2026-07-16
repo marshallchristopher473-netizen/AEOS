@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.services.supabase_service import get_supabase_admin_client, get_supabase_client
+from app.services.supabase_service import get_supabase_admin_client
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -46,7 +46,7 @@ def create_student(payload: StudentCreateRequest):
 
 @router.get("/{student_id}", response_model=StudentResponse)
 def get_student(student_id: str):
-    client = get_supabase_client()
+    client = get_supabase_admin_client()
     response = client.table("students").select("*").eq("id", student_id).limit(1).execute()
 
     if not response.data:

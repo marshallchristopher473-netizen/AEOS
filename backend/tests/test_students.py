@@ -83,7 +83,7 @@ def test_get_student_returns_existing_record(monkeypatch):
         }
     ])
 
-    monkeypatch.setattr(students_api, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(students_api, "get_supabase_admin_client", lambda: fake_client)
 
     client = TestClient(app)
     response = client.get("/students/33333333-3333-3333-3333-333333333333")
