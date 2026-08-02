@@ -20,3 +20,5 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ## Endpoints
 - GET /health
 - POST /assessments/analyze
+fix: add required-env validation to config.py
+docs: add environment setup section to README

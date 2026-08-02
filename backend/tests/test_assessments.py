@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api import assessments as assessments_api
+from app.models.schemas import AssessmentCreateRequest
 
 
 class FakeResponse:
@@ -97,3 +98,16 @@ def test_get_assessment_returns_existing_record(monkeypatch):
     assert response.status_code == 200
     assert response.json()["title"] == "Reading Screen"
     assert response.json()["assessment_type"] == "curriculum_based"
+
+
+def test_assessment_create_request_model_validates_required_fields():
+    payload = AssessmentCreateRequest(
+        organization_id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        student_id="cccccccc-cccc-cccc-cccc-cccccccccccc",
+        created_by="dddddddd-dddd-dddd-dddd-dddddddddddd",
+        title="Reading Screen",
+        assessment_type="curriculum_based",
+    )
+
+    assert payload.title == "Reading Screen"
+    assert payload.status == "draft"

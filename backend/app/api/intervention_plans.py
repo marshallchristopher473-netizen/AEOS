@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -14,8 +14,8 @@ class InterventionPlanCreateRequest(BaseModel):
     created_by: str = Field(..., min_length=1)
     title: str = Field(..., min_length=1)
     status: str = Field(default="draft", min_length=1)
-    priority: str = Field(default="medium", min_length=1)
     summary: Optional[str] = None
+    priority: str = Field(default="medium", min_length=1)
 
 
 class InterventionPlanResponse(BaseModel):
@@ -25,8 +25,8 @@ class InterventionPlanResponse(BaseModel):
     created_by: str
     title: str
     status: str
-    priority: str
     summary: Optional[str] = None
+    priority: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -34,11 +34,7 @@ class InterventionPlanResponse(BaseModel):
 @router.post("", response_model=InterventionPlanResponse, status_code=status.HTTP_201_CREATED)
 def create_intervention_plan(payload: InterventionPlanCreateRequest):
     client = get_supabase_admin_client()
-    response = (
-        client.table("intervention_plans")
-        .insert(payload.model_dump(exclude_none=True))
-        .execute()
-    )
+    response = client.table("intervention_plans").insert(payload.model_dump(exclude_none=True)).execute()
 
     if not response.data:
         raise HTTPException(status_code=500, detail="Intervention plan could not be created")
@@ -46,15 +42,12 @@ def create_intervention_plan(payload: InterventionPlanCreateRequest):
     return InterventionPlanResponse(**response.data[0])
 
 
-@router.get("/student/{student_id}", response_model=List[InterventionPlanResponse])
-def get_intervention_plans_for_student(student_id: str):
+@router.get("/{plan_id}", response_model=InterventionPlanResponse)
+def get_intervention_plan(plan_id: str):
     client = get_supabase_admin_client()
-    response = (
-        client.table("intervention_plans")
-        .select("*")
-        .eq("student_id", student_id)
-        .order("created_at", desc=True)
-        .execute()
-    )
+    response = client.table("intervention_plans").select("*").eq("id", plan_id).limit(1).execute()
 
-    return [InterventionPlanResponse(**row) for row in response.data]
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Intervention plan not found")
+
+    return InterventionPlanResponse(**response.data[0])
