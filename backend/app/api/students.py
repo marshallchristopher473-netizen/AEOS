@@ -53,12 +53,3 @@ def get_student(student_id: str):
         raise HTTPException(status_code=404, detail="Student not found")
 
     return StudentResponse(**response.data[0])
-from app.core.dependencies import get_db_user
-
-@router.get("/students/{student_id}")
-async def get_student(
-    student_id: str,
-    current_user: dict = Depends(get_db_user)
-):
-    # existing logic remains untouched
-    ...
