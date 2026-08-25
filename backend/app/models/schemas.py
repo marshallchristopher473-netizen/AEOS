@@ -3,6 +3,20 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class AuthenticatedActor(BaseModel):
+    """Trusted server-derived identity for the current request.
+
+    Populated only from the AEOS `users` row resolved via the JWT's `sub`
+    claim (see `app.core.dependencies.get_current_actor`) — never from
+    client-supplied request data.
+    """
+
+    user_id: str
+    organization_id: str
+    role: str
+    auth_user_id: str
+
+
 class AssessmentCreateRequest(BaseModel):
     organization_id: str = Field(..., min_length=1)
     student_id: str = Field(..., min_length=1)
