@@ -1,0 +1,36 @@
+name: P0 Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  p0-security-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run P0 security gate
+        run: bash scripts/verify_p0_security.sh
+
+      # This job intentionally does not fail the build on PENDING controls —
+      # see scripts/verify_p0_security.sh's own comments for why. It fails
+      # only if a currently-implemented check regresses. Read the job log's
+      # PENDING list; do not treat a green check mark here as "P0 is done."

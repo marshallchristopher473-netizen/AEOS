@@ -1,0 +1,37 @@
+name: Frontend
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  frontend-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      # NOTE: `npm run lint` is intentionally not run here. next lint requires
+      # interactive ESLint setup in this repo (no committed .eslintrc*/
+      # eslint.config.*) and hangs non-interactively. See
+      # scripts/verify_frontend.sh and .github/instructions/frontend.instructions.md.
