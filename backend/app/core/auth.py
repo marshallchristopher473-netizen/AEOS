@@ -13,6 +13,8 @@ security_scheme = HTTPBearer()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_JWKS_URL = f"{SUPABASE_URL.rstrip('/')}/auth/v1/jwks" if SUPABASE_URL else ""
+SUPABASE_ISSUER = f"{SUPABASE_URL.rstrip('/')}/auth/v1" if SUPABASE_URL else ""
+JWT_AUDIENCE = "authenticated"
 
 _jwks: Optional[Dict[str, Any]] = None
 
@@ -63,7 +65,9 @@ async def get_current_user(
             token,
             matching_key,
             algorithms=["RS256"],
-            options={"verify_exp": True, "verify_aud": False},
+            audience=JWT_AUDIENCE,
+            issuer=SUPABASE_ISSUER,
+            options={"verify_exp": True, "verify_aud": True, "verify_iss": True},
         )
         return payload
     except (JWTError, ValueError, TypeError) as exc:
