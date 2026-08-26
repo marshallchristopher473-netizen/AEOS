@@ -1,73 +1,108 @@
-import os
 from typing import Any, Dict, Optional
 
 import httpx
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
-load_dotenv()
+from app.core.config import (
+    SUPABASE_JWKS_URL,
+    SUPABASE_JWT_AUDIENCE,
+    SUPABASE_JWT_ISSUER,
+)
 
-security_scheme = HTTPBearer()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_JWKS_URL = f"{SUPABASE_URL.rstrip('/')}/auth/v1/jwks" if SUPABASE_URL else ""
+security_scheme = HTTPBearer(auto_error=False)
 
 _jwks: Optional[Dict[str, Any]] = None
 
 
-async def get_jwks() -> Dict[str, Any]:
+def unauthorized(detail: str = "Invalid authentication credentials") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def get_jwks(force_refresh: bool = False) -> Dict[str, Any]:
     global _jwks
-    if _jwks is None:
+    if _jwks is None or force_refresh:
         if not SUPABASE_JWKS_URL:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Supabase URL is not configured",
+                detail="JWT verification is not configured",
             )
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(SUPABASE_JWKS_URL)
-            resp.raise_for_status()
-            _jwks = resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(SUPABASE_JWKS_URL)
+                response.raise_for_status()
+                candidate = response.json()
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication key service is unavailable",
+            ) from exc
+
+        if not isinstance(candidate, dict) or not isinstance(candidate.get("keys"), list):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication key service returned an invalid response",
+            )
+        _jwks = candidate
     return _jwks
 
 
+def find_jwk(jwks: Dict[str, Any], kid: str) -> Optional[Dict[str, Any]]:
+    return next(
+        (key for key in jwks.get("keys", []) if key.get("kid") == kid),
+        None,
+    )
+
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
 ):
-    """Verify a JWT against Supabase's JWKS and return the decoded payload."""
+    """Verify a Supabase JWT and return only cryptographically trusted claims."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise unauthorized("Not authenticated")
+
+    if not SUPABASE_JWT_ISSUER or not SUPABASE_JWT_AUDIENCE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT issuer and audience must be configured",
+        )
+
     token = credentials.credentials
 
     try:
-        jwks = await get_jwks()
         unverified_header = jwt.get_unverified_header(token)
         kid = unverified_header.get("kid")
-        if not kid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="JWT is missing a key ID",
-            )
+        if not isinstance(kid, str) or not kid:
+            raise unauthorized("JWT is missing a key ID")
 
-        matching_key = next(
-            (key for key in jwks.get("keys", []) if key.get("kid") == kid),
-            None,
-        )
+        matching_key = find_jwk(await get_jwks(), kid)
         if matching_key is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="JWK not found",
-            )
+            matching_key = find_jwk(await get_jwks(force_refresh=True), kid)
+        if matching_key is None:
+            raise unauthorized("JWT signing key is unknown")
 
         payload = jwt.decode(
             token,
             matching_key,
             algorithms=["RS256"],
-            options={"verify_exp": True, "verify_aud": False},
+            audience=SUPABASE_JWT_AUDIENCE,
+            issuer=SUPABASE_JWT_ISSUER,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_aud": True,
+                "verify_iss": True,
+            },
         )
+        subject = payload.get("sub")
+        if not isinstance(subject, str) or not subject.strip():
+            raise unauthorized("JWT is missing a usable subject")
         return payload
     except (JWTError, ValueError, TypeError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-        ) from exc
+        raise unauthorized() from exc

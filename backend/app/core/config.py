@@ -19,4 +19,13 @@ DATABASE_URL = get_env("DATABASE_URL")
 SUPABASE_URL = get_env("SUPABASE_URL")
 SUPABASE_ANON_KEY = get_env("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = get_env("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_JWKS_URL = get_env(
+    "SUPABASE_JWKS_URL",
+    f"{SUPABASE_URL.rstrip('/')}/auth/v1/jwks" if SUPABASE_URL else "",
+)
+SUPABASE_JWT_ISSUER = get_env(
+    "SUPABASE_JWT_ISSUER",
+    f"{SUPABASE_URL.rstrip('/')}/auth/v1" if SUPABASE_URL else "",
+)
+SUPABASE_JWT_AUDIENCE = get_env("SUPABASE_JWT_AUDIENCE", "authenticated")
 AI_PROVIDER = get_env("AI_PROVIDER", "placeholder")
