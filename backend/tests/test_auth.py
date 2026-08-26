@@ -1,44 +1,152 @@
+import base64
+import time
+
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from jose import jwt
 
 from app.core import auth
 
 
-@pytest.mark.asyncio
-async def test_get_current_user_returns_payload_for_valid_token(monkeypatch):
-    fake_jwk = {"kid": "test-kid", "kty": "RSA", "n": "abc", "e": "AQAB"}
+ISSUER = "https://example.supabase.co/auth/v1"
+AUDIENCE = "authenticated"
 
-    async def fake_get_jwks():
-        return {"keys": [fake_jwk]}
 
-    def fake_decode(token, key, algorithms, options):
-        assert token == "token"
-        assert key == fake_jwk
-        assert algorithms == ["RS256"]
-        assert options == {"verify_exp": True, "verify_aud": False}
-        return {"sub": "user-123", "role": "authenticated"}
+def b64url_uint(value: int) -> str:
+    size = (value.bit_length() + 7) // 8
+    return base64.urlsafe_b64encode(value.to_bytes(size, "big")).rstrip(b"=").decode()
 
+
+@pytest.fixture
+def signing_material():
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_numbers = private_key.public_key().public_numbers()
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    jwk = {
+        "kid": "test-kid",
+        "kty": "RSA",
+        "alg": "RS256",
+        "use": "sig",
+        "n": b64url_uint(public_numbers.n),
+        "e": b64url_uint(public_numbers.e),
+    }
+    return private_pem, jwk
+
+
+@pytest.fixture
+def configured_auth(monkeypatch, signing_material):
+    private_pem, public_jwk = signing_material
+
+    async def fake_get_jwks(force_refresh=False):
+        return {"keys": [public_jwk]}
+
+    monkeypatch.setattr(auth, "SUPABASE_JWT_ISSUER", ISSUER)
+    monkeypatch.setattr(auth, "SUPABASE_JWT_AUDIENCE", AUDIENCE)
     monkeypatch.setattr(auth, "get_jwks", fake_get_jwks)
-    monkeypatch.setattr(auth.jwt, "get_unverified_header", lambda token: {"kid": "test-kid"})
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    return private_pem
 
-    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
+
+def make_token(private_pem, **overrides):
+    now = int(time.time())
+    claims = {
+        "sub": "auth-user-a",
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "iat": now,
+        "exp": now + 300,
+        "email": "untrusted@example.test",
+        "organization_id": "spoofed-org",
+        "role": "spoofed-admin",
+    }
+    claims.update(overrides)
+    return jwt.encode(claims, private_pem, algorithm="RS256", headers={"kid": "test-kid"})
+
+
+@pytest.mark.asyncio
+async def test_valid_signed_token_with_required_claims_is_accepted(configured_auth):
+    token = make_token(configured_auth)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
     payload = await auth.get_current_user(credentials)
 
-    assert payload["sub"] == "user-123"
-    assert payload["role"] == "authenticated"
+    assert payload["sub"] == "auth-user-a"
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_raises_401_for_missing_jwk(monkeypatch):
-    async def fake_get_jwks():
-        return {"keys": [{"kid": "other-kid"}]}
+async def test_missing_credentials_are_401():
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(None)
 
-    monkeypatch.setattr(auth, "get_jwks", fake_get_jwks)
-    monkeypatch.setattr(auth.jwt, "get_unverified_header", lambda token: {"kid": "test-kid"})
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
 
-    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "claim_overrides",
+    [
+        {"aud": "wrong-audience"},
+        {"iss": "https://attacker.invalid/auth/v1"},
+        {"exp": int(time.time()) - 60},
+        {"sub": ""},
+    ],
+)
+async def test_invalid_required_claims_are_401(configured_auth, claim_overrides):
+    token = make_token(configured_auth, **claim_overrides)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_forged_signature_is_401(configured_auth):
+    attacker_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    attacker_pem = attacker_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    token = make_token(attacker_pem)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_unknown_signing_key_is_401(monkeypatch, configured_auth):
+    token = make_token(configured_auth)
+
+    async def no_matching_keys(force_refresh=False):
+        return {"keys": [{"kid": "different-key"}]}
+
+    monkeypatch.setattr(auth, "get_jwks", no_matching_keys)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_malformed_token_is_401(configured_auth):
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials="not-a-jwt",
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await auth.get_current_user(credentials)

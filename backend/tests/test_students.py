@@ -1,93 +1,79 @@
-from fastapi.testclient import TestClient
-
-from app.main import app
-from app.api import students as students_api
+from tests.fakes import ORG_A, ORG_B, SCHOOL_B, STUDENT_A, STUDENT_B, USER_A
 
 
-class FakeResponse:
-    def __init__(self, data):
-        self.data = data
+def test_student_collection_is_tenant_scoped(api_client, fake_db):
+    response = api_client.get("/students")
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()] == [STUDENT_A]
+    assert fake_db.queries[-1]["filters"] == {"organization_id": ORG_A}
 
 
-class FakeTable:
-    def __init__(self, data):
-        self._data = data
-        self.last_insert = None
-        self.last_select = None
+def test_same_tenant_student_object_is_returned(api_client, fake_db):
+    response = api_client.get(f"/students/{STUDENT_A}")
 
-    def insert(self, payload):
-        self.last_insert = payload
-        return self
-
-    def select(self, *_args, **_kwargs):
-        self.last_select = "select"
-        return self
-
-    def eq(self, *_args, **_kwargs):
-        return self
-
-    def limit(self, *_args, **_kwargs):
-        return self
-
-    def execute(self):
-        return FakeResponse(self._data)
+    assert response.status_code == 200
+    assert response.json()["id"] == STUDENT_A
+    assert fake_db.queries[-1]["filters"] == {
+        "id": STUDENT_A,
+        "organization_id": ORG_A,
+    }
 
 
-class FakeClient:
-    def __init__(self, data):
-        self._data = data
-        self.table_calls = []
+def test_cross_tenant_student_object_is_indistinguishable_from_missing(api_client, fake_db):
+    response = api_client.get(f"/students/{STUDENT_B}")
 
-    def table(self, name):
-        self.table_calls.append(name)
-        return FakeTable(self._data)
+    assert response.status_code == 404
+    assert fake_db.queries[-1]["filters"] == {
+        "id": STUDENT_B,
+        "organization_id": ORG_A,
+    }
 
 
-def test_create_student_returns_created_record(monkeypatch):
-    fake_client = FakeClient([
-        {
-            "id": "11111111-1111-1111-1111-111111111111",
-            "organization_id": "22222222-2222-2222-2222-222222222222",
-            "first_name": "Ava",
-            "last_name": "Nguyen",
-            "iep_status": False,
-        }
-    ])
-
-    monkeypatch.setattr(students_api, "get_supabase_admin_client", lambda: fake_client)
-
-    client = TestClient(app)
-    response = client.post(
+def test_student_create_derives_tenant_and_actor_server_side(api_client, fake_db):
+    response = api_client.post(
         "/students",
         json={
-            "organization_id": "22222222-2222-2222-2222-222222222222",
-            "first_name": "Ava",
-            "last_name": "Nguyen",
+            "first_name": "Cara",
+            "last_name": "Gamma",
+            "student_number": "A-003",
         },
     )
 
     assert response.status_code == 201
-    assert response.json()["first_name"] == "Ava"
-    assert response.json()["last_name"] == "Nguyen"
-    assert fake_client.table_calls[0] == "students"
+    assert response.json()["organization_id"] == ORG_A
+    assert response.json()["created_by"] == USER_A
+    inserted = fake_db.queries[-1]["payload"]
+    assert inserted["organization_id"] == ORG_A
+    assert inserted["created_by"] == USER_A
 
 
-def test_get_student_returns_existing_record(monkeypatch):
-    fake_client = FakeClient([
-        {
-            "id": "33333333-3333-3333-3333-333333333333",
-            "organization_id": "44444444-4444-4444-4444-444444444444",
-            "first_name": "Liam",
-            "last_name": "Chen",
-            "iep_status": True,
-        }
-    ])
+def test_student_create_rejects_spoofed_tenant_and_actor_fields(api_client):
+    response = api_client.post(
+        "/students",
+        json={
+            "organization_id": ORG_B,
+            "created_by": "attacker-user",
+            "first_name": "Cara",
+            "last_name": "Gamma",
+        },
+    )
 
-    monkeypatch.setattr(students_api, "get_supabase_admin_client", lambda: fake_client)
+    assert response.status_code == 422
 
-    client = TestClient(app)
-    response = client.get("/students/33333333-3333-3333-3333-333333333333")
 
-    assert response.status_code == 200
-    assert response.json()["first_name"] == "Liam"
-    assert response.json()["last_name"] == "Chen"
+def test_student_create_rejects_cross_tenant_school_id(api_client, fake_db):
+    response = api_client.post(
+        "/students",
+        json={
+            "school_id": SCHOOL_B,
+            "first_name": "Cara",
+            "last_name": "Gamma",
+        },
+    )
+
+    assert response.status_code == 404
+    assert fake_db.queries[-1]["filters"] == {
+        "id": SCHOOL_B,
+        "organization_id": ORG_A,
+    }
