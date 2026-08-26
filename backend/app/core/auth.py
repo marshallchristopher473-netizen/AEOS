@@ -9,7 +9,7 @@ from jose import JWTError, jwt
 
 load_dotenv()
 
-security_scheme = HTTPBearer()
+security_scheme = HTTPBearer(auto_error=False)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_JWKS_URL = f"{SUPABASE_URL.rstrip('/')}/auth/v1/jwks" if SUPABASE_URL else ""
@@ -36,9 +36,18 @@ async def get_jwks() -> Dict[str, Any]:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
 ):
     """Verify a JWT against Supabase's JWKS and return the decoded payload."""
+    if credentials is None:
+        # HTTPBearer(auto_error=False) lets a missing Authorization header
+        # reach here instead of the library's default 403, so "no token"
+        # and "invalid token" both consistently map to 401.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
     token = credentials.credentials
 
     try:

@@ -83,6 +83,17 @@ async def test_get_current_user_raises_401_for_mismatched_issuer(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_current_user_raises_401_for_missing_credentials():
+    # HTTPBearer(auto_error=False) lets a missing Authorization header
+    # reach get_current_user as credentials=None instead of the library's
+    # default 403, so this and an invalid token both map to 401.
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials=None)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_get_current_user_raises_401_for_missing_jwk(monkeypatch):
     async def fake_get_jwks():
         return {"keys": [{"kid": "other-kid"}]}

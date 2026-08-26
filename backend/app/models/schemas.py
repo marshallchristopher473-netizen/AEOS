@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AuthenticatedActor(BaseModel):
@@ -18,9 +18,16 @@ class AuthenticatedActor(BaseModel):
 
 
 class AssessmentCreateRequest(BaseModel):
-    organization_id: str = Field(..., min_length=1)
+    """organization_id and created_by are intentionally absent: they are
+    derived server-side from the authenticated actor
+    (see app.core.dependencies.get_current_actor), never accepted from the
+    client. extra="forbid" rejects a client that still sends them (or any
+    other unrecognized field) with a 422, rather than silently ignoring
+    the value."""
+
+    model_config = ConfigDict(extra="forbid")
+
     student_id: str = Field(..., min_length=1)
-    created_by: str = Field(..., min_length=1)
     title: str = Field(..., min_length=1)
     assessment_type: str = Field(..., min_length=1)
     status: str = Field(default="draft", min_length=1)
