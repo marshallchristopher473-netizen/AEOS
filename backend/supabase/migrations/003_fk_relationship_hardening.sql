@@ -6,17 +6,45 @@
 -- DROP POLICY + CREATE POLICY) to add the missing relationship checks below,
 -- and adds one new table with its own RLS from scratch.
 --
--- Gaps closed here (each policy previously verified only that a row belonged
--- to the acting organization, not that a referenced row on the same row
--- belonged to that same organization):
---   * students.school_id            -> schools.organization_id
---   * ai_recommendations.assessment_id -> assessments.organization_id
---   * intervention_plans.assessment_id (optional) -> assessments.organization_id
---     and assessments.student_id must match intervention_plans.student_id
---   * intervention_actions.assigned_to -> users.organization_id (of the parent plan)
---   * progress_events.student_id    -> students.organization_id
---   * new: assessment_results.assessment_id / .student_id -> assessments row
---     that itself belongs to the org and to that student
+-- Every column reference in every policy body below is explicitly qualified
+-- with its owning table (or alias), including references to the policy's
+-- own target table, even where no ambiguity exists today. This is not
+-- cosmetic: in a correlated EXISTS/JOIN subquery, an unqualified column name
+-- resolves to the *innermost* table that has a column of that name — and
+-- several related tables here (schools, assessments, students, users) also
+-- have an `organization_id` column. An unqualified `organization_id` inside
+-- such a subquery therefore does not mean "the outer row's organization_id";
+-- it silently binds to the inner table's own `organization_id`, collapsing
+-- an intended cross-tenant comparison into a self-referential tautology
+-- (e.g. `related_school.organization_id = organization_id` really means
+-- `related_school.organization_id = related_school.organization_id`, which
+-- is always true). Qualifying every reference, including ones outside a
+-- subquery today, means a future edit that adds another correlated table
+-- cannot silently reintroduce this bug class.
+--
+-- Relationship gaps closed here (each policy previously verified only that
+-- a row belonged to the acting organization, not that a *referenced* row on
+-- that same row belonged to that same organization, and in some cases the
+-- relationship check was altogether absent):
+--   * students.school_id               -> schools.organization_id
+--   * assessments.student_id           -> students.organization_id
+--     (redefines 002's assessments_insert/update, which had this exact
+--     unqualified-reference bug from the start)
+--   * ai_recommendations.assessment_id -> assessments.organization_id,
+--     and assessments.student_id's own organization must match too
+--   * intervention_plans.assessment_id (optional) -> assessments row that
+--     also belongs to the same organization and the same student
+--   * intervention_actions.assigned_to -> users.organization_id (of the
+--     parent plan)
+--   * progress_events.student_id       -> students.organization_id
+--   * new: assessment_results.assessment_id / .student_id -> an assessments
+--     row that itself belongs to the org and to that student
+--
+-- Actor-identity ("created_by") hardening: every UPDATE policy on a table
+-- with a created_by column now requires created_by to be unchanged from the
+-- row's existing stored value (via a self-referential subquery keyed by
+-- primary key), rather than merely "some currently active org member" —
+-- ownership of an existing row must not be reassignable through an update.
 
 -- ---------------------------------------------------------------------------
 -- Student -> School
@@ -25,10 +53,10 @@ DROP POLICY IF EXISTS students_insert ON public.students;
 CREATE POLICY students_insert
 ON public.students FOR INSERT TO authenticated
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(students.organization_id)
+    AND students.created_by = ANY(public.aeos_current_user_ids())
     AND (
-        school_id IS NULL
+        students.school_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.schools AS related_school
             WHERE related_school.id = students.school_id
@@ -40,12 +68,15 @@ WITH CHECK (
 DROP POLICY IF EXISTS students_update ON public.students;
 CREATE POLICY students_update
 ON public.students FOR UPDATE TO authenticated
-USING (public.aeos_can_write_org(organization_id))
+USING (public.aeos_can_write_org(students.organization_id))
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(students.organization_id)
+    AND students.created_by = (
+        SELECT original.created_by FROM public.students AS original
+        WHERE original.id = students.id
+    )
     AND (
-        school_id IS NULL
+        students.school_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.schools AS related_school
             WHERE related_school.id = students.school_id
@@ -55,14 +86,52 @@ WITH CHECK (
 );
 
 -- ---------------------------------------------------------------------------
--- Recommendation (ai_recommendations) -> Assessment
+-- Assessment -> Student
+-- (redefines 002's assessments_insert/update: the original policy compared
+-- `related_student.organization_id = organization_id` inside a correlated
+-- subquery against the `students` table, which itself has an
+-- `organization_id` column — the unqualified reference bound to the inner
+-- table, not the outer `assessments` row, making the check a tautology.)
+-- ---------------------------------------------------------------------------
+DROP POLICY IF EXISTS assessments_insert ON public.assessments;
+CREATE POLICY assessments_insert
+ON public.assessments FOR INSERT TO authenticated
+WITH CHECK (
+    public.aeos_can_write_org(assessments.organization_id)
+    AND assessments.created_by = ANY(public.aeos_current_user_ids())
+    AND EXISTS (
+        SELECT 1 FROM public.students AS related_student
+        WHERE related_student.id = assessments.student_id
+          AND related_student.organization_id = assessments.organization_id
+    )
+);
+
+DROP POLICY IF EXISTS assessments_update ON public.assessments;
+CREATE POLICY assessments_update
+ON public.assessments FOR UPDATE TO authenticated
+USING (public.aeos_can_write_org(assessments.organization_id))
+WITH CHECK (
+    public.aeos_can_write_org(assessments.organization_id)
+    AND assessments.created_by = (
+        SELECT original.created_by FROM public.assessments AS original
+        WHERE original.id = assessments.id
+    )
+    AND EXISTS (
+        SELECT 1 FROM public.students AS related_student
+        WHERE related_student.id = assessments.student_id
+          AND related_student.organization_id = assessments.organization_id
+    )
+);
+
+-- ---------------------------------------------------------------------------
+-- Recommendation (ai_recommendations) -> Assessment (and its Student)
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS ai_recommendations_insert ON public.ai_recommendations;
 CREATE POLICY ai_recommendations_insert
 ON public.ai_recommendations FOR INSERT TO authenticated
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(ai_recommendations.organization_id)
+    AND ai_recommendations.created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
         JOIN public.students AS related_student
@@ -76,10 +145,13 @@ WITH CHECK (
 DROP POLICY IF EXISTS ai_recommendations_update ON public.ai_recommendations;
 CREATE POLICY ai_recommendations_update
 ON public.ai_recommendations FOR UPDATE TO authenticated
-USING (public.aeos_can_write_org(organization_id))
+USING (public.aeos_can_write_org(ai_recommendations.organization_id))
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(ai_recommendations.organization_id)
+    AND ai_recommendations.created_by = (
+        SELECT original.created_by FROM public.ai_recommendations AS original
+        WHERE original.id = ai_recommendations.id
+    )
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
         JOIN public.students AS related_student
@@ -97,15 +169,15 @@ DROP POLICY IF EXISTS intervention_plans_insert ON public.intervention_plans;
 CREATE POLICY intervention_plans_insert
 ON public.intervention_plans FOR INSERT TO authenticated
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(intervention_plans.organization_id)
+    AND intervention_plans.created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
         WHERE related_student.id = intervention_plans.student_id
           AND related_student.organization_id = intervention_plans.organization_id
     )
     AND (
-        assessment_id IS NULL
+        intervention_plans.assessment_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.assessments AS related_assessment
             WHERE related_assessment.id = intervention_plans.assessment_id
@@ -118,17 +190,20 @@ WITH CHECK (
 DROP POLICY IF EXISTS intervention_plans_update ON public.intervention_plans;
 CREATE POLICY intervention_plans_update
 ON public.intervention_plans FOR UPDATE TO authenticated
-USING (public.aeos_can_write_org(organization_id))
+USING (public.aeos_can_write_org(intervention_plans.organization_id))
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(intervention_plans.organization_id)
+    AND intervention_plans.created_by = (
+        SELECT original.created_by FROM public.intervention_plans AS original
+        WHERE original.id = intervention_plans.id
+    )
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
         WHERE related_student.id = intervention_plans.student_id
           AND related_student.organization_id = intervention_plans.organization_id
     )
     AND (
-        assessment_id IS NULL
+        intervention_plans.assessment_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.assessments AS related_assessment
             WHERE related_assessment.id = intervention_plans.assessment_id
@@ -188,13 +263,15 @@ WITH CHECK (
 
 -- ---------------------------------------------------------------------------
 -- Progress Event -> Student
+-- (append-only: no UPDATE policy exists on this table, matching its
+-- event-log semantics — nothing to preserve on update.)
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS progress_events_insert ON public.progress_events;
 CREATE POLICY progress_events_insert
 ON public.progress_events FOR INSERT TO authenticated
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND actor_id = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(progress_events.organization_id)
+    AND progress_events.actor_id = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
         WHERE related_student.id = progress_events.student_id
@@ -229,13 +306,13 @@ ALTER TABLE public.assessment_results FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY assessment_results_select
 ON public.assessment_results FOR SELECT TO authenticated
-USING (public.aeos_has_org_access(organization_id));
+USING (public.aeos_has_org_access(assessment_results.organization_id));
 
 CREATE POLICY assessment_results_insert
 ON public.assessment_results FOR INSERT TO authenticated
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(assessment_results.organization_id)
+    AND assessment_results.created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
         WHERE related_assessment.id = assessment_results.assessment_id
@@ -251,10 +328,13 @@ WITH CHECK (
 
 CREATE POLICY assessment_results_update
 ON public.assessment_results FOR UPDATE TO authenticated
-USING (public.aeos_can_write_org(organization_id))
+USING (public.aeos_can_write_org(assessment_results.organization_id))
 WITH CHECK (
-    public.aeos_can_write_org(organization_id)
-    AND created_by = ANY(public.aeos_current_user_ids())
+    public.aeos_can_write_org(assessment_results.organization_id)
+    AND assessment_results.created_by = (
+        SELECT original.created_by FROM public.assessment_results AS original
+        WHERE original.id = assessment_results.id
+    )
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
         WHERE related_assessment.id = assessment_results.assessment_id
@@ -270,4 +350,4 @@ WITH CHECK (
 
 CREATE POLICY assessment_results_delete
 ON public.assessment_results FOR DELETE TO authenticated
-USING (public.aeos_can_write_org(organization_id));
+USING (public.aeos_can_write_org(assessment_results.organization_id));
