@@ -31,8 +31,8 @@ WITH CHECK (
         school_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.schools AS related_school
-            WHERE related_school.id = school_id
-              AND related_school.organization_id = organization_id
+            WHERE related_school.id = students.school_id
+              AND related_school.organization_id = students.organization_id
         )
     )
 );
@@ -48,8 +48,8 @@ WITH CHECK (
         school_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.schools AS related_school
-            WHERE related_school.id = school_id
-              AND related_school.organization_id = organization_id
+            WHERE related_school.id = students.school_id
+              AND related_school.organization_id = students.organization_id
         )
     )
 );
@@ -65,8 +65,11 @@ WITH CHECK (
     AND created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
-        WHERE related_assessment.id = assessment_id
-          AND related_assessment.organization_id = organization_id
+        JOIN public.students AS related_student
+          ON related_student.id = related_assessment.student_id
+        WHERE related_assessment.id = ai_recommendations.assessment_id
+          AND related_assessment.organization_id = ai_recommendations.organization_id
+          AND related_student.organization_id = ai_recommendations.organization_id
     )
 );
 
@@ -76,10 +79,14 @@ ON public.ai_recommendations FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(organization_id))
 WITH CHECK (
     public.aeos_can_write_org(organization_id)
+    AND created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
-        WHERE related_assessment.id = assessment_id
-          AND related_assessment.organization_id = organization_id
+        JOIN public.students AS related_student
+          ON related_student.id = related_assessment.student_id
+        WHERE related_assessment.id = ai_recommendations.assessment_id
+          AND related_assessment.organization_id = ai_recommendations.organization_id
+          AND related_student.organization_id = ai_recommendations.organization_id
     )
 );
 
@@ -94,16 +101,16 @@ WITH CHECK (
     AND created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
-        WHERE related_student.id = student_id
-          AND related_student.organization_id = organization_id
+        WHERE related_student.id = intervention_plans.student_id
+          AND related_student.organization_id = intervention_plans.organization_id
     )
     AND (
         assessment_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.assessments AS related_assessment
-            WHERE related_assessment.id = assessment_id
-              AND related_assessment.organization_id = organization_id
-              AND related_assessment.student_id = student_id
+            WHERE related_assessment.id = intervention_plans.assessment_id
+              AND related_assessment.organization_id = intervention_plans.organization_id
+              AND related_assessment.student_id = intervention_plans.student_id
         )
     )
 );
@@ -115,13 +122,18 @@ USING (public.aeos_can_write_org(organization_id))
 WITH CHECK (
     public.aeos_can_write_org(organization_id)
     AND created_by = ANY(public.aeos_current_user_ids())
+    AND EXISTS (
+        SELECT 1 FROM public.students AS related_student
+        WHERE related_student.id = intervention_plans.student_id
+          AND related_student.organization_id = intervention_plans.organization_id
+    )
     AND (
         assessment_id IS NULL
         OR EXISTS (
             SELECT 1 FROM public.assessments AS related_assessment
-            WHERE related_assessment.id = assessment_id
-              AND related_assessment.organization_id = organization_id
-              AND related_assessment.student_id = student_id
+            WHERE related_assessment.id = intervention_plans.assessment_id
+              AND related_assessment.organization_id = intervention_plans.organization_id
+              AND related_assessment.student_id = intervention_plans.student_id
         )
     )
 );
@@ -135,13 +147,13 @@ ON public.intervention_actions FOR INSERT TO authenticated
 WITH CHECK (
     EXISTS (
         SELECT 1 FROM public.intervention_plans AS parent_plan
-        WHERE parent_plan.id = intervention_plan_id
+        WHERE parent_plan.id = intervention_actions.intervention_plan_id
           AND public.aeos_can_write_org(parent_plan.organization_id)
           AND (
-              assigned_to IS NULL
+              intervention_actions.assigned_to IS NULL
               OR EXISTS (
                   SELECT 1 FROM public.users AS assignee
-                  WHERE assignee.id = assigned_to
+                  WHERE assignee.id = intervention_actions.assigned_to
                     AND assignee.organization_id = parent_plan.organization_id
               )
           )
@@ -154,20 +166,20 @@ ON public.intervention_actions FOR UPDATE TO authenticated
 USING (
     EXISTS (
         SELECT 1 FROM public.intervention_plans AS parent_plan
-        WHERE parent_plan.id = intervention_plan_id
+        WHERE parent_plan.id = intervention_actions.intervention_plan_id
           AND public.aeos_can_write_org(parent_plan.organization_id)
     )
 )
 WITH CHECK (
     EXISTS (
         SELECT 1 FROM public.intervention_plans AS parent_plan
-        WHERE parent_plan.id = intervention_plan_id
+        WHERE parent_plan.id = intervention_actions.intervention_plan_id
           AND public.aeos_can_write_org(parent_plan.organization_id)
           AND (
-              assigned_to IS NULL
+              intervention_actions.assigned_to IS NULL
               OR EXISTS (
                   SELECT 1 FROM public.users AS assignee
-                  WHERE assignee.id = assigned_to
+                  WHERE assignee.id = intervention_actions.assigned_to
                     AND assignee.organization_id = parent_plan.organization_id
               )
           )
@@ -185,8 +197,8 @@ WITH CHECK (
     AND actor_id = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
-        WHERE related_student.id = student_id
-          AND related_student.organization_id = organization_id
+        WHERE related_student.id = progress_events.student_id
+          AND related_student.organization_id = progress_events.organization_id
     )
 );
 
@@ -226,9 +238,14 @@ WITH CHECK (
     AND created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
-        WHERE related_assessment.id = assessment_id
-          AND related_assessment.organization_id = organization_id
-          AND related_assessment.student_id = student_id
+        WHERE related_assessment.id = assessment_results.assessment_id
+          AND related_assessment.organization_id = assessment_results.organization_id
+          AND related_assessment.student_id = assessment_results.student_id
+    )
+    AND EXISTS (
+        SELECT 1 FROM public.students AS related_student
+        WHERE related_student.id = assessment_results.student_id
+          AND related_student.organization_id = assessment_results.organization_id
     )
 );
 
@@ -237,11 +254,17 @@ ON public.assessment_results FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(organization_id))
 WITH CHECK (
     public.aeos_can_write_org(organization_id)
+    AND created_by = ANY(public.aeos_current_user_ids())
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
-        WHERE related_assessment.id = assessment_id
-          AND related_assessment.organization_id = organization_id
-          AND related_assessment.student_id = student_id
+        WHERE related_assessment.id = assessment_results.assessment_id
+          AND related_assessment.organization_id = assessment_results.organization_id
+          AND related_assessment.student_id = assessment_results.student_id
+    )
+    AND EXISTS (
+        SELECT 1 FROM public.students AS related_student
+        WHERE related_student.id = assessment_results.student_id
+          AND related_student.organization_id = assessment_results.organization_id
     )
 );
 

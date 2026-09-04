@@ -77,25 +77,40 @@ def test_assessment_result_create_rejects_cross_tenant_assessment_id(api_client,
     }
 
 
-def test_assessment_result_create_rejects_spoofed_authority_fields(api_client):
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("id", "attacker-controlled-result"),
+        ("organization_id", ORG_B),
+        ("created_by", "attacker"),
+        ("student_id", "attacker-controlled-student"),
+    ),
+)
+def test_assessment_result_create_rejects_each_spoofed_identity_field(
+    api_client,
+    field,
+    value,
+):
     response = api_client.post(
         "/assessment-results",
-        json={
-            **valid_payload(),
-            "organization_id": ORG_B,
-            "created_by": "attacker",
-            "student_id": "attacker-controlled-student",
-        },
+        json={**valid_payload(), field: value},
     )
 
     assert response.status_code == 422
 
 
-def test_assessment_result_request_schema_has_no_client_authority_fields():
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("id", "attacker-controlled-result"),
+        ("organization_id", ORG_B),
+        ("created_by", "attacker"),
+        ("student_id", "attacker-controlled-student"),
+    ),
+)
+def test_assessment_result_request_schema_rejects_each_identity_field(field, value):
     with pytest.raises(ValidationError):
         AssessmentResultCreateRequest(
             **valid_payload(),
-            organization_id=ORG_B,
-            created_by="attacker",
-            student_id="attacker-controlled-student",
+            **{field: value},
         )

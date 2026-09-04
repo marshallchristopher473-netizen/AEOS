@@ -8,6 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from app.core.auth import get_current_user  # noqa: E402
 from app.core.dependencies import get_current_actor  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.schemas import AuthenticatedActor  # noqa: E402
@@ -71,6 +72,16 @@ def admin_client(fake_db: FakeClient, admin_actor_a: AuthenticatedActor):
 @pytest.fixture
 def support_client(fake_db: FakeClient, support_actor_a: AuthenticatedActor):
     app.dependency_overrides[get_current_actor] = lambda: support_actor_a
+    app.dependency_overrides[get_supabase_admin_client] = lambda: fake_db
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def resolved_support_client(fake_db: FakeClient):
+    """Exercise the full verified-subject -> active DB membership -> role path."""
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "auth-support-a"}
     app.dependency_overrides[get_supabase_admin_client] = lambda: fake_db
     with TestClient(app) as client:
         yield client

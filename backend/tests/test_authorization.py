@@ -38,6 +38,28 @@ def test_support_role_is_forbidden_from_privileged_writes(support_client, method
 
 
 @pytest.mark.parametrize(("method", "path", "payload"), PRIVILEGED_WRITES)
+def test_active_support_membership_resolved_from_db_is_forbidden(
+    resolved_support_client,
+    fake_db,
+    method,
+    path,
+    payload,
+):
+    response = resolved_support_client.request(method, path, json=payload)
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "This action requires teacher or admin authorization"
+    }
+    assert fake_db.queries[-1] == {
+        "table": "users",
+        "operation": "select",
+        "filters": {"auth_user_id": "auth-support-a", "status": "active"},
+        "payload": None,
+    }
+
+
+@pytest.mark.parametrize(("method", "path", "payload"), PRIVILEGED_WRITES)
 def test_teacher_role_is_authorized_for_privileged_writes(api_client, method, path, payload):
     response = api_client.request(method, path, json=payload)
 

@@ -69,6 +69,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Audit frontend dependency vulnerabilities
+        working-directory: frontend
+        run: npm audit --audit-level=low
+
+      - name: Verify frontend dependency tree
+        working-directory: frontend
+        run: npm ls --all
+
       - name: Lint frontend
         working-directory: frontend
         env:
