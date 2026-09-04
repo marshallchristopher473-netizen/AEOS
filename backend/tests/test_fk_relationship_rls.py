@@ -96,10 +96,56 @@ def test_no_bare_risky_column_references_in_any_policy_body():
             )
 
 
-def assert_created_by_preserved(policy: str, table: str):
-    assert f"{table}.created_by = (" in policy
-    assert f"SELECT original.created_by FROM public.{table} AS original" in policy
-    assert f"original.id = {table}.id" in policy
+def assert_actor_is_bound_to_row_organization(policy: str, table: str):
+    assert "public.aeos_is_current_actor_for_org(" in policy
+    assert f"{table}.created_by" in policy
+    assert f"{table}.organization_id" in policy
+
+
+def test_actor_helper_binds_subject_user_and_row_organization():
+    sql = FK_MIGRATION.read_text()
+
+    assert "CREATE OR REPLACE FUNCTION public.aeos_is_current_actor_for_org(" in sql
+    helper = sql.split(
+        "CREATE OR REPLACE FUNCTION public.aeos_is_current_actor_for_org(", 1
+    )[1].split("$$;", 1)[0]
+    for relationship in (
+        "membership.id = target_user_id",
+        "membership.organization_id = target_organization_id",
+        "membership.auth_user_id = auth.uid()::text",
+        "membership.status = 'active'",
+    ):
+        assert relationship in helper
+
+
+def test_identity_trigger_prevents_tenant_and_creator_reassignment():
+    sql = FK_MIGRATION.read_text()
+
+    assert "NEW.organization_id IS DISTINCT FROM OLD.organization_id" in sql
+    assert "NEW.created_by IS DISTINCT FROM OLD.created_by" in sql
+    for table in (
+        "students",
+        "assessments",
+        "ai_recommendations",
+        "intervention_plans",
+        "assessment_results",
+    ):
+        assert f"CREATE TRIGGER {table}_preserve_row_identity" in sql
+        assert f"BEFORE UPDATE ON public.{table}" in sql
+
+
+def test_policies_do_not_self_query_their_protected_table_to_preserve_identity():
+    sql = FK_MIGRATION.read_text()
+
+    for table in (
+        "students",
+        "assessments",
+        "ai_recommendations",
+        "intervention_plans",
+        "assessment_results",
+    ):
+        update_policy = policy_sql(sql, f"{table}_update")
+        assert f"FROM public.{table} AS original" not in update_policy
 
 
 def test_student_school_relationship_is_enforced():
@@ -111,7 +157,8 @@ def test_student_school_relationship_is_enforced():
         policy = policy_sql(sql, policy_name)
         assert "related_school.id = students.school_id" in policy
         assert "related_school.organization_id = students.organization_id" in policy
-    assert_created_by_preserved(policy_sql(sql, "students_update"), "students")
+    for policy_name in ("students_insert", "students_update"):
+        assert_actor_is_bound_to_row_organization(policy_sql(sql, policy_name), "students")
 
 
 def test_assessment_student_relationship_is_enforced():
@@ -123,7 +170,8 @@ def test_assessment_student_relationship_is_enforced():
         policy = policy_sql(sql, policy_name)
         assert "related_student.id = assessments.student_id" in policy
         assert "related_student.organization_id = assessments.organization_id" in policy
-    assert_created_by_preserved(policy_sql(sql, "assessments_update"), "assessments")
+    for policy_name in ("assessments_insert", "assessments_update"):
+        assert_actor_is_bound_to_row_organization(policy_sql(sql, policy_name), "assessments")
 
 
 def test_recommendation_assessment_relationship_is_enforced():
@@ -140,9 +188,10 @@ def test_recommendation_assessment_relationship_is_enforced():
             in policy
         )
         assert "related_student.organization_id = ai_recommendations.organization_id" in policy
-    assert_created_by_preserved(
-        policy_sql(sql, "ai_recommendations_update"), "ai_recommendations"
-    )
+    for policy_name in ("ai_recommendations_insert", "ai_recommendations_update"):
+        assert_actor_is_bound_to_row_organization(
+            policy_sql(sql, policy_name), "ai_recommendations"
+        )
 
 
 def test_intervention_plan_student_and_assessment_relationship_is_enforced():
@@ -157,9 +206,10 @@ def test_intervention_plan_student_and_assessment_relationship_is_enforced():
         assert "related_assessment.id = intervention_plans.assessment_id" in policy
         assert "related_assessment.organization_id = intervention_plans.organization_id" in policy
         assert "related_assessment.student_id = intervention_plans.student_id" in policy
-    assert_created_by_preserved(
-        policy_sql(sql, "intervention_plans_update"), "intervention_plans"
-    )
+    for policy_name in ("intervention_plans_insert", "intervention_plans_update"):
+        assert_actor_is_bound_to_row_organization(
+            policy_sql(sql, policy_name), "intervention_plans"
+        )
 
 
 def test_intervention_action_plan_and_assignee_relationship_is_enforced():
@@ -181,6 +231,8 @@ def test_progress_event_student_relationship_is_enforced():
     policy = policy_sql(sql, "progress_events_insert")
     assert "related_student.id = progress_events.student_id" in policy
     assert "related_student.organization_id = progress_events.organization_id" in policy
+    assert "public.aeos_is_current_actor_for_org(" in policy
+    assert "progress_events.actor_id" in policy
     # Append-only log: no update policy is defined for this table.
     assert "CREATE POLICY progress_events_update" not in sql
 
@@ -205,6 +257,7 @@ def test_assessment_results_table_and_rls_are_present():
         assert "related_assessment.student_id = assessment_results.student_id" in policy
         assert "related_student.id = assessment_results.student_id" in policy
         assert "related_student.organization_id = assessment_results.organization_id" in policy
-    assert_created_by_preserved(
-        policy_sql(sql, "assessment_results_update"), "assessment_results"
-    )
+    for policy_name in ("assessment_results_insert", "assessment_results_update"):
+        assert_actor_is_bound_to_row_organization(
+            policy_sql(sql, policy_name), "assessment_results"
+        )

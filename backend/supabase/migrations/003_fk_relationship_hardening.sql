@@ -40,11 +40,64 @@
 --   * new: assessment_results.assessment_id / .student_id -> an assessments
 --     row that itself belongs to the org and to that student
 --
--- Actor-identity ("created_by") hardening: every UPDATE policy on a table
--- with a created_by column now requires created_by to be unchanged from the
--- row's existing stored value (via a self-referential subquery keyed by
--- primary key), rather than merely "some currently active org member" —
--- ownership of an existing row must not be reassignable through an update.
+-- Actor-identity hardening: every actor foreign key is bound to both the
+-- authenticated subject and the row's organization. A trigger makes
+-- organization_id and created_by immutable without recursively querying a
+-- protected table from inside its own RLS policy.
+
+CREATE OR REPLACE FUNCTION public.aeos_is_current_actor_for_org(
+    target_user_id UUID,
+    target_organization_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM public.users AS membership
+        WHERE membership.id = target_user_id
+          AND membership.organization_id = target_organization_id
+          AND membership.auth_user_id = auth.uid()::text
+          AND membership.status = 'active'
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public.aeos_is_current_actor_for_org(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.aeos_is_current_actor_for_org(UUID, UUID) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.aeos_preserve_row_identity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NEW.organization_id IS DISTINCT FROM OLD.organization_id
+       OR NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+        RAISE EXCEPTION 'organization_id and created_by are immutable'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER students_preserve_row_identity
+BEFORE UPDATE ON public.students
+FOR EACH ROW EXECUTE FUNCTION public.aeos_preserve_row_identity();
+
+CREATE TRIGGER assessments_preserve_row_identity
+BEFORE UPDATE ON public.assessments
+FOR EACH ROW EXECUTE FUNCTION public.aeos_preserve_row_identity();
+
+CREATE TRIGGER ai_recommendations_preserve_row_identity
+BEFORE UPDATE ON public.ai_recommendations
+FOR EACH ROW EXECUTE FUNCTION public.aeos_preserve_row_identity();
+
+CREATE TRIGGER intervention_plans_preserve_row_identity
+BEFORE UPDATE ON public.intervention_plans
+FOR EACH ROW EXECUTE FUNCTION public.aeos_preserve_row_identity();
 
 -- ---------------------------------------------------------------------------
 -- Student -> School
@@ -54,7 +107,10 @@ CREATE POLICY students_insert
 ON public.students FOR INSERT TO authenticated
 WITH CHECK (
     public.aeos_can_write_org(students.organization_id)
-    AND students.created_by = ANY(public.aeos_current_user_ids())
+    AND public.aeos_is_current_actor_for_org(
+        students.created_by,
+        students.organization_id
+    )
     AND (
         students.school_id IS NULL
         OR EXISTS (
@@ -71,9 +127,9 @@ ON public.students FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(students.organization_id))
 WITH CHECK (
     public.aeos_can_write_org(students.organization_id)
-    AND students.created_by = (
-        SELECT original.created_by FROM public.students AS original
-        WHERE original.id = students.id
+    AND public.aeos_is_current_actor_for_org(
+        students.created_by,
+        students.organization_id
     )
     AND (
         students.school_id IS NULL
@@ -98,7 +154,10 @@ CREATE POLICY assessments_insert
 ON public.assessments FOR INSERT TO authenticated
 WITH CHECK (
     public.aeos_can_write_org(assessments.organization_id)
-    AND assessments.created_by = ANY(public.aeos_current_user_ids())
+    AND public.aeos_is_current_actor_for_org(
+        assessments.created_by,
+        assessments.organization_id
+    )
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
         WHERE related_student.id = assessments.student_id
@@ -112,9 +171,9 @@ ON public.assessments FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(assessments.organization_id))
 WITH CHECK (
     public.aeos_can_write_org(assessments.organization_id)
-    AND assessments.created_by = (
-        SELECT original.created_by FROM public.assessments AS original
-        WHERE original.id = assessments.id
+    AND public.aeos_is_current_actor_for_org(
+        assessments.created_by,
+        assessments.organization_id
     )
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
@@ -131,7 +190,10 @@ CREATE POLICY ai_recommendations_insert
 ON public.ai_recommendations FOR INSERT TO authenticated
 WITH CHECK (
     public.aeos_can_write_org(ai_recommendations.organization_id)
-    AND ai_recommendations.created_by = ANY(public.aeos_current_user_ids())
+    AND public.aeos_is_current_actor_for_org(
+        ai_recommendations.created_by,
+        ai_recommendations.organization_id
+    )
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
         JOIN public.students AS related_student
@@ -148,9 +210,9 @@ ON public.ai_recommendations FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(ai_recommendations.organization_id))
 WITH CHECK (
     public.aeos_can_write_org(ai_recommendations.organization_id)
-    AND ai_recommendations.created_by = (
-        SELECT original.created_by FROM public.ai_recommendations AS original
-        WHERE original.id = ai_recommendations.id
+    AND public.aeos_is_current_actor_for_org(
+        ai_recommendations.created_by,
+        ai_recommendations.organization_id
     )
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
@@ -170,7 +232,10 @@ CREATE POLICY intervention_plans_insert
 ON public.intervention_plans FOR INSERT TO authenticated
 WITH CHECK (
     public.aeos_can_write_org(intervention_plans.organization_id)
-    AND intervention_plans.created_by = ANY(public.aeos_current_user_ids())
+    AND public.aeos_is_current_actor_for_org(
+        intervention_plans.created_by,
+        intervention_plans.organization_id
+    )
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
         WHERE related_student.id = intervention_plans.student_id
@@ -193,9 +258,9 @@ ON public.intervention_plans FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(intervention_plans.organization_id))
 WITH CHECK (
     public.aeos_can_write_org(intervention_plans.organization_id)
-    AND intervention_plans.created_by = (
-        SELECT original.created_by FROM public.intervention_plans AS original
-        WHERE original.id = intervention_plans.id
+    AND public.aeos_is_current_actor_for_org(
+        intervention_plans.created_by,
+        intervention_plans.organization_id
     )
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
@@ -271,7 +336,10 @@ CREATE POLICY progress_events_insert
 ON public.progress_events FOR INSERT TO authenticated
 WITH CHECK (
     public.aeos_can_write_org(progress_events.organization_id)
-    AND progress_events.actor_id = ANY(public.aeos_current_user_ids())
+    AND public.aeos_is_current_actor_for_org(
+        progress_events.actor_id,
+        progress_events.organization_id
+    )
     AND EXISTS (
         SELECT 1 FROM public.students AS related_student
         WHERE related_student.id = progress_events.student_id
@@ -301,6 +369,10 @@ BEFORE UPDATE ON public.assessment_results
 FOR EACH ROW
 EXECUTE FUNCTION public.set_updated_at();
 
+CREATE TRIGGER assessment_results_preserve_row_identity
+BEFORE UPDATE ON public.assessment_results
+FOR EACH ROW EXECUTE FUNCTION public.aeos_preserve_row_identity();
+
 ALTER TABLE public.assessment_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assessment_results FORCE ROW LEVEL SECURITY;
 
@@ -312,7 +384,10 @@ CREATE POLICY assessment_results_insert
 ON public.assessment_results FOR INSERT TO authenticated
 WITH CHECK (
     public.aeos_can_write_org(assessment_results.organization_id)
-    AND assessment_results.created_by = ANY(public.aeos_current_user_ids())
+    AND public.aeos_is_current_actor_for_org(
+        assessment_results.created_by,
+        assessment_results.organization_id
+    )
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
         WHERE related_assessment.id = assessment_results.assessment_id
@@ -331,9 +406,9 @@ ON public.assessment_results FOR UPDATE TO authenticated
 USING (public.aeos_can_write_org(assessment_results.organization_id))
 WITH CHECK (
     public.aeos_can_write_org(assessment_results.organization_id)
-    AND assessment_results.created_by = (
-        SELECT original.created_by FROM public.assessment_results AS original
-        WHERE original.id = assessment_results.id
+    AND public.aeos_is_current_actor_for_org(
+        assessment_results.created_by,
+        assessment_results.organization_id
     )
     AND EXISTS (
         SELECT 1 FROM public.assessments AS related_assessment
