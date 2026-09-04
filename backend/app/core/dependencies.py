@@ -56,3 +56,31 @@ async def get_current_actor(db_user: dict = Depends(get_db_user)) -> Authenticat
             status_code=status.HTTP_403_FORBIDDEN,
             detail="AEOS user record is invalid",
         ) from exc
+
+
+PRIVILEGED_WRITE_ROLES = ("teacher", "admin")
+
+
+def require_role(*allowed_roles: str):
+    """Build a dependency that authorizes only actors whose server-derived role
+    is one of ``allowed_roles``. The role itself always comes from the trusted
+    database user row via ``get_current_actor`` — never from client input.
+    """
+
+    if not allowed_roles:
+        raise ValueError("require_role must be given at least one allowed role")
+
+    async def dependency(
+        actor: AuthenticatedActor = Depends(get_current_actor),
+    ) -> AuthenticatedActor:
+        if actor.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This action requires teacher or admin authorization",
+            )
+        return actor
+
+    return dependency
+
+
+require_privileged_write = require_role(*PRIVILEGED_WRITE_ROLES)

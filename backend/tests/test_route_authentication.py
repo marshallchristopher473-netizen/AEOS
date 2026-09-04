@@ -1,6 +1,6 @@
 import pytest
 
-from tests.fakes import ASSESSMENT_A, PLAN_A, STUDENT_A
+from tests.fakes import ASSESSMENT_A, ASSESSMENT_RESULT_A, PLAN_A, STUDENT_A
 
 
 @pytest.mark.parametrize(
@@ -26,6 +26,13 @@ from tests.fakes import ASSESSMENT_A, PLAN_A, STUDENT_A
             "post",
             "/intervention-plans",
             {"student_id": STUDENT_A, "title": "Plan"},
+        ),
+        ("get", "/assessment-results", None),
+        ("get", f"/assessment-results/{ASSESSMENT_RESULT_A}", None),
+        (
+            "post",
+            "/assessment-results",
+            {"assessment_id": ASSESSMENT_A, "score": 80, "max_score": 100},
         ),
     ],
 )

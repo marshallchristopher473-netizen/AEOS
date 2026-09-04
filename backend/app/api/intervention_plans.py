@@ -1,9 +1,9 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.dependencies import get_current_actor
+from app.core.dependencies import get_current_actor, require_privileged_write
 from app.models.schemas import AuthenticatedActor
 from app.services.supabase_service import get_supabase_admin_client
 from app.services.tenant_scope import (
@@ -20,6 +20,7 @@ class InterventionPlanCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     student_id: str = Field(..., min_length=1)
+    assessment_id: Optional[str] = None
     title: str = Field(..., min_length=1)
     status: str = Field(default="draft", min_length=1)
     summary: Optional[str] = None
@@ -30,6 +31,7 @@ class InterventionPlanResponse(BaseModel):
     id: str
     organization_id: str
     student_id: str
+    assessment_id: Optional[str] = None
     created_by: str
     title: str
     status: str
@@ -42,7 +44,7 @@ class InterventionPlanResponse(BaseModel):
 @router.post("", response_model=InterventionPlanResponse, status_code=status.HTTP_201_CREATED)
 def create_intervention_plan(
     payload: InterventionPlanCreateRequest,
-    actor: AuthenticatedActor = Depends(get_current_actor),
+    actor: AuthenticatedActor = Depends(require_privileged_write),
     client=Depends(get_supabase_admin_client),
 ):
     assert_related_row_in_tenant(
@@ -52,6 +54,17 @@ def create_intervention_plan(
         actor.organization_id,
         "Student not found",
     )
+    if payload.assessment_id:
+        related_assessment = assert_related_row_in_tenant(
+            client,
+            "assessments",
+            payload.assessment_id,
+            actor.organization_id,
+            "Assessment not found",
+        )
+        if related_assessment.get("student_id") != payload.student_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
     row = insert_tenant_scoped_row(
         client,
         "intervention_plans",

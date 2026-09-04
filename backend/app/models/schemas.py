@@ -33,3 +33,27 @@ class AssessmentResponse(BaseModel):
     notes: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+class AssessmentResultCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assessment_id: str = Field(..., min_length=1)
+    score: Optional[float] = None
+    max_score: Optional[float] = None
+    summary: Optional[str] = None
+    status: str = Field(default="draft", min_length=1)
+
+
+class AssessmentResultResponse(BaseModel):
+    id: str
+    organization_id: str
+    assessment_id: str
+    student_id: str
+    created_by: str
+    score: Optional[float] = None
+    max_score: Optional[float] = None
+    summary: Optional[str] = None
+    status: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None

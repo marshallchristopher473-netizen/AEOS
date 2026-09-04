@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status
 
-from app.core.dependencies import get_current_actor
+from app.core.dependencies import get_current_actor, require_privileged_write
 from app.models.schemas import AssessmentCreateRequest, AssessmentResponse, AuthenticatedActor
 from app.services.assessment_service import AssessmentService
 from app.services.supabase_service import get_supabase_admin_client
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/assessments", tags=["assessments"])
 @router.post("", response_model=AssessmentResponse, status_code=status.HTTP_201_CREATED)
 def create_assessment(
     payload: AssessmentCreateRequest,
-    actor: AuthenticatedActor = Depends(get_current_actor),
+    actor: AuthenticatedActor = Depends(require_privileged_write),
     client=Depends(get_supabase_admin_client),
 ):
     assert_related_row_in_tenant(

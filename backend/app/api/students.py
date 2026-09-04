@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.dependencies import get_current_actor
+from app.core.dependencies import get_current_actor, require_privileged_write
 from app.models.schemas import AuthenticatedActor
 from app.services.supabase_service import get_supabase_admin_client
 from app.services.tenant_scope import (
@@ -46,7 +46,7 @@ class StudentResponse(BaseModel):
 @router.post("", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
 def create_student(
     payload: StudentCreateRequest,
-    actor: AuthenticatedActor = Depends(get_current_actor),
+    actor: AuthenticatedActor = Depends(require_privileged_write),
     client=Depends(get_supabase_admin_client),
 ):
     if payload.school_id:

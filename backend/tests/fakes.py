@@ -7,6 +7,7 @@ ORG_A = "11111111-1111-4111-8111-111111111111"
 ORG_B = "22222222-2222-4222-8222-222222222222"
 USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+USER_SUPPORT_A = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 STUDENT_A = "33333333-3333-4333-8333-333333333333"
 STUDENT_B = "44444444-4444-4444-8444-444444444444"
 ASSESSMENT_A = "55555555-5555-4555-8555-555555555555"
@@ -15,6 +16,8 @@ PLAN_A = "77777777-7777-4777-8777-777777777777"
 PLAN_B = "88888888-8888-4888-8888-888888888888"
 SCHOOL_A = "99999999-9999-4999-8999-999999999999"
 SCHOOL_B = "10101010-1010-4010-8010-101010101010"
+ASSESSMENT_RESULT_A = "12121212-1212-4212-8212-121212121212"
+ASSESSMENT_RESULT_B = "13131313-1313-4313-8313-131313131313"
 
 
 @dataclass
@@ -107,6 +110,14 @@ def seeded_tables() -> Dict[str, List[Dict[str, Any]]]:
                 "role": "admin",
                 "status": "active",
             },
+            {
+                "id": USER_SUPPORT_A,
+                "organization_id": ORG_A,
+                "auth_user_id": "auth-support-a",
+                "email": "ignored-support-a@example.test",
+                "role": "support",
+                "status": "active",
+            },
         ],
         "schools": [
             {"id": SCHOOL_A, "organization_id": ORG_A, "name": "A School"},
@@ -155,6 +166,7 @@ def seeded_tables() -> Dict[str, List[Dict[str, Any]]]:
                 "id": PLAN_A,
                 "organization_id": ORG_A,
                 "student_id": STUDENT_A,
+                "assessment_id": None,
                 "created_by": USER_A,
                 "title": "A Reading Plan",
                 "status": "draft",
@@ -164,10 +176,33 @@ def seeded_tables() -> Dict[str, List[Dict[str, Any]]]:
                 "id": PLAN_B,
                 "organization_id": ORG_B,
                 "student_id": STUDENT_B,
+                "assessment_id": None,
                 "created_by": USER_B,
                 "title": "B Reading Plan",
                 "status": "active",
                 "priority": "high",
+            },
+        ],
+        "assessment_results": [
+            {
+                "id": ASSESSMENT_RESULT_A,
+                "organization_id": ORG_A,
+                "assessment_id": ASSESSMENT_A,
+                "student_id": STUDENT_A,
+                "created_by": USER_A,
+                "score": 82.5,
+                "max_score": 100,
+                "status": "draft",
+            },
+            {
+                "id": ASSESSMENT_RESULT_B,
+                "organization_id": ORG_B,
+                "assessment_id": ASSESSMENT_B,
+                "student_id": STUDENT_B,
+                "created_by": USER_B,
+                "score": 91,
+                "max_score": 100,
+                "status": "draft",
             },
         ],
     }
