@@ -55,6 +55,7 @@ MIGRATIONS = (
     "001_initial_schema.sql",
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
+    "004_org_lifecycle_and_write_authority.sql",
 )
 
 DATABASE_URL = os.environ.get("AEOS_TEST_DATABASE_URL")
@@ -87,6 +88,16 @@ USER_B = "0bbb0000-0000-4000-8000-000000000006"
 # auth.uid() returns UUID, so the authenticated subject must be UUID-shaped.
 AUTH_A = "0aaa0000-0000-4000-8000-000000000007"
 AUTH_B = "0bbb0000-0000-4000-8000-000000000008"
+# Second teacher and an admin, both in organization A, for the peer-access and
+# delete-authority cases (M2).
+PEER_A = "0aaa0000-0000-4000-8000-000000000010"
+AUTH_PEER_A = "0aaa0000-0000-4000-8000-000000000011"
+ADMIN_A = "0aaa0000-0000-4000-8000-000000000012"
+AUTH_ADMIN_A = "0aaa0000-0000-4000-8000-000000000013"
+SUPPORT_A = "0aaa0000-0000-4000-8000-000000000014"
+AUTH_SUPPORT_A = "0aaa0000-0000-4000-8000-000000000015"
+# A student created by the peer teacher, not by USER_A.
+STUDENT_PEER = "0aaa0000-0000-4000-8000-000000000016"
 STUDENT_A = "0aaa0000-0000-4000-8000-000000000009"
 STUDENT_B = "0bbb0000-0000-4000-8000-00000000000a"
 ASSESSMENT_A = "0aaa0000-0000-4000-8000-00000000000b"
@@ -109,11 +120,15 @@ INSERT INTO public.schools (id, organization_id, name, status) VALUES
 INSERT INTO public.users
     (id, organization_id, auth_user_id, email, full_name, role, status) VALUES
     ('{USER_A}', '{ORG_A}', '{AUTH_A}', 'teacher-a@synthetic.test', 'Teacher A', 'teacher', 'active'),
+    ('{PEER_A}', '{ORG_A}', '{AUTH_PEER_A}', 'peer-a@synthetic.test', 'Peer A', 'teacher', 'active'),
+    ('{ADMIN_A}', '{ORG_A}', '{AUTH_ADMIN_A}', 'admin-a@synthetic.test', 'Admin A', 'admin', 'active'),
+    ('{SUPPORT_A}', '{ORG_A}', '{AUTH_SUPPORT_A}', 'support-a@synthetic.test', 'Support A', 'support', 'active'),
     ('{USER_B}', '{ORG_B}', '{AUTH_B}', 'teacher-b@synthetic.test', 'Teacher B', 'teacher', 'active');
 
 INSERT INTO public.students
     (id, organization_id, school_id, first_name, last_name, grade_level, status, created_by) VALUES
     ('{STUDENT_A}', '{ORG_A}', '{SCHOOL_A}', 'Ada', 'Synthetic', '6', 'active', '{USER_A}'),
+    ('{STUDENT_PEER}', '{ORG_A}', '{SCHOOL_A}', 'Grace', 'Synthetic', '6', 'active', '{PEER_A}'),
     ('{STUDENT_B}', '{ORG_B}', '{SCHOOL_B}', 'Blaise', 'Synthetic', '7', 'active', '{USER_B}');
 
 INSERT INTO public.assessments
@@ -216,12 +231,65 @@ def as_org_a(migrated_database):
         yield conn
 
 
-def _become(conn, auth_user_id):
-    conn.execute("SET ROLE authenticated")
-    conn.execute(
-        "SELECT set_config('request.jwt.claims', %s, false)",
-        (f'{{"sub": "{auth_user_id}", "role": "authenticated"}}',),
+@pytest.fixture
+def as_org_a_peer(migrated_database):
+    """A second teacher in organization A who did not create STUDENT_A."""
+    with psycopg.connect(migrated_database) as conn:
+        _become(conn, AUTH_PEER_A)
+        yield conn
+
+
+@pytest.fixture
+def as_org_a_admin(migrated_database):
+    """An admin in organization A."""
+    with psycopg.connect(migrated_database) as conn:
+        _become(conn, AUTH_ADMIN_A)
+        yield conn
+
+
+@pytest.fixture
+def as_org_a_support(migrated_database):
+    """A support-role member of organization A (read-only by policy)."""
+    with psycopg.connect(migrated_database) as conn:
+        _become(conn, AUTH_SUPPORT_A)
+        yield conn
+
+
+@pytest.fixture
+def suspended_org_a(admin_conn, as_org_a):
+    """Suspend organization A for the duration of one test."""
+    as_org_a.rollback()
+    admin_conn.execute(
+        "UPDATE public.organizations SET status = 'suspended' WHERE id = %s", (ORG_A,)
     )
+    try:
+        yield
+    finally:
+        as_org_a.rollback()
+        admin_conn.execute(
+            "UPDATE public.organizations SET status = 'active' WHERE id = %s", (ORG_A,)
+        )
+
+
+def _become(conn, auth_user_id):
+    """Assume the `authenticated` role and inject a verified JWT subject.
+
+    Applied in autocommit so both settings are session-level. This matters:
+    `SET ROLE` is transactional, so if it were applied inside the test's
+    transaction, any later `rollback()` would silently revert the session to
+    the superuser that opened the connection — which holds BYPASSRLS. Tests
+    would then run as `postgres` and pass regardless of what the policies say.
+    """
+    previous = conn.autocommit
+    conn.autocommit = True
+    try:
+        conn.execute("SET ROLE authenticated")
+        conn.execute(
+            "SELECT set_config('request.jwt.claims', %s, false)",
+            (f'{{"sub": "{auth_user_id}", "role": "authenticated"}}',),
+        )
+    finally:
+        conn.autocommit = previous
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +382,17 @@ class TestEnvironmentPreconditions:
             (bypass,) = cur.fetchone()
         assert who == "authenticated"
         assert not bypass, "authenticated must not hold BYPASSRLS"
+
+    def test_identity_survives_rollback(self, as_org_a):
+        """Guard the guard: `SET ROLE` is transactional, so an identity applied
+        inside a transaction would silently revert to the superuser on rollback
+        and every later assertion would run with BYPASSRLS."""
+        as_org_a.rollback()
+        with as_org_a.cursor() as cur:
+            cur.execute("SELECT current_user, auth.uid()::text")
+            who, subject = cur.fetchone()
+        assert who == "authenticated", f"identity lost after rollback: {who}"
+        assert subject == AUTH_A, "JWT subject lost after rollback"
 
     def test_auth_uid_resolves_the_injected_subject(self, as_org_a):
         with as_org_a.cursor() as cur:
@@ -485,6 +564,139 @@ class TestCrossTenantDeleteDenial:
 
 
 # ---------------------------------------------------------------------------
+# M1 — organization lifecycle. Suspension must contain, immediately.
+# ---------------------------------------------------------------------------
+
+
+class TestOrganizationLifecycle:
+    def test_suspended_organization_cannot_read(self, as_org_a, suspended_org_a):
+        with as_org_a.cursor() as cur:
+            cur.execute("SELECT count(*) FROM public.students")
+            (visible,) = cur.fetchone()
+        assert visible == 0, "suspended organization could still read its students"
+
+    def test_suspended_organization_cannot_write(self, as_org_a, suspended_org_a):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with as_org_a.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO public.students "
+                    "(id, organization_id, school_id, first_name, last_name, "
+                    " grade_level, status, created_by) "
+                    "VALUES (%s, %s, %s, 'Sus', 'Pended', '8', 'active', %s)",
+                    (str(uuid.uuid4()), ORG_A, SCHOOL_A, USER_A),
+                )
+        as_org_a.rollback()
+
+    def test_active_organization_still_works(self, as_org_a):
+        """Positive control: suspension enforcement must not deny healthy tenants."""
+        with as_org_a.cursor() as cur:
+            cur.execute("SELECT count(*) FROM public.students")
+            (visible,) = cur.fetchone()
+        assert visible == 2, "active organization lost access to its own students"
+
+    def test_disabled_member_cannot_read(self, as_org_a, admin_conn):
+        as_org_a.rollback()
+        admin_conn.execute(
+            "UPDATE public.users SET status = 'disabled' WHERE id = %s", (USER_A,)
+        )
+        try:
+            with as_org_a.cursor() as cur:
+                cur.execute("SELECT count(*) FROM public.students")
+                (visible,) = cur.fetchone()
+            assert visible == 0, "disabled member could still read"
+        finally:
+            as_org_a.rollback()
+            admin_conn.execute(
+                "UPDATE public.users SET status = 'active' WHERE id = %s", (USER_A,)
+            )
+
+    @pytest.mark.parametrize(
+        "table", ["organizations", "users", "students", "assessments"]
+    )
+    def test_anonymous_role_sees_nothing(self, migrated_database, table):
+        with psycopg.connect(migrated_database) as conn:
+            conn.execute("SET ROLE anon")
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT count(*) FROM public.{table}")
+                (visible,) = cur.fetchone()
+            conn.rollback()
+        assert visible == 0, f"anon could read public.{table}"
+
+
+# ---------------------------------------------------------------------------
+# M2 — peer access semantics within one tenant.
+# UPDATE was creator-gated while DELETE was not; the destructive operation was
+# the less restricted one. Updates are now open to same-tenant teachers/admins
+# (ownership columns remain immutable) and DELETE is admin-only.
+# ---------------------------------------------------------------------------
+
+
+class TestPeerAccessSemantics:
+    def test_teacher_may_update_peers_student(self, as_org_a):
+        """A co-teacher must be able to edit a colleague's student record."""
+        with as_org_a.cursor() as cur:
+            cur.execute(
+                "UPDATE public.students SET last_name = 'Edited' WHERE id = %s",
+                (STUDENT_PEER,),
+            )
+            assert cur.rowcount == 1, "teacher could not update a peer's student"
+        as_org_a.rollback()
+
+    def test_teacher_may_not_delete_peers_student(self, as_org_a, admin_conn):
+        with as_org_a.cursor() as cur:
+            cur.execute("DELETE FROM public.students WHERE id = %s", (STUDENT_PEER,))
+            assert cur.rowcount == 0, "teacher deleted a peer's student"
+        as_org_a.commit()
+
+        with admin_conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM public.students WHERE id = %s", (STUDENT_PEER,)
+            )
+            (surviving,) = cur.fetchone()
+        assert surviving == 1, "peer's student no longer exists"
+
+    def test_teacher_may_not_delete_own_student(self, as_org_a):
+        """DELETE is admin-only for the MVP, including the creator's own rows."""
+        with as_org_a.cursor() as cur:
+            cur.execute("DELETE FROM public.students WHERE id = %s", (STUDENT_A,))
+            assert cur.rowcount == 0, "teacher deleted a student"
+        as_org_a.rollback()
+
+    def test_admin_may_delete_same_tenant_student(self, as_org_a_admin):
+        with as_org_a_admin.cursor() as cur:
+            cur.execute("DELETE FROM public.students WHERE id = %s", (STUDENT_PEER,))
+            assert cur.rowcount == 1, "admin could not delete a same-tenant student"
+        as_org_a_admin.rollback()
+
+    def test_admin_may_not_delete_foreign_tenant_student(self, as_org_a_admin):
+        with as_org_a_admin.cursor() as cur:
+            cur.execute("DELETE FROM public.students WHERE id = %s", (STUDENT_B,))
+            assert cur.rowcount == 0, "admin deleted another tenant's student"
+        as_org_a_admin.rollback()
+
+    def test_support_may_not_update(self, as_org_a_support):
+        with as_org_a_support.cursor() as cur:
+            cur.execute(
+                "UPDATE public.students SET last_name = 'Edited' WHERE id = %s",
+                (STUDENT_A,),
+            )
+            assert cur.rowcount == 0, "support role updated a student"
+        as_org_a_support.rollback()
+
+    def test_ownership_columns_remain_immutable_on_peer_update(self, as_org_a):
+        """Opening UPDATE to peers must not open tenant or creator reassignment."""
+        with as_org_a.cursor() as cur:
+            with pytest.raises(
+                (psycopg.errors.InsufficientPrivilege, psycopg.errors.RaiseException)
+            ):
+                cur.execute(
+                    "UPDATE public.students SET created_by = %s WHERE id = %s",
+                    (USER_A, STUDENT_PEER),
+                )
+        as_org_a.rollback()
+
+
+# ---------------------------------------------------------------------------
 # Negative control.
 # ---------------------------------------------------------------------------
 
@@ -556,6 +768,20 @@ class TestNegativeControl:
         as_org_a.rollback()
         assert affected == 1, (
             "negative control failed: DELETE still affected 0 rows with RLS disabled"
+        )
+
+    def test_suspension_denial_is_caused_by_rls_not_the_fixture(
+        self, as_org_a, suspended_org_a, students_rls_disabled
+    ):
+        """Negative control for M1: with RLS off, a suspended organization's
+        member can read again — proving the suspension denial above is enforced
+        by policy, not by the fixture merely breaking the session."""
+        with as_org_a.cursor() as cur:
+            cur.execute("SELECT count(*) FROM public.students")
+            (visible,) = cur.fetchone()
+        assert visible > 0, (
+            "negative control failed: suspended-org reads stayed blocked with RLS "
+            "disabled, so the suspension test proves nothing"
         )
 
     def test_insert_breach_is_observable_without_rls(

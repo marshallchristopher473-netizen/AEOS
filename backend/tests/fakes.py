@@ -93,6 +93,10 @@ class FakeClient:
 
 def seeded_tables() -> Dict[str, List[Dict[str, Any]]]:
     return {
+        "organizations": [
+            {"id": ORG_A, "name": "Org A", "type": "district", "status": "active"},
+            {"id": ORG_B, "name": "Org B", "type": "district", "status": "active"},
+        ],
         "users": [
             {
                 "id": USER_A,

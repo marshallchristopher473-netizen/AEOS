@@ -39,7 +39,29 @@ async def get_db_user(
             detail="Authenticated identity maps to an ambiguous AEOS user",
         )
 
-    return response.data[0]
+    db_user = response.data[0]
+
+    # An active membership in a suspended organization is not an active actor.
+    # `organizations.status` is the tenant lifecycle control used for
+    # offboarding, non-payment and breach containment; it must be enforced on
+    # the application path as well as in RLS (see migration 004), because the
+    # service-role client this function uses deliberately bypasses RLS.
+    organization = (
+        client.table("organizations")
+        .select("id,status")
+        .eq("id", db_user["organization_id"])
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+
+    if not organization.data:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authenticated identity has no active AEOS organization",
+        )
+
+    return db_user
 
 
 async def get_current_actor(db_user: dict = Depends(get_db_user)) -> AuthenticatedActor:

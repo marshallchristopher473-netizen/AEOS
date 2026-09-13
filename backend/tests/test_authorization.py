@@ -51,7 +51,8 @@ def test_active_support_membership_resolved_from_db_is_forbidden(
     assert response.json() == {
         "detail": "This action requires teacher or admin authorization"
     }
-    assert fake_db.queries[-1] == {
+    users_query = next(q for q in fake_db.queries if q["table"] == "users")
+    assert users_query == {
         "table": "users",
         "operation": "select",
         "filters": {"auth_user_id": "auth-support-a", "status": "active"},
