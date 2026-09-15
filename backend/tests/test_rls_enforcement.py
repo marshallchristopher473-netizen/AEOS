@@ -104,6 +104,8 @@ ASSESSMENT_A = "0aaa0000-0000-4000-8000-00000000000b"
 ASSESSMENT_B = "0bbb0000-0000-4000-8000-00000000000c"
 PLAN_A = "0aaa0000-0000-4000-8000-00000000000d"
 PLAN_B = "0bbb0000-0000-4000-8000-00000000000e"
+RESULT_A = "0aaa0000-0000-4000-8000-000000000017"
+RESULT_B = "0bbb0000-0000-4000-8000-000000000018"
 # Seeded by 001_initial_schema.sql.
 ORG_DEMO = "11111111-1111-4111-8111-111111111111"
 
@@ -140,6 +142,11 @@ INSERT INTO public.intervention_plans
     (id, organization_id, student_id, assessment_id, created_by, title, status) VALUES
     ('{PLAN_A}', '{ORG_A}', '{STUDENT_A}', '{ASSESSMENT_A}', '{USER_A}', 'Org A Plan', 'draft'),
     ('{PLAN_B}', '{ORG_B}', '{STUDENT_B}', '{ASSESSMENT_B}', '{USER_B}', 'Org B Plan', 'draft');
+
+INSERT INTO public.assessment_results
+    (id, organization_id, assessment_id, student_id, created_by, summary, status) VALUES
+    ('{RESULT_A}', '{ORG_A}', '{ASSESSMENT_A}', '{STUDENT_A}', '{USER_A}', 'Org A Result', 'draft'),
+    ('{RESULT_B}', '{ORG_B}', '{ASSESSMENT_B}', '{STUDENT_B}', '{USER_B}', 'Org B Result', 'draft');
 """
 
 
@@ -413,6 +420,7 @@ class TestCrossTenantSelectDenial:
             ("students", STUDENT_B),
             ("assessments", ASSESSMENT_B),
             ("intervention_plans", PLAN_B),
+            ("assessment_results", RESULT_B),
         ],
     )
     def test_foreign_tenant_row_is_invisible(self, as_org_a, table, foreign_id):
@@ -436,7 +444,8 @@ class TestCrossTenantSelectDenial:
             assert len(cur.fetchall()) == 1, f"org A cannot read its own {table} row"
 
     @pytest.mark.parametrize(
-        "table", ["students", "assessments", "intervention_plans"]
+        "table",
+        ["students", "assessments", "intervention_plans", "assessment_results"],
     )
     def test_unfiltered_scan_returns_only_own_tenant(self, as_org_a, table):
         """An unscoped `SELECT *` is the realistic exfiltration attempt."""
@@ -509,6 +518,8 @@ class TestCrossTenantUpdateDenial:
         [
             ("students", STUDENT_B, "last_name"),
             ("assessments", ASSESSMENT_B, "title"),
+            ("intervention_plans", PLAN_B, "title"),
+            ("assessment_results", RESULT_B, "summary"),
         ],
     )
     def test_update_of_foreign_row_affects_nothing(
@@ -564,6 +575,70 @@ class TestCrossTenantDeleteDenial:
 
 
 # ---------------------------------------------------------------------------
+# Scope of the authorization contract: ORGANIZATION-level, not school-level.
+# ---------------------------------------------------------------------------
+
+
+class TestAuthorizationContractScope:
+    """Pin the tenancy boundary so a future narrowing or widening is visible.
+
+    `AuthenticatedActor` carries no school, no route filters by school, and
+    `schools_select` is scoped by `aeos_has_org_access(organization_id)`.
+    `school_id` participates in policies only as an FK integrity constraint
+    *within* the tenant (`related_school.organization_id =
+    students.organization_id`), never as an isolation boundary.
+
+    These tests assert that contract rather than a stronger one the system
+    does not implement. If per-school scoping is ever required, that is a
+    product decision and these tests should change with it.
+    """
+
+    def test_school_is_not_an_isolation_boundary_within_a_tenant(
+        self, as_org_a, admin_conn
+    ):
+        """A second school in the same organization stays visible: the boundary
+        is the organization, not the school."""
+        other_school = str(uuid.uuid4())
+        admin_conn.execute(
+            "INSERT INTO public.schools (id, organization_id, name, status) "
+            "VALUES (%s, %s, 'Second School A', 'active')",
+            (other_school, ORG_A),
+        )
+        try:
+            with as_org_a.cursor() as cur:
+                cur.execute("SELECT count(*) FROM public.schools")
+                (visible,) = cur.fetchone()
+            assert visible == 2, (
+                "expected both organization-A schools to be visible; the contract "
+                "is organization-level, not school-level"
+            )
+        finally:
+            as_org_a.rollback()
+            admin_conn.execute(
+                "DELETE FROM public.schools WHERE id = %s", (other_school,)
+            )
+
+    def test_foreign_tenant_school_is_invisible(self, as_org_a):
+        """School isolation that IS in the contract: across organizations."""
+        with as_org_a.cursor() as cur:
+            cur.execute("SELECT id FROM public.schools WHERE id = %s", (SCHOOL_B,))
+            assert cur.fetchall() == [], "organization A could read organization B's school"
+
+    def test_student_cannot_be_attached_to_foreign_tenant_school(self, as_org_a):
+        """school_id is constrained to the acting tenant on write."""
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with as_org_a.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO public.students "
+                    "(id, organization_id, school_id, first_name, last_name, "
+                    " grade_level, status, created_by) "
+                    "VALUES (%s, %s, %s, 'Cross', 'School', '8', 'active', %s)",
+                    (str(uuid.uuid4()), ORG_A, SCHOOL_B, USER_A),
+                )
+        as_org_a.rollback()
+
+
+# ---------------------------------------------------------------------------
 # M1 — organization lifecycle. Suspension must contain, immediately.
 # ---------------------------------------------------------------------------
 
@@ -586,6 +661,103 @@ class TestOrganizationLifecycle:
                     (str(uuid.uuid4()), ORG_A, SCHOOL_A, USER_A),
                 )
         as_org_a.rollback()
+
+    def test_suspended_organization_cannot_update(self, as_org_a, suspended_org_a):
+        """Distinct from the INSERT case above, and not implied by it.
+
+        `students_insert` is protected by BOTH `aeos_can_write_org` and
+        `aeos_is_current_actor_for_org`, so the INSERT test still passes if only
+        one of them loses its organization-active condition. Every `*_update`
+        policy (004) relies on `aeos_can_write_org` alone, so UPDATE is the
+        operation that actually pins that helper. The mutation suite found this
+        gap: `aeos_can_write_org stops requiring an ACTIVE organization` was
+        undetected until this test existed.
+        """
+        with as_org_a.cursor() as cur:
+            cur.execute(
+                "UPDATE public.students SET last_name = 'Suspended' WHERE id = %s",
+                (STUDENT_A,),
+            )
+            assert cur.rowcount == 0, "suspended organization could still update"
+        as_org_a.rollback()
+
+    def test_suspended_organization_admin_cannot_delete(
+        self, as_org_a_admin, admin_conn
+    ):
+        """Suspension must also contain admins, who hold DELETE authority.
+        Pins the organization-active condition in `aeos_is_org_admin`."""
+        as_org_a_admin.rollback()
+        admin_conn.execute(
+            "UPDATE public.organizations SET status = 'suspended' WHERE id = %s",
+            (ORG_A,),
+        )
+        try:
+            with as_org_a_admin.cursor() as cur:
+                cur.execute("DELETE FROM public.students WHERE id = %s", (STUDENT_A,))
+                assert cur.rowcount == 0, "suspended organization's admin could delete"
+        finally:
+            as_org_a_admin.rollback()
+            admin_conn.execute(
+                "UPDATE public.organizations SET status = 'active' WHERE id = %s",
+                (ORG_A,),
+            )
+
+    def test_suspended_organization_cannot_insert_intervention_action(
+        self, as_org_a, suspended_org_a
+    ):
+        """`intervention_actions_insert` is gated SOLELY by `aeos_can_write_org`
+        (003), with no actor binding and no row to read. It is therefore the
+        only operation that isolates that helper's organization-active
+        condition: on UPDATE/DELETE the SELECT policy finds the row first and
+        `aeos_has_org_access` masks the result. The table has no API route but
+        is reachable directly through PostgREST.
+        """
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with as_org_a.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO public.intervention_actions "
+                    "(id, intervention_plan_id, action_type, description, status) "
+                    "VALUES (%s, %s, 'check_in', 'Suspended-org write', 'pending')",
+                    (str(uuid.uuid4()), PLAN_A),
+                )
+        as_org_a.rollback()
+
+    def test_suspended_organization_admin_cannot_insert_school(
+        self, as_org_a_admin, admin_conn
+    ):
+        """`schools_insert` is gated SOLELY by `aeos_is_org_admin`, isolating
+        that helper's organization-active condition for the same reason."""
+        as_org_a_admin.rollback()
+        admin_conn.execute(
+            "UPDATE public.organizations SET status = 'suspended' WHERE id = %s",
+            (ORG_A,),
+        )
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                with as_org_a_admin.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO public.schools "
+                        "(id, organization_id, name, status) "
+                        "VALUES (%s, %s, 'Suspended-org School', 'active')",
+                        (str(uuid.uuid4()), ORG_A),
+                    )
+        finally:
+            as_org_a_admin.rollback()
+            admin_conn.execute(
+                "UPDATE public.organizations SET status = 'active' WHERE id = %s",
+                (ORG_A,),
+            )
+
+    def test_active_organization_admin_may_insert_school(self, as_org_a_admin):
+        """Positive control for the pair above: an active tenant still works."""
+        with as_org_a_admin.cursor() as cur:
+            cur.execute(
+                "INSERT INTO public.schools (id, organization_id, name, status) "
+                "VALUES (%s, %s, 'Active School', 'active')",
+                (str(uuid.uuid4()), ORG_A),
+            )
+            assert cur.rowcount == 1, "active organization's admin could not add a school"
+        as_org_a_admin.rollback()
 
     def test_active_organization_still_works(self, as_org_a):
         """Positive control: suspension enforcement must not deny healthy tenants."""
