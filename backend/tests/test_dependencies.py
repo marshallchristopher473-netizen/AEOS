@@ -2,7 +2,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.core.dependencies import get_current_actor, get_db_user
-from tests.fakes import ORG_A, USER_A, FakeClient, seeded_tables
+from tests.fakes import ORG_A, ORG_B, USER_A, USER_B, FakeClient, seeded_tables
 
 
 @pytest.mark.asyncio
@@ -34,6 +34,47 @@ async def test_db_user_is_resolved_by_verified_subject_not_email_or_jwt_authorit
         q for q in fake_db.queries if q["table"] == "organizations"
     )
     assert organization_query["filters"] == {"id": ORG_A, "status": "active"}
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_user_id_claim_cannot_replace_the_resolved_actor():
+    """M03: the actor's identity is the database row, never a client-supplied claim.
+
+    `sub` is the only token field with authority. A `user_id` claim naming a
+    *real, active* user in another organization is the strongest form of this
+    attack: if it were honoured, the attacker would inherit that user's
+    identity and tenant, and every downstream tenant filter would then scope
+    correctly to the wrong organization.
+    """
+    payload = {"sub": "auth-user-a", "user_id": USER_B}
+
+    actor = await get_current_actor(
+        await get_db_user(payload, FakeClient(seeded_tables()))
+    )
+
+    assert actor.user_id == USER_A
+    assert actor.organization_id == ORG_A
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_organization_id_claim_cannot_grant_another_tenant():
+    """M04: tenant authority comes from the user row, never from a token claim.
+
+    `test_db_user_is_resolved_by_verified_subject_...` spoofs the non-existent
+    organization `"spoofed-org"`, so an implementation that trusted the claim
+    would fail closed on the organization lookup and still look correct. This
+    test spoofs ORG_B, which is a real and *active* organization, so trusting
+    the claim produces a working cross-tenant takeover rather than a denial —
+    the only version of this mutation that a test can honestly be said to kill.
+    """
+    payload = {"sub": "auth-user-a", "organization_id": ORG_B}
+
+    actor = await get_current_actor(
+        await get_db_user(payload, FakeClient(seeded_tables()))
+    )
+
+    assert actor.organization_id == ORG_A
+    assert actor.user_id == USER_A
 
 
 @pytest.mark.asyncio
