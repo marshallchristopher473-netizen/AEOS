@@ -138,11 +138,22 @@ class Mutation:
     def apply(self, root):
         target = root / self.path
         text = target.read_text()
-        if self.old not in text:
+        occurrences = text.count(self.old)
+        if occurrences == 0:
             raise AssertionError(
                 f"{self.name}: anchor not found in {self.path}. The mutation is "
                 f"stale — the code it targets has moved, so this mutation is no "
                 f"longer proving anything."
+            )
+        # Exactly one expected production site. More than one means the anchor
+        # is ambiguous: `replace(..., 1)` would silently mutate whichever came
+        # first, so the mutation would no longer describe what it claims to
+        # test, and a kill could be attributed to the wrong control.
+        if occurrences != 1:
+            raise AssertionError(
+                f"{self.name}: anchor matches {occurrences} sites in "
+                f"{self.path}, expected exactly 1. The mutation is ambiguous "
+                f"and cannot be attributed to a single control."
             )
         target.write_text(text.replace(self.old, self.new, 1))
 
@@ -324,27 +335,21 @@ MUTATIONS = [
         "          AND membership.role IN ('teacher', 'admin')",
         RLS_SUITE,
         True,
-        equivalent_because=(
-            "Redundant defence-in-depth in the current policy set, not a live "
-            "control. PROVED, not asserted: "
-            "`python -m tests.equivalence_proof_can_write_org` applies ONLY "
-            "this mutation to a scratch database, suspends organization A, "
-            "and acts as an authenticated teacher of A. It confirms the "
-            "mutant is LIVE (aeos_can_write_org returns TRUE for the "
-            "suspended tenant while the unmutated aeos_has_org_access, "
-            "aeos_is_org_admin and aeos_is_current_actor_for_org all return "
-            "FALSE) and INERT (all 20 reachable writes across students, "
-            "assessments, intervention_plans, assessment_results, "
-            "intervention_actions, progress_events, ai_recommendations and "
-            "schools are still refused). Each write path carries the same "
-            "condition independently: INSERT via "
-            "aeos_is_current_actor_for_org, UPDATE/DELETE via "
-            "aeos_has_org_access and aeos_is_org_admin, because PostgreSQL "
-            "applies the SELECT policy when locating rows for a WHERE clause. "
-            "That proof runs in CI beside this suite, so the claim cannot go "
-            "stale silently. Re-verify if any *_insert policy ever drops its "
-            "actor binding, or if any write path stops reading an existing row."
-        ),
+        # NOT EQUIVALENT. This mutant was previously excluded from the score as
+        # a proved-equivalent mutant. Independent verification refuted that: the
+        # equivalence proof's reasoning held only for statements carrying a
+        # WHERE or RETURNING clause. PostgreSQL applies a table's SELECT policy
+        # to an UPDATE only when the statement must locate rows, so a WHERE-less
+        # `UPDATE students SET ...` never consults `aeos_has_org_access` and
+        # `students_update`'s USING clause — `aeos_can_write_org` alone —
+        # becomes the only control. All 20 probes in that proof used WHERE, so
+        # all 20 were masked. Against a suspended tenant the mutant produces
+        # `UPDATE 1` and persists the changed value.
+        #
+        # Killed behaviourally by
+        # tests/test_rls_enforcement.py::TestOrganizationLifecycle::
+        # test_suspended_organization_cannot_update_without_a_where_clause,
+        # and scored in the denominator like every other valid mutant.
     ),
     Mutation(
         "M09",
@@ -379,11 +384,23 @@ MUTATIONS = [
         "aeos_has_org_access stops requiring an ACTIVE membership",
         "Deactivating a membership must immediately remove access through RLS.",
         f"{MIGRATIONS}/004_org_lifecycle_and_write_authority.sql",
+        # Anchored through the end of the function and into the NEXT function's
+        # header. Without that tail this prefix matches all four `aeos_*`
+        # helpers in 004, and the mutation would silently hit whichever came
+        # first rather than the one it names.
         "          AND membership.organization_id = target_organization_id\n"
         "          AND membership.status = 'active'\n"
-        "          AND tenant.status = 'active'",
+        "          AND tenant.status = 'active'\n"
+        "    );\n"
+        "$$;\n"
+        "\n"
+        "CREATE OR REPLACE FUNCTION public.aeos_can_write_org",
         "          AND membership.organization_id = target_organization_id\n"
-        "          AND tenant.status = 'active'",
+        "          AND tenant.status = 'active'\n"
+        "    );\n"
+        "$$;\n"
+        "\n"
+        "CREATE OR REPLACE FUNCTION public.aeos_can_write_org",
         RLS_SUITE,
         True,
     ),
@@ -424,6 +441,12 @@ MUTATIONS = [
         "An inserted row must record the acting user; created_by may not name "
         "another user.",
         f"{MIGRATIONS}/003_fk_relationship_hardening.sql",
+        # Anchored from the policy header: 003 defines students_insert and
+        # students_update with byte-identical WITH CHECK bodies, so the body
+        # alone matches both and would mutate whichever came first.
+        "CREATE POLICY students_insert\n"
+        "ON public.students FOR INSERT TO authenticated\n"
+        "WITH CHECK (\n"
         "    public.aeos_can_write_org(students.organization_id)\n"
         "    AND public.aeos_is_current_actor_for_org(\n"
         "        students.created_by,\n"
@@ -431,6 +454,9 @@ MUTATIONS = [
         "    )\n"
         "    AND (\n"
         "        students.school_id IS NULL",
+        "CREATE POLICY students_insert\n"
+        "ON public.students FOR INSERT TO authenticated\n"
+        "WITH CHECK (\n"
         "    public.aeos_can_write_org(students.organization_id)\n"
         "    AND (\n"
         "        students.school_id IS NULL",
@@ -567,11 +593,35 @@ MUTATIONS = [
     ),
     Mutation(
         "M18c",
-        "wrong audience accepted (verify_aud disabled)",
-        "A token minted for another audience must be rejected.",
+        "audience validation removed (wrong or absent audience accepted)",
+        "A token minted for another audience, or carrying no audience claim at "
+        "all, must be rejected.",
         "backend/app/core/auth.py",
-        '                "verify_aud": True,',
-        '                "verify_aud": False,',
+        # Audience is enforced in TWO places, so the mutation must remove both
+        # to represent the boundary the contract names. Targeting only
+        # `"verify_aud": True` proves nothing: the explicit check below strictly
+        # subsumes it (jose 3.3.0 returns early from `_validate_aud` when the
+        # claim is absent), so flipping the flag alone changes no observable
+        # behaviour and the mutant would survive forever as a dead control.
+        '                "verify_aud": True,\n'
+        '                "verify_iss": True,\n'
+        "            },\n"
+        "        )\n"
+        "        # python-jose 3.3.0 returns early from `_validate_aud` when the `aud`\n"
+        "        # claim is absent, so `verify_aud: True` above rejects a WRONG audience\n"
+        "        # but silently accepts a MISSING one. Configuring an audience expresses\n"
+        "        # the intent that audience be enforced, so require the claim here.\n"
+        "        # This only ever rejects: no audience is inserted, inferred or defaulted.\n"
+        "        audience = payload.get(\"aud\")\n"
+        "        if audience is None:\n"
+        '            raise unauthorized("JWT is missing the audience claim")\n'
+        "        presented = audience if isinstance(audience, (list, tuple)) else [audience]\n"
+        "        if SUPABASE_JWT_AUDIENCE not in presented:\n"
+        '            raise unauthorized("JWT audience is not accepted")\n',
+        '                "verify_aud": False,\n'
+        '                "verify_iss": True,\n'
+        "            },\n"
+        "        )\n",
         APP_SUITE,
         False,
     ),

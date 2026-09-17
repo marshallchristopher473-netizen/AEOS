@@ -69,14 +69,10 @@ jobs:
           AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: python -m tests.security_mutations --json "$GITHUB_WORKSPACE/mutation-matrix.json"
 
-      # The mutation suite excludes exactly one mutant from its score as
-      # EQUIVALENT. An unproved equivalence claim is indistinguishable from a
-      # surviving mutant, so the claim is re-proved on every run.
-      - name: Prove the one equivalent mutant is genuinely equivalent
-        working-directory: backend
-        env:
-          AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: python -m tests.equivalence_proof_can_write_org
+      # No mutant is excluded from the score any more. The one former
+      # EQUIVALENT exclusion (aeos_can_write_org) was refuted by independent
+      # verification and is now scored and killed behaviourally, so there is no
+      # equivalence claim left to re-prove.
 
       - name: Publish the mutation matrix for this exact SHA
         if: always()

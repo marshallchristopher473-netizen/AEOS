@@ -53,6 +53,12 @@ def configured_auth(monkeypatch, signing_material):
     return private_pem
 
 
+# Sentinel for make_token: removes a claim entirely rather than setting it.
+# A claim that is ABSENT is a different input from one that is merely wrong,
+# and python-jose treats the two differently for `aud`.
+OMIT = object()
+
+
 def make_token(private_pem, headers=None, **overrides):
     now = int(time.time())
     claims = {
@@ -66,6 +72,9 @@ def make_token(private_pem, headers=None, **overrides):
         "role": "spoofed-admin",
     }
     claims.update(overrides)
+    for name, value in list(claims.items()):
+        if value is OMIT:
+            del claims[name]
     return jwt.encode(
         claims,
         private_pem,
@@ -111,6 +120,54 @@ async def test_invalid_required_claims_are_401(configured_auth, claim_overrides)
         await auth.get_current_user(credentials)
 
     assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_token_with_no_audience_claim_is_401(configured_auth):
+    """A validly signed token with the right issuer but NO `aud` must be rejected.
+
+    This is not implied by `{"aud": "wrong-audience"}` above. python-jose 3.3.0
+    returns early from `_validate_aud` when the claim is absent:
+
+        if "aud" not in claims:
+            # if audience:
+            #     raise JWTError('Audience claim expected, but not in claims')
+            return
+
+    So `verify_aud: True` rejects a wrong audience but accepts a missing one.
+    The token here is otherwise entirely valid — correct signing key, correct
+    issuer, unexpired, usable subject — so the ONLY thing that can reject it is
+    an explicit audience-presence check in `get_current_user`. Restoring
+    missing-audience acceptance makes this test fail.
+    """
+    token = make_token(configured_auth, aud=OMIT)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    # Precondition: the claim really is absent, so this tests the missing-claim
+    # path and not an accidentally-wrong-audience path.
+    assert "aud" not in jwt.get_unverified_claims(token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+@pytest.mark.asyncio
+async def test_token_with_required_audience_is_still_accepted(configured_auth):
+    """Positive control for the audience check.
+
+    Without this, the two rejection tests above could be satisfied by an
+    implementation that rejects every token.
+    """
+    token = make_token(configured_auth)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    payload = await auth.get_current_user(credentials)
+
+    assert payload["aud"] == AUDIENCE
+    assert payload["sub"] == "auth-user-a"
 
 
 @pytest.mark.asyncio

@@ -160,3 +160,70 @@ async def test_duplicate_subject_mapping_fails_closed():
         await get_db_user({"sub": "auth-user-a"}, FakeClient(tables))
 
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_missing_audience_is_rejected_before_any_actor_or_tenant_query():
+    """AC-2.6: rejection must precede actor context and tenant-scoped database work.
+
+    `get_db_user` is the first dependency that touches the database, and it
+    depends on `get_current_user`. If `get_current_user` raises, no user row is
+    resolved, no organization is looked up, and no tenant-scoped query is ever
+    issued. This asserts that ordering by observation — the fake client records
+    every query it receives, and the list must be empty.
+    """
+    import time
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.core import auth
+    from tests.test_auth import AUDIENCE, ISSUER, OMIT, b64url_uint, make_token
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_numbers = private_key.public_key().public_numbers()
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    public_jwk = {
+        "kid": "test-kid",
+        "kty": "RSA",
+        "alg": "RS256",
+        "use": "sig",
+        "n": b64url_uint(public_numbers.n),
+        "e": b64url_uint(public_numbers.e),
+    }
+
+    async def fake_get_jwks(force_refresh=False):
+        return {"keys": [public_jwk]}
+
+    original_issuer = auth.SUPABASE_JWT_ISSUER
+    original_audience = auth.SUPABASE_JWT_AUDIENCE
+    original_get_jwks = auth.get_jwks
+    auth.SUPABASE_JWT_ISSUER = ISSUER
+    auth.SUPABASE_JWT_AUDIENCE = AUDIENCE
+    auth.get_jwks = fake_get_jwks
+    try:
+        fake_db = FakeClient(seeded_tables())
+        token = make_token(private_pem, aud=OMIT)
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+        with pytest.raises(HTTPException) as exc_info:
+            payload = await auth.get_current_user(credentials)
+            # Unreachable while the audience check holds. Present so that if
+            # acceptance were restored, the test fails on the DB assertion
+            # below rather than passing for the wrong reason.
+            await get_db_user(payload, fake_db)
+
+        assert exc_info.value.status_code == 401
+        assert fake_db.queries == [], (
+            "a token with no audience claim reached a tenant-scoped query"
+        )
+    finally:
+        auth.SUPABASE_JWT_ISSUER = original_issuer
+        auth.SUPABASE_JWT_AUDIENCE = original_audience
+        auth.get_jwks = original_get_jwks

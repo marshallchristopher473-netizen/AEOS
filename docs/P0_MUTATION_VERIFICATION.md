@@ -54,11 +54,9 @@ python -m pytest tests/ -q
 # 3. Complete M01-M18 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
-# 4. Proof that the one excluded mutant is genuinely equivalent
-python -m tests.equivalence_proof_can_write_org
 ```
 
-All three run in CI (`.github/workflows/p0-backend-tests.yml`) against a
+Both run in CI (`.github/workflows/p0-backend-tests.yml`) against a
 PostgreSQL 16 service container, and the matrix is uploaded as a build
 artifact keyed to the exact commit SHA.
 
@@ -104,31 +102,37 @@ a guessing implementation would genuinely accept the token.
 `test_unknown_signing_key_is_401` alone could not detect this: it publishes a
 JWKS with no usable key, so a guessing implementation still fails.
 
-## The single equivalent mutant
+## No mutant is excluded from the score
 
-Exactly one mutant is excluded from the score as EQUIVALENT: removing
-`AND tenant.status = 'active'` from `aeos_can_write_org`. Because an unproved
-equivalence claim is indistinguishable from a surviving mutant, the claim is
-proved by execution, not inspection, in
-`tests/equivalence_proof_can_write_org.py`, which runs in CI:
+Every mutant in the contract is scored. There is no EQUIVALENT category in use
+and no mutant is excluded from the denominator.
 
-1. **The mutant is live** — with organization A suspended,
-   `aeos_can_write_org(A)` returns `TRUE`, while the unmutated
-   `aeos_has_org_access`, `aeos_is_org_admin` and
-   `aeos_is_current_actor_for_org` all return `FALSE`.
-2. **The mutant is inert** — all 20 reachable writes across `students`,
-   `assessments`, `intervention_plans`, `assessment_results`,
-   `intervention_actions`, `progress_events`, `ai_recommendations` and
-   `schools` are still refused.
+This is a correction. An earlier revision excluded exactly one mutant —
+removing `AND tenant.status = 'active'` from `aeos_can_write_org` — as proved
+equivalent, and shipped a 29/29 score on that basis. **Independent verification
+refuted the proof.** The mutant is live and non-equivalent.
 
-The structural reason: every write path carries the suspended-organization
-condition independently. INSERT policies also call
-`aeos_is_current_actor_for_org`; UPDATE and DELETE must first locate the row,
-which applies the SELECT policy governed by `aeos_has_org_access`; DELETE is
-additionally governed by `aeos_is_org_admin`.
+The proof's reasoning was that "UPDATE and DELETE must first locate the row,
+which applies the SELECT policy governed by `aeos_has_org_access`". That holds
+only for statements carrying a `WHERE` or `RETURNING` clause. PostgreSQL applies
+a table's SELECT policy to an UPDATE only when the statement must locate rows,
+so a bare `UPDATE students SET ...` never consults it and `students_update`'s
+`USING` clause — `aeos_can_write_org` alone — is the only remaining control.
+`students_update`'s `WITH CHECK` adds nothing for a row with `school_id IS NULL`,
+because that conjunct is then satisfied vacuously.
 
-Re-run this proof if any `*_insert` policy drops its actor binding, or if any
-write path stops reading an existing row.
+All 20 probes in the withdrawn proof used `WHERE`, so all 20 were masked by the
+SELECT policy and the mutation looked inert. Against a suspended tenant the
+mutant in fact returns `UPDATE 1` and persists the unauthorized value.
+
+`tests/equivalence_proof_can_write_org.py` has been deleted along with its CI
+step: its premise is refuted and there is no equivalence claim left to re-prove.
+
+The mutant is now killed behaviourally by
+`tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_cannot_update_without_a_where_clause`,
+which issues an UPDATE with no `WHERE` and no `RETURNING` against a student row
+with `school_id IS NULL` in a suspended organization, and asserts both that the
+statement affects zero rows and that the stored value is unchanged.
 
 ## Negative controls
 

@@ -100,6 +100,18 @@ async def get_current_user(
                 "verify_iss": True,
             },
         )
+        # python-jose 3.3.0 returns early from `_validate_aud` when the `aud`
+        # claim is absent, so `verify_aud: True` above rejects a WRONG audience
+        # but silently accepts a MISSING one. Configuring an audience expresses
+        # the intent that audience be enforced, so require the claim here.
+        # This only ever rejects: no audience is inserted, inferred or defaulted.
+        audience = payload.get("aud")
+        if audience is None:
+            raise unauthorized("JWT is missing the audience claim")
+        presented = audience if isinstance(audience, (list, tuple)) else [audience]
+        if SUPABASE_JWT_AUDIENCE not in presented:
+            raise unauthorized("JWT audience is not accepted")
+
         subject = payload.get("sub")
         if not isinstance(subject, str) or not subject.strip():
             raise unauthorized("JWT is missing a usable subject")

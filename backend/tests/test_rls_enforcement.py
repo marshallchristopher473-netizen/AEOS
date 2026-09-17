@@ -42,7 +42,33 @@ from pathlib import Path
 
 import pytest
 
-psycopg = pytest.importorskip("psycopg", reason="psycopg is required for RLS enforcement tests")
+REQUIRED = os.environ.get("AEOS_REQUIRE_RLS_TESTS") == "1"
+DATABASE_URL = os.environ.get("AEOS_TEST_DATABASE_URL")
+
+# A security test that silently skips is worse than no test: CI stays green while
+# proving nothing. In the dedicated CI job AEOS_REQUIRE_RLS_TESTS=1 turns a
+# missing/unreachable database into a hard collection error instead of a skip.
+#
+# ORDERING IS PART OF THE CONTRACT. This guard MUST run before any module-level
+# skip. `pytest.importorskip("psycopg")` previously sat above it, so with
+# psycopg absent the whole module skipped at exit code 0 even under
+# AEOS_REQUIRE_RLS_TESTS=1 — required mode reported success having executed
+# nothing. Both required-mode failure causes are therefore checked here first,
+# and only then is the import allowed to skip.
+if REQUIRED and not DATABASE_URL:
+    raise RuntimeError(
+        "AEOS_REQUIRE_RLS_TESTS=1 but AEOS_TEST_DATABASE_URL is unset. "
+        "The RLS enforcement tests would have skipped silently."
+    )
+
+if REQUIRED:
+    # Hard import: in required mode a missing driver is a failure, never a skip.
+    import psycopg
+else:
+    # Outside required mode a machine without the driver may still skip.
+    psycopg = pytest.importorskip(
+        "psycopg", reason="psycopg is required for RLS enforcement tests"
+    )
 
 from psycopg.conninfo import conninfo_to_dict, make_conninfo  # noqa: E402
 
@@ -57,17 +83,6 @@ MIGRATIONS = (
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
 )
-
-DATABASE_URL = os.environ.get("AEOS_TEST_DATABASE_URL")
-
-# A security test that silently skips is worse than no test: CI stays green while
-# proving nothing. In the dedicated CI job AEOS_REQUIRE_RLS_TESTS=1 turns a
-# missing/unreachable database into a hard collection error instead of a skip.
-if os.environ.get("AEOS_REQUIRE_RLS_TESTS") == "1" and not DATABASE_URL:
-    raise RuntimeError(
-        "AEOS_REQUIRE_RLS_TESTS=1 but AEOS_TEST_DATABASE_URL is unset. "
-        "The RLS enforcement tests would have skipped silently."
-    )
 
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,
@@ -98,6 +113,12 @@ SUPPORT_A = "0aaa0000-0000-4000-8000-000000000014"
 AUTH_SUPPORT_A = "0aaa0000-0000-4000-8000-000000000015"
 # A student created by the peer teacher, not by USER_A.
 STUDENT_PEER = "0aaa0000-0000-4000-8000-000000000016"
+# A student in organization A with NO school. `students_update`'s WITH CHECK is
+# `aeos_can_write_org(...) AND (school_id IS NULL OR <school belongs to org>)`,
+# so a NULL school_id satisfies the second conjunct vacuously and leaves
+# `aeos_can_write_org` as the only control on that write path. That is exactly
+# the condition M09 removes, so this row is what makes the mutation observable.
+STUDENT_A_NO_SCHOOL = "0aaa0000-0000-4000-8000-000000000019"
 STUDENT_A = "0aaa0000-0000-4000-8000-000000000009"
 STUDENT_B = "0bbb0000-0000-4000-8000-00000000000a"
 ASSESSMENT_A = "0aaa0000-0000-4000-8000-00000000000b"
@@ -131,6 +152,7 @@ INSERT INTO public.students
     (id, organization_id, school_id, first_name, last_name, grade_level, status, created_by) VALUES
     ('{STUDENT_A}', '{ORG_A}', '{SCHOOL_A}', 'Ada', 'Synthetic', '6', 'active', '{USER_A}'),
     ('{STUDENT_PEER}', '{ORG_A}', '{SCHOOL_A}', 'Grace', 'Synthetic', '6', 'active', '{PEER_A}'),
+    ('{STUDENT_A_NO_SCHOOL}', '{ORG_A}', NULL, 'Noether', 'Synthetic', '6', 'active', '{USER_A}'),
     ('{STUDENT_B}', '{ORG_B}', '{SCHOOL_B}', 'Blaise', 'Synthetic', '7', 'active', '{USER_B}');
 
 INSERT INTO public.assessments
@@ -681,6 +703,101 @@ class TestOrganizationLifecycle:
             assert cur.rowcount == 0, "suspended organization could still update"
         as_org_a.rollback()
 
+    def test_suspended_organization_cannot_update_without_a_where_clause(
+        self, as_org_a, admin_conn, suspended_org_a
+    ):
+        """M09 kill: the WHERE-less UPDATE shape, which no other test covers.
+
+        Every other UPDATE probe in this file carries a `WHERE` clause. That
+        matters more than it looks: PostgreSQL applies a table's SELECT policy
+        to an UPDATE only when the statement has to locate rows — i.e. when it
+        carries `WHERE` or `RETURNING`. A bare `UPDATE students SET ...` never
+        consults the SELECT policy, so `aeos_has_org_access` (which is NOT
+        mutated by M09) never gets a chance to deny it, and `students_update`'s
+        `USING` clause stands alone:
+
+            USING (public.aeos_can_write_org(students.organization_id))
+
+        With `aeos_can_write_org` no longer requiring an ACTIVE organization,
+        and with `WITH CHECK`'s school conjunct satisfied vacuously by
+        STUDENT_A_NO_SCHOOL, nothing on that path carries the suspension
+        condition. The mutant then writes to a suspended tenant's row.
+
+        This is the test that makes M09 non-equivalent. It was the gap that let
+        `aeos_can_write_org stops requiring an ACTIVE organization` be
+        classified EQUIVALENT: the equivalence proof's 20 probes all used
+        `WHERE`, so all 20 were masked by the SELECT policy.
+
+        Asserted behaviourally, in two independent ways:
+          * the statement must affect zero rows, and
+          * the value in the database must be unchanged afterwards, read back
+            on the privileged connection because the suspended actor cannot
+            see its own rows.
+        """
+        before = admin_conn.execute(
+            "SELECT first_name FROM public.students WHERE id = %s",
+            (STUDENT_A_NO_SCHOOL,),
+        ).fetchone()[0]
+        assert before == "Noether", "fixture drifted; the probe would prove nothing"
+
+        with as_org_a.cursor() as cur:
+            # Deliberately no WHERE and no RETURNING.
+            cur.execute("UPDATE public.students SET first_name = 'PWNED'")
+            affected = cur.rowcount
+        as_org_a.commit()
+
+        after = admin_conn.execute(
+            "SELECT first_name FROM public.students WHERE id = %s",
+            (STUDENT_A_NO_SCHOOL,),
+        ).fetchone()[0]
+
+        assert affected == 0, (
+            "a WHERE-less UPDATE by a member of a SUSPENDED organization "
+            f"affected {affected} row(s)"
+        )
+        assert after == "Noether", (
+            "a WHERE-less UPDATE persisted an unauthorized change against a "
+            f"suspended organization: first_name is now {after!r}"
+        )
+
+    def test_suspended_organization_cannot_delete_without_a_where_clause(
+        self, as_org_a_admin, admin_conn
+    ):
+        """Companion shape for DELETE, which is gated by `aeos_is_org_admin`.
+
+        Run as an admin so DELETE authority actually exists; suspension is the
+        only thing that should stop it. Pins `aeos_is_org_admin`'s
+        organization-active condition against the same WHERE-less blind spot.
+        """
+        as_org_a_admin.rollback()
+        admin_conn.execute(
+            "UPDATE public.organizations SET status = 'suspended' WHERE id = %s",
+            (ORG_A,),
+        )
+        try:
+            with as_org_a_admin.cursor() as cur:
+                cur.execute("DELETE FROM public.students")
+                affected = cur.rowcount
+            as_org_a_admin.commit()
+
+            (remaining,) = admin_conn.execute(
+                "SELECT count(*) FROM public.students WHERE organization_id = %s",
+                (ORG_A,),
+            ).fetchone()
+            assert affected == 0, (
+                f"a WHERE-less DELETE by a suspended organization's admin "
+                f"removed {affected} row(s)"
+            )
+            assert remaining == 3, (
+                f"suspended organization's rows were deleted: {remaining} left"
+            )
+        finally:
+            as_org_a_admin.rollback()
+            admin_conn.execute(
+                "UPDATE public.organizations SET status = 'active' WHERE id = %s",
+                (ORG_A,),
+            )
+
     def test_suspended_organization_admin_cannot_delete(
         self, as_org_a_admin, admin_conn
     ):
@@ -764,7 +881,8 @@ class TestOrganizationLifecycle:
         with as_org_a.cursor() as cur:
             cur.execute("SELECT count(*) FROM public.students")
             (visible,) = cur.fetchone()
-        assert visible == 2, "active organization lost access to its own students"
+        # STUDENT_A, STUDENT_PEER and STUDENT_A_NO_SCHOOL.
+        assert visible == 3, "active organization lost access to its own students"
 
     def test_disabled_member_cannot_read(self, as_org_a, admin_conn):
         as_org_a.rollback()
