@@ -75,3 +75,18 @@ Pilot → Validation → Revenue
 3. Add the same values to GitHub or Codespaces secrets if you want CI/CD or remote development to access them.
 4. Configure Vercel environment variables to match the production values used by the deployed app.
 
+### Optional: Claude Code CLI for contributors
+- AEOS uses both Python (backend) and TypeScript/JavaScript (frontend), so Claude Code should be installed as a local developer tool, not as a project dependency.
+- For safety, review the installer before execution:
+
+```bash
+curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh
+sed -n '1,200p' /tmp/claude-install.sh
+bash /tmp/claude-install.sh
+```
+
+- After installation, verify:
+
+```bash
+claude --version
+```
