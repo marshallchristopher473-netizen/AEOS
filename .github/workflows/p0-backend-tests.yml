@@ -1,14 +1,87 @@
-name: P0.0 Backend Tests
+name: P0 Security Candidate
 
 on:
   push:
     branches:
       - fix/p0-0-stabilization-reconstruction
+      - 'p0/security-*'
+      - 'claude/aeos-p0-**'
   pull_request:
     branches:
       - main
 
 jobs:
+  # Executes the Supabase migrations against a real PostgreSQL server and proves
+  # cross-tenant denial through the database. Every other RLS test in this repo
+  # asserts against migration *text* and cannot detect a policy that fails to
+  # apply or fails to deny.
+  rls-enforcement:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Prove tenant isolation is enforced by the database
+        working-directory: backend
+        env:
+          AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          # Turns a missing database into a hard failure rather than a silent skip.
+          AEOS_REQUIRE_RLS_TESTS: '1'
+        run: python -m pytest tests/test_rls_enforcement.py -v -rs
+
+      # Breaks each tenant control in a throwaway copy and asserts the suite
+      # notices. Guards specifically against regressions that leave a policy's
+      # NAME intact while removing its effect — e.g. students_select becoming
+      # USING (true) — which every string- and regex-based test would accept.
+      #
+      # Covers the full M01-M18 contract: authentication, JWT validation, actor
+      # and organization authority, RLS tenant isolation, lifecycle, write
+      # authority and service-role exposure. Each mutant is byte-compiled (or
+      # its migrations applied) before any test runs, so a mutant that does not
+      # build is reported INVALID rather than counted as killed.
+      - name: Prove the security suite can actually fail
+        working-directory: backend
+        env:
+          AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: python -m tests.security_mutations --json "$GITHUB_WORKSPACE/mutation-matrix.json"
+
+      # No mutant is excluded from the score any more. The one former
+      # EQUIVALENT exclusion (aeos_can_write_org) was refuted by independent
+      # verification and is now scored and killed behaviourally, so there is no
+      # equivalence claim left to re-prove.
+
+      - name: Publish the mutation matrix for this exact SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-matrix-${{ github.sha }}
+          path: mutation-matrix.json
+          if-no-files-found: warn
+
   backend-tests:
     runs-on: ubuntu-latest
 
@@ -49,3 +122,43 @@ jobs:
       - name: Run assessment tests separately
         working-directory: backend
         run: python -m pytest tests/test_assessments.py -v
+
+  frontend-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install pinned frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Audit frontend dependency vulnerabilities
+        working-directory: frontend
+        run: npm audit --audit-level=low
+
+      - name: Verify frontend dependency tree
+        working-directory: frontend
+        run: npm ls --all
+
+      - name: Lint frontend
+        working-directory: frontend
+        env:
+          CI: '1'
+        run: npm run lint
+
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

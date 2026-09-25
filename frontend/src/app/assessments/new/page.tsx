@@ -16,9 +16,7 @@ export default function NewAssessmentPage() {
 
     const form = new FormData(event.currentTarget);
     const payload = {
-      organization_id: String(form.get('organization_id') || '').trim(),
       student_id: String(form.get('student_id') || '').trim(),
-      created_by: String(form.get('created_by') || '').trim(),
       title: String(form.get('title') || '').trim(),
       assessment_type: String(form.get('assessment_type') || '').trim(),
       status: String(form.get('status') || 'draft').trim(),
@@ -67,16 +65,8 @@ export default function NewAssessmentPage() {
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <div className="field">
-              <label htmlFor="organization_id">Organization ID</label>
-              <input id="organization_id" name="organization_id" required />
-            </div>
-            <div className="field">
               <label htmlFor="student_id">Student ID</label>
               <input id="student_id" name="student_id" required />
-            </div>
-            <div className="field">
-              <label htmlFor="created_by">Created by</label>
-              <input id="created_by" name="created_by" required />
             </div>
             <div className="field">
               <label htmlFor="title">Title</label>

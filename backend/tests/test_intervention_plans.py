@@ -1,99 +1,121 @@
-from fastapi.testclient import TestClient
-
-from app.main import app
-from app.api import intervention_plans as intervention_plans_api
-
-
-class FakeResponse:
-    def __init__(self, data):
-        self.data = data
-
-
-class FakeTable:
-    def __init__(self, data):
-        self._data = data
-
-    def insert(self, payload):
-        self._payload = payload
-        return self
-
-    def select(self, *_args, **_kwargs):
-        return self
-
-    def eq(self, *_args, **_kwargs):
-        return self
-
-    def limit(self, *_args, **_kwargs):
-        return self
-
-    def execute(self):
-        return FakeResponse(self._data)
+from tests.fakes import (
+    ASSESSMENT_A,
+    ASSESSMENT_B,
+    ORG_A,
+    ORG_B,
+    PLAN_A,
+    PLAN_B,
+    STUDENT_A,
+    STUDENT_B,
+    USER_A,
+)
 
 
-class FakeClient:
-    def __init__(self, data):
-        self._data = data
-        self.table_calls = []
-
-    def table(self, name):
-        self.table_calls.append(name)
-        return FakeTable(self._data)
-
-
-def test_create_intervention_plan_returns_created_record(monkeypatch):
-    fake_client = FakeClient([
-        {
-            "id": "11111111-1111-1111-1111-111111111111",
-            "organization_id": "22222222-2222-2222-2222-222222222222",
-            "student_id": "33333333-3333-3333-3333-333333333333",
-            "created_by": "44444444-4444-4444-4444-444444444444",
-            "title": "Reading Support Plan",
-            "status": "draft",
-            "summary": "Tier 2 support",
-            "priority": "high",
-        }
-    ])
-
-    monkeypatch.setattr(intervention_plans_api, "get_supabase_admin_client", lambda: fake_client)
-
-    client = TestClient(app)
-    response = client.post(
-        "/intervention-plans",
-        json={
-            "organization_id": "22222222-2222-2222-2222-222222222222",
-            "student_id": "33333333-3333-3333-3333-333333333333",
-            "created_by": "44444444-4444-4444-4444-444444444444",
-            "title": "Reading Support Plan",
-            "summary": "Tier 2 support",
-            "priority": "high",
-        },
-    )
-
-    assert response.status_code == 201
-    assert response.json()["title"] == "Reading Support Plan"
-    assert response.json()["priority"] == "high"
-    assert fake_client.table_calls[0] == "intervention_plans"
+def valid_payload():
+    return {
+        "student_id": STUDENT_A,
+        "title": "Reading Support Plan",
+        "summary": "Synthetic Tier 2 support",
+        "priority": "high",
+    }
 
 
-def test_get_intervention_plan_returns_existing_record(monkeypatch):
-    fake_client = FakeClient([
-        {
-            "id": "11111111-1111-1111-1111-111111111111",
-            "organization_id": "22222222-2222-2222-2222-222222222222",
-            "student_id": "33333333-3333-3333-3333-333333333333",
-            "created_by": "44444444-4444-4444-4444-444444444444",
-            "title": "Reading Support Plan",
-            "status": "active",
-            "summary": "Tier 2 support",
-            "priority": "high",
-        }
-    ])
-
-    monkeypatch.setattr(intervention_plans_api, "get_supabase_admin_client", lambda: fake_client)
-
-    client = TestClient(app)
-    response = client.get("/intervention-plans/11111111-1111-1111-1111-111111111111")
+def test_intervention_collection_is_tenant_scoped(api_client, fake_db):
+    response = api_client.get("/intervention-plans")
 
     assert response.status_code == 200
-    assert response.json()["title"] == "Reading Support Plan"
-    assert response.json()["status"] == "active"
+    assert [row["id"] for row in response.json()] == [PLAN_A]
+    assert fake_db.queries[-1]["filters"] == {"organization_id": ORG_A}
+
+
+def test_same_tenant_intervention_object_is_returned(api_client):
+    response = api_client.get(f"/intervention-plans/{PLAN_A}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == PLAN_A
+
+
+def test_cross_tenant_intervention_object_is_404(api_client, fake_db):
+    response = api_client.get(f"/intervention-plans/{PLAN_B}")
+
+    assert response.status_code == 404
+    assert fake_db.queries[-1]["filters"] == {
+        "id": PLAN_B,
+        "organization_id": ORG_A,
+    }
+
+
+def test_intervention_create_derives_tenant_and_actor_server_side(api_client, fake_db):
+    response = api_client.post("/intervention-plans", json=valid_payload())
+
+    assert response.status_code == 201
+    assert response.json()["organization_id"] == ORG_A
+    assert response.json()["created_by"] == USER_A
+    inserted = fake_db.queries[-1]["payload"]
+    assert inserted["organization_id"] == ORG_A
+    assert inserted["created_by"] == USER_A
+
+
+def test_intervention_create_rejects_cross_tenant_student_id(api_client, fake_db):
+    payload = valid_payload()
+    payload["student_id"] = STUDENT_B
+
+    response = api_client.post("/intervention-plans", json=payload)
+
+    assert response.status_code == 404
+    assert fake_db.queries[-1]["filters"] == {
+        "id": STUDENT_B,
+        "organization_id": ORG_A,
+    }
+
+
+def test_intervention_create_rejects_spoofed_authority_fields(api_client):
+    response = api_client.post(
+        "/intervention-plans",
+        json={**valid_payload(), "organization_id": ORG_B, "created_by": "attacker"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_intervention_create_accepts_same_student_assessment(api_client, fake_db):
+    payload = valid_payload()
+    payload["assessment_id"] = ASSESSMENT_A
+
+    response = api_client.post("/intervention-plans", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["assessment_id"] == ASSESSMENT_A
+
+
+def test_intervention_create_rejects_cross_tenant_assessment_id(api_client, fake_db):
+    payload = valid_payload()
+    payload["assessment_id"] = ASSESSMENT_B
+
+    response = api_client.post("/intervention-plans", json=payload)
+
+    assert response.status_code == 404
+
+
+def test_intervention_create_rejects_assessment_for_a_different_student(api_client, fake_db):
+    other_student_assessment = {
+        "id": "44444444-4444-4444-8444-000000000099",
+        "organization_id": ORG_A,
+        "student_id": STUDENT_B,
+        "created_by": USER_A,
+        "title": "Mismatched student assessment",
+        "assessment_type": "curriculum_based",
+        "status": "draft",
+    }
+    # Same organization as the actor, but the wrong student — this is the
+    # attack this relationship check exists to reject: an assessment that is
+    # in-tenant but does not belong to the student named on the plan.
+    other_student_assessment["organization_id"] = ORG_A
+    fake_db.tables["assessments"].append(other_student_assessment)
+
+    payload = valid_payload()
+    payload["assessment_id"] = other_student_assessment["id"]
+
+    response = api_client.post("/intervention-plans", json=payload)
+
+    assert response.status_code == 404
