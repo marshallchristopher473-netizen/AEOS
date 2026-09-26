@@ -1,0 +1,908 @@
+{
+  "answer_key_version": "1.0.1",
+  "rubric": "docs/LEAD_QUALIFICATION_AGENT_V1_SPEC.md section 6",
+  "authored": "2026-09-17",
+  "method": "Written manually against the frozen rubric before the rule engine was implemented or executed. Where the engine and this key disagree, the engine is wrong until the rubric itself is shown to be wrong, in which case the rubric changes first and the change is recorded in docs/LEAD_AGENT_FAILURE_LOG.md.",
+  "answers": [
+    {
+      "id": "LQ-001",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": ["availability"],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Algebra final on Friday is a deadline inside 10 days. Grade, subject and contact all present; only meeting times are missing."
+    },
+    {
+      "id": "LQ-002",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Names tutoring explicitly so it is a tutoring inquiry, not unclear, but supplies nothing else and Facebook carries no contact details."
+    },
+    {
+      "id": "LQ-003",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Unsolicited SEO agency pitch."
+    },
+    {
+      "id": "LQ-004",
+      "intent": "pricing_inquiry",
+      "qualification": "needs_info",
+      "priority": "low",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Dominant ask is rate. Phone supplies contact. Pricing action outranks request_missing_info per rubric 6.5 precedence 2."
+    },
+    {
+      "id": "LQ-005",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "route_to_support",
+      "rationale": "Names her tutor and a standing slot, so existing_customer outranks scheduling_request. A reschedule is a high-priority service issue, not urgent."
+    },
+    {
+      "id": "LQ-006",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Wants to start this week, which is eagerness rather than a deadline, so high not urgent. No stated outcome."
+    },
+    {
+      "id": "LQ-007",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": ["availability"],
+      "next_action": "escalate_to_human_now",
+      "rationale": "IEP annual review next Wednesday is a dated event inside 10 days."
+    },
+    {
+      "id": "LQ-008",
+      "intent": "unrelated",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Towed car; real person, nothing to do with tutoring."
+    },
+    {
+      "id": "LQ-009",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Email supplies contact. 'Really struggling' is generic distress, which the rubric excludes from learning_goal."
+    },
+    {
+      "id": "LQ-010",
+      "intent": "job_application",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "route_to_hiring",
+      "rationale": "Teacher seeking tutoring work."
+    },
+    {
+      "id": "LQ-011",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "SAT in 9 days is inside the 10-day window. Junior maps to grade 11; weekend supplies both availability and start timeline."
+    },
+    {
+      "id": "LQ-012",
+      "intent": "pricing_inquiry",
+      "qualification": "needs_info",
+      "priority": "low",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Explicitly comparison shopping with no commitment."
+    },
+    {
+      "id": "LQ-013",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Grant phishing."
+    },
+    {
+      "id": "LQ-014",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "A bare greeting. Treated as a possible lead rather than discarded, because discarding it is the failure mode the product exists to prevent."
+    },
+    {
+      "id": "LQ-015",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Duplicate charge is a billing error, which the rubric lists as an urgent existing-customer trigger. Escalation outranks route_to_support."
+    },
+    {
+      "id": "LQ-016",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Adult learner and college coursework, both excluded by the business profile."
+    },
+    {
+      "id": "LQ-017",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["availability"],
+      "next_action": "book_consultation",
+      "rationale": "'Next step to sign up' is an explicit buying signal; catching up after a move is a stated outcome."
+    },
+    {
+      "id": "LQ-018",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Organization and task initiation map to study skills, which is in scope. No urgency stated."
+    },
+    {
+      "id": "LQ-019",
+      "intent": "scheduling_request",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Explicitly asks to book a consultation, which the rubric puts at high priority."
+    },
+    {
+      "id": "LQ-020",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Long and rambling, but supplies grade 8, science, evenings, and a performance state (Bs to Ds). Tests whether verbosity hides extractable facts."
+    },
+    {
+      "id": "LQ-021",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["subject", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Grade is present; subject and contact are not. Sender is an aunt, which does not change qualification."
+    },
+    {
+      "id": "LQ-022",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Two children in one message. The chemistry test next Tuesday is inside 10 days, and the most urgent child sets the record's priority. CORRECTED in v1.0.1: start_timeline was originally marked present, but naming a deadline is not the same as saying when you want to begin — LQ-024 names a deadline and was correctly marked missing. See docs/LEAD_AGENT_FAILURE_LOG.md entry K-01."
+    },
+    {
+      "id": "LQ-023",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Sophomore maps to grade 10. Explicitly 'not in a rush', so no urgency despite a named problem."
+    },
+    {
+      "id": "LQ-024",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Boundary case: October 1 deadline is roughly 15 days out, which falls in the 11-30 day band and is therefore high, not urgent."
+    },
+    {
+      "id": "LQ-025",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "'Called three places and nobody called me back' is the go-elsewhere signal the rubric puts at high. Failing math is a performance state."
+    },
+    {
+      "id": "LQ-026",
+      "intent": "pricing_inquiry",
+      "qualification": "qualified",
+      "priority": "low",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "All three blocking fields present so qualified, but the dominant ask is cost and she is explicitly comparing."
+    },
+    {
+      "id": "LQ-027",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Two words, no tutoring reference, no contact."
+    },
+    {
+      "id": "LQ-028",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "route_to_support",
+      "rationale": "Names their tutor. An upsell question is an existing-customer issue, not a new pricing lead."
+    },
+    {
+      "id": "LQ-029",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Crypto solicitation."
+    },
+    {
+      "id": "LQ-030",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "'How do I sign up' plus start this week. No stated outcome beyond the subject."
+    },
+    {
+      "id": "LQ-031",
+      "intent": "unrelated",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Farmers market hours."
+    },
+    {
+      "id": "LQ-032",
+      "intent": "scheduling_request",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Chasing a consultation that was never scheduled. Scheduling outranks tutoring_inquiry in the precedence order."
+    },
+    {
+      "id": "LQ-033",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Gives availability and timeline but neither grade nor subject, so both blocking fields are open."
+    },
+    {
+      "id": "LQ-034",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Bar exam is a professional exam and the sender is an adult."
+    },
+    {
+      "id": "LQ-035",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Boundary case: retention is severe but the decision is three weeks out, and the rubric ties urgency to the clock, not to severity."
+    },
+    {
+      "id": "LQ-036",
+      "intent": "job_application",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "route_to_hiring",
+      "rationale": "Student asking to be hired."
+    },
+    {
+      "id": "LQ-037",
+      "intent": "pricing_inquiry",
+      "qualification": "qualified",
+      "priority": "low",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Text-speak, but supplies grade 3, math and a phone. Tests extraction against informal spelling."
+    },
+    {
+      "id": "LQ-038",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Report cards Monday is a dated event inside 10 days, with a consequence attached."
+    },
+    {
+      "id": "LQ-039",
+      "intent": "pricing_inquiry",
+      "qualification": "needs_info",
+      "priority": "low",
+      "missing_information": ["grade_level", "subject", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Price-only, no contact channel captured."
+    },
+    {
+      "id": "LQ-040",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Cost is mentioned but the dominant ask is help for the child, so this is not a pricing inquiry. Fractions is a named skill gap."
+    },
+    {
+      "id": "LQ-041",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "No tutoring reference at all, so unclear rather than tutoring_inquiry. Email supplies contact."
+    },
+    {
+      "id": "LQ-042",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Active cancellation with a stated dissatisfaction. The rubric makes cancellation urgent because it is revenue leaving."
+    },
+    {
+      "id": "LQ-043",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "B2B contact-list broker. Also the kind of vendor a tutoring business must not buy from."
+    },
+    {
+      "id": "LQ-044",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Non-native English phrasing with 'grade 8' rather than '8th grade'. The language-support request does not change scope."
+    },
+    {
+      "id": "LQ-045",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Voicemail supplies a phone number and nothing else."
+    },
+    {
+      "id": "LQ-046",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "book_consultation",
+      "rationale": "'Ready to enroll' plus a 100-point score target. The only fully-specified inbound lead in the set."
+    },
+    {
+      "id": "LQ-047",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Child is K-12 age, but piano is non-academic and excluded by the business profile."
+    },
+    {
+      "id": "LQ-048",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["availability"],
+      "next_action": "book_consultation",
+      "rationale": "The child returns next month but the parent is arranging support now, so the deferral rule does not demote this to low."
+    },
+    {
+      "id": "LQ-049",
+      "intent": "unrelated",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Donation solicitation, not a customer and not spam in the bulk sense, but no lead exists."
+    },
+    {
+      "id": "LQ-050",
+      "intent": "scheduling_request",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["grade_level", "subject", "start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "A booked prospect moving a consult. Qualified by having a booking, though the record itself is thin."
+    },
+    {
+      "id": "LQ-051",
+      "intent": "pricing_inquiry",
+      "qualification": "qualified",
+      "priority": "low",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Financial assistance is a cost question, so pricing_inquiry. Grade, subject and contact are all present."
+    },
+    {
+      "id": "LQ-052",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Midterm tomorrow. The single most time-critical case in the set."
+    },
+    {
+      "id": "LQ-053",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Asking for homework to be completed on the student's behalf, which the business profile excludes. Academic-integrity boundary case."
+    },
+    {
+      "id": "LQ-054",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "A conduct complaint about a tutor. The rubric makes conduct concerns urgent regardless of tone."
+    },
+    {
+      "id": "LQ-055",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Scope boundary case: the course is titled College Algebra but the student is a 10th grader, and the profile is defined by the student, so in scope."
+    },
+    {
+      "id": "LQ-056",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "A single question mark. Phone supplies contact."
+    },
+    {
+      "id": "LQ-057",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "book_consultation",
+      "rationale": "Buying signal, named start date, availability and a concrete writing outcome."
+    },
+    {
+      "id": "LQ-058",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Subject present, grade absent. 'Your availability this fall' asks about the business's calendar, not the family's start date."
+    },
+    {
+      "id": "LQ-059",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Graduate-level coursework."
+    },
+    {
+      "id": "LQ-060",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Form-spam with junk name, disposable domain and repeated links."
+    },
+    {
+      "id": "LQ-061",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "IEP eligibility meeting on the 24th, seven days out. Fully specified otherwise."
+    },
+    {
+      "id": "LQ-062",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Ages rather than grades. Ages 9, 12 and 14 map to K-12, so grade_level is satisfied."
+    },
+    {
+      "id": "LQ-063",
+      "intent": "pricing_inquiry",
+      "qualification": "qualified",
+      "priority": "low",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Price-match request with a competitor quote. Grade and subject arrive inside the price question."
+    },
+    {
+      "id": "LQ-064",
+      "intent": "job_application",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "route_to_hiring",
+      "rationale": "Retired professor offering to tutor. Credentials do not make it a lead."
+    },
+    {
+      "id": "LQ-065",
+      "intent": "scheduling_request",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Following up on a submitted form and asking when they can meet."
+    },
+    {
+      "id": "LQ-066",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Reading is named; grade and a contact channel are not."
+    },
+    {
+      "id": "LQ-067",
+      "intent": "pricing_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "A school counselor seeking referral information. The dominant ask is rates, so pricing_inquiry, but she is not price-shopping for a purchase, so medium rather than low. Known taxonomy gap: a referral partner deserves its own intent in v2."
+    },
+    {
+      "id": "LQ-068",
+      "intent": "unrelated",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Wrong number."
+    },
+    {
+      "id": "LQ-069",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "route_to_support",
+      "rationale": "Receipt request from a current family. Administrative, not urgent."
+    },
+    {
+      "id": "LQ-070",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "'I am interested' with no object. Email supplies contact."
+    },
+    {
+      "id": "LQ-071",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Wants to start this week. Voicemail supplies the phone."
+    },
+    {
+      "id": "LQ-072",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "low",
+      "missing_information": ["availability", "learning_goal"],
+      "next_action": "nurture_followup",
+      "rationale": "Explicitly defers starting to November and is relocating in January. In scope but not buying now, which is what nurture_followup exists for."
+    },
+    {
+      "id": "LQ-073",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Test in three days with an honors-track consequence."
+    },
+    {
+      "id": "LQ-074",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Web design cold pitch. Polite and personalized, which is what makes it a useful spam case."
+    },
+    {
+      "id": "LQ-075",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "English language learner with a named skill gap in math word problems. In scope."
+    },
+    {
+      "id": "LQ-076",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Driver's education is non-academic, even though the student is 16 and in K-12."
+    },
+    {
+      "id": "LQ-077",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "high",
+      "missing_information": ["grade_level", "subject", "availability", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Deliberate combination: 'asap' makes it high priority while both blocking fields are still missing, so the action is to ask, quickly."
+    },
+    {
+      "id": "LQ-078",
+      "intent": "pricing_inquiry",
+      "qualification": "qualified",
+      "priority": "low",
+      "missing_information": ["availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Cost gate before anything else, explicitly not committing today."
+    },
+    {
+      "id": "LQ-079",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "A revived old lead. Says 'not urgent' explicitly. 'Situation has not improved' is generic, so no learning goal."
+    },
+    {
+      "id": "LQ-080",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["contact_info", "start_timeline"],
+      "next_action": "request_missing_info",
+      "rationale": "Kindergarten is the bottom edge of K-12 and is in scope. Letter sounds is a named skill gap. Facebook carries no contact, which is the only blocker."
+    },
+    {
+      "id": "LQ-081",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Placement benchmark in four days."
+    },
+    {
+      "id": "LQ-082",
+      "intent": "pricing_inquiry",
+      "qualification": "needs_info",
+      "priority": "low",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Rate and commitment question, still deciding, no child details."
+    },
+    {
+      "id": "LQ-083",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Offshore development agency pitch."
+    },
+    {
+      "id": "LQ-084",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "'How does this work' names no service and carries no contact."
+    },
+    {
+      "id": "LQ-085",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "medium",
+      "missing_information": ["availability", "start_timeline"],
+      "next_action": "book_consultation",
+      "rationale": "Twice-exceptional student, writing named as the barrier. Explicitly not in a hurry."
+    },
+    {
+      "id": "LQ-086",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Names tutoring but supplies nothing about the children. Email and phone both present."
+    },
+    {
+      "id": "LQ-087",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "book_consultation",
+      "rationale": "ASAP start, enrollment question, and a concrete grade target. Fully specified."
+    },
+    {
+      "id": "LQ-088",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "route_to_support",
+      "rationale": "Missing one session and asking about a makeup. A session change, not a cancellation, so high rather than urgent."
+    },
+    {
+      "id": "LQ-089",
+      "intent": "unrelated",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Press request. Real and possibly worth answering, but not a lead and not the agent's job."
+    },
+    {
+      "id": "LQ-090",
+      "intent": "pricing_inquiry",
+      "qualification": "needs_info",
+      "priority": "low",
+      "missing_information": ["contact_info", "availability", "start_timeline", "learning_goal"],
+      "next_action": "send_pricing_then_book",
+      "rationale": "Grade and subject arrive but the channel captures no contact, which is blocking."
+    },
+    {
+      "id": "LQ-091",
+      "intent": "tutoring_inquiry",
+      "qualification": "out_of_scope",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "decline_and_refer",
+      "rationale": "Adult learner and a subject the business does not teach."
+    },
+    {
+      "id": "LQ-092",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "ACT in five days, all fields supplied. KNOWN KEY INCONSISTENCY, deliberately left uncorrected: 'any evening this week works' is a meeting window, so by the same reasoning applied to LQ-022 and LQ-065 start_timeline should be marked missing here. This is a holdout case, and correcting a holdout answer after seeing engine output would contaminate the split, so it stands and the agent is scored as failing it. See docs/LEAD_AGENT_FAILURE_LOG.md entry K-02."
+    },
+    {
+      "id": "LQ-093",
+      "intent": "existing_customer",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": [],
+      "next_action": "route_to_support",
+      "rationale": "A happy customer asking about referrals. Existing-customer precedence means this is not treated as a new inquiry."
+    },
+    {
+      "id": "LQ-094",
+      "intent": "spam",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "archive_no_action",
+      "rationale": "Delivery phishing. Uses the word URGENT, which must not move priority. A catastrophic-error probe."
+    },
+    {
+      "id": "LQ-095",
+      "intent": "job_application",
+      "qualification": "not_a_lead",
+      "priority": "low",
+      "missing_information": [],
+      "next_action": "route_to_hiring",
+      "rationale": "Responding to a job posting. Mentions reading and 2nd grade, which must not pull it toward a tutoring lead."
+    },
+    {
+      "id": "LQ-096",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "District home-instruction meeting on the 26th, nine days out."
+    },
+    {
+      "id": "LQ-097",
+      "intent": "unclear",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "subject", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "'info?' with a phone number attached."
+    },
+    {
+      "id": "LQ-098",
+      "intent": "scheduling_request",
+      "qualification": "qualified",
+      "priority": "high",
+      "missing_information": ["start_timeline", "learning_goal"],
+      "next_action": "book_consultation",
+      "rationale": "Explicit consultation request with availability. Calculus for a 12th grader is in scope."
+    },
+    {
+      "id": "LQ-099",
+      "intent": "tutoring_inquiry",
+      "qualification": "needs_info",
+      "priority": "medium",
+      "missing_information": ["grade_level", "availability", "start_timeline", "learning_goal"],
+      "next_action": "request_missing_info",
+      "rationale": "Science named, grade absent."
+    },
+    {
+      "id": "LQ-100",
+      "intent": "tutoring_inquiry",
+      "qualification": "qualified",
+      "priority": "urgent",
+      "missing_information": [],
+      "next_action": "escalate_to_human_now",
+      "rationale": "Two children with split urgency. The essay due in six days sets the record's priority; the ongoing math request must not dilute it."
+    }
+  ]
+}
