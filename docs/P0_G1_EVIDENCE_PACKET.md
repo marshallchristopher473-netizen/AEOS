@@ -7,16 +7,26 @@ then one recommendation. Nothing in the candidate was modified to produce it.
 
 ## G1 recommendation
 
-**G1: BLOCKED — on one evidence item only.**
+**G1 for `54a0477`: REVISE.**
 
-No security control was shown to fail. Every exact-SHA frontend and backend
-check passed, and the repository's M01–M18 mutation contract reproduced at
-30/30. What has not been done is live row-level-security (RLS) execution
-against a hosted, isolated, non-production **Supabase** project. The
-repository's own P0 decision contract
-(`.github/agents/aeos-p0-independent-verifier.agent.md`) says that when live
-RLS evidence cannot safely run, the gate is BLOCKED, not verified. This session
-had no authorization to touch any Supabase project, so that item stays open.
+> **Correction, 2026-09-28.** This packet was first issued on 2026-09-26 as
+> *BLOCKED on one evidence item only*, stating that no control had been shown
+> to fail. That was wrong. A follow-up check found a tenant-boundary control
+> gap the first issue missed: **SEC-G1-10**. Client roles hold `TRUNCATE`,
+> which row-level security does not govern, and a teacher in organization B
+> emptied organization A's students with it. The evidence from the first issue
+> below is unchanged and still accurate for what it measured. Section 11
+> records the finding, why it was missed, and the proposed fix.
+
+Two things stand between this candidate and PASS:
+
+1. **SEC-G1-10 must be fixed and independently re-verified.** A fix (migration
+   005) is proposed alongside this packet. It was written by the same session
+   that found the defect, so under the repository's verifier contract a
+   separate fresh session must reproduce it at the fix's exact SHA.
+2. **SEC-G1-01 stays BLOCKED** until the founder authorizes an isolated,
+   non-production Supabase project. The live run should use the fixed SHA, so
+   it only has to run once.
 
 | G1 evidence item | Result |
 | --- | --- |
@@ -27,17 +37,18 @@ had no authorization to touch any Supabase project, so that item stays open.
 | Backend suite against real PostgreSQL 16, required mode | PASS — 170 passed, 0 skipped |
 | M01–M18 mutation contract | PASS — 30 killed / 30, 0 survived |
 | WHERE-less UPDATE/DELETE sweep across all 11 RLS tables (new) | PASS — 102 probes, 0 breaches |
+| **Table privileges RLS does not govern (TRUNCATE)** | **FAIL — SEC-G1-10, cross-tenant wipe reproduced** |
 | Live RLS against an isolated hosted Supabase project | **BLOCKED — not run, needs founder authorization** |
 
-**What BLOCKED stops:** G4 staging on hosted Supabase, and any exposure beyond
+**What this stops:** G4 staging on hosted Supabase, and any exposure beyond
 synthetic data. **What it does not stop:** the G2, G3, G5 and G6 preparation
 the operating model already allows to run in parallel.
 
-**Smallest unblocking action:** the founder authorizes one isolated,
-non-production Supabase project (or a Supabase branch) that holds synthetic
-data only. The verifier then applies migrations 001–004 there and runs the
-same cross-tenant attack set through PostgREST with real Supabase-issued
-tokens.
+**Smallest unblocking actions:** (a) a fresh session independently verifies the
+SEC-G1-10 fix; (b) the founder authorizes one isolated, non-production Supabase
+project (or a Supabase branch) that holds synthetic data only. The verifier
+then applies migrations 001–005 there and runs the same cross-tenant attack
+set, TRUNCATE included, through PostgREST with real Supabase-issued tokens.
 
 ## Artifact identity
 
@@ -185,10 +196,15 @@ no UPDATE or DELETE policy and deny by default under forced RLS.
 **Limit:** the sweep is not in the committed test suite. A future per-table
 policy regression would not be caught by CI (SEC-G1-04).
 
+**Limit found later:** the sweep covered UPDATE and DELETE only. TRUNCATE is a
+separate statement that RLS does not govern at all, and it was not probed.
+See SEC-G1-10 and section 11.
+
 ## 7. Decision ledger entries
 
 | ID | Objective | Module | Severity | Evidence | Confidence | Consequence | Bounded correction | Approval | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SEC-G1-10 | Validation | Shared data layer | **High, gate item** | `anon` and `authenticated` hold TRUNCATE (plus TRIGGER and REFERENCES) on all 11 public tables through the standing `GRANT ALL`. RLS does not apply to TRUNCATE. Reproduced: an org B teacher ran `TRUNCATE public.students CASCADE` and org A's students went from 3 to 0 (rolled back, synthetic data) | High | Any direct database session as a client role, or any future function running dynamic SQL with the caller's rights, can wipe every tenant at once. PostgREST exposes no TRUNCATE, so no HTTP route is known to reach it today | Migration 005 revokes TRUNCATE, TRIGGER and REFERENCES from both client roles, for existing tables and via default privileges; tests and mutants M19a/M19b pin it | None to write; founder merges | Fix proposed (section 11); awaiting independent verification |
 | SEC-G1-01 | Validation | Shared data layer | **Gate item** | No isolated hosted Supabase project was available or authorized | High | Supabase-specific behaviour (PostgREST role switching, real `auth.uid()`, issued-token claims) is unverified; the local shim emulates it | Authorize one isolated non-production Supabase project with synthetic data; apply 001–004; rerun the cross-tenant attack set with real tokens | Founder | Proposed |
 | SEC-G1-02 | Completion | Frontend | Medium, blocks G4 | 6 pages call `http://127.0.0.1:8000` directly; `lib/api.ts` `apiFetch` (which honours `NEXT_PUBLIC_API_URL`) is unused | High | A deployed staging frontend cannot reach the backend | Route all six pages through `apiFetch` | None | Proposed |
 | SEC-G1-03 | Completion | Frontend / auth | Medium, blocks G4 | No sign-in flow exists; pages read `localStorage['aeos_access_token']`, which nothing in the app writes | High | Pilot users cannot sign in without manual token injection; a token in localStorage can be read by any XSS | Pick the session approach (e.g. cookie-based `@supabase/ssr`, already a dependency) before staging | Founder (auth design) | Proposed |
@@ -241,9 +257,73 @@ export AEOS_TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres
 python <path-to>/docs/evidence/g1/whereless_probe.py backend whereless-probe.json
 ```
 
+## 11. Correction: SEC-G1-10 (2026-09-28)
+
+### How it was found
+
+While preparing the next security-lane fixes, a privilege inventory of the
+migrated database (`information_schema.role_table_grants`) showed `anon` and
+`authenticated` holding every table privilege, TRUNCATE included, on all 11
+public tables. PostgreSQL applies row-level security to SELECT, INSERT, UPDATE
+and DELETE only, so TRUNCATE is checked against the table privilege alone.
+
+### Reproduction at `54a0477` (synthetic data, rolled back)
+
+Migrations 001–004 on PostgreSQL 16.13, standing Supabase grants as the shim
+models them. The session became `authenticated` with organization B's teacher
+as the JWT subject, exactly as the RLS suite does:
+
+| Step | Observed |
+| --- | --- |
+| `has_table_privilege('authenticated', 'public.students', 'TRUNCATE')` | `true` |
+| `TRUNCATE public.students CASCADE` as org B's teacher | succeeded |
+| Org A students afterwards, inside the same transaction | 3 → **0** |
+
+The transaction was rolled back.
+
+### Why the first issue missed it
+
+- The WHERE-less sweep enumerated the DML verbs RLS governs. It did not
+  inventory the privileges RLS does not govern.
+- The RLS suite's fixture ran a blanket `GRANT ALL ON ALL TABLES` after every
+  migration, and no test inspected table privileges beyond SELECT and DELETE
+  on `students`. Nothing in the suite could observe this.
+
+### Proposed fix (builder change, in this PR)
+
+| File | Change |
+| --- | --- |
+| `backend/supabase/migrations/005_revoke_rls_blind_table_privileges.sql` | New forward-only migration. Revokes TRUNCATE, TRIGGER and REFERENCES from `anon` and `authenticated` on all public tables, and from the default privileges for tables created later. DML grants are untouched |
+| `backend/tests/test_rls_enforcement.py` | Applies 005. Drops the post-migration blanket re-grant, which would have silently undone 005; grants now come only from the shim's default privileges at table creation, as in Supabase. Adds `TestPrivilegesRlsDoesNotGovern` (17 tests) and a TRUNCATE negative control |
+| `backend/tests/security_mutations.py` | Applies 005 in the precheck. Adds M19a (existing tables keep TRUNCATE) and M19b (default privileges keep TRUNCATE) |
+| `backend/tests/sql/supabase_shim.sql`, `docs/P0_MUTATION_VERIFICATION.md`, workflow comment | Comments and contract table brought up to date |
+
+The fix's own evidence, on PostgreSQL 16.13 with synthetic data:
+
+| Check | Result |
+| --- | --- |
+| New tests before the fix | 14 failed, 65 passed. Exactly the new checks fail; every original test and the new negative control pass |
+| Full suite after the fix, required mode | **187 passed, 0 skipped** |
+| Full suite without a database | 108 passed, 79 skipped |
+| Mutation contract M01–M19 | **32 killed / 32**, 0 survived, 0 invalid |
+| M19a killed by | both static privilege checks and all 11 cross-tenant TRUNCATE checks |
+| M19b killed by | `test_tables_created_later_do_not_inherit_rls_blind_privileges` |
+
+**Independence:** the session that found the defect also wrote the fix. The
+repository's verifier contract does not let a builder verify their own change,
+so a separate fresh session must reproduce this at the fix's exact SHA before
+SEC-G1-10 can be closed.
+
+**Hosted Supabase:** whether a hosted project's standing grant includes
+TRUNCATE for client roles is to be confirmed in the SEC-G1-01 live run. The fix
+is correct either way: revoking a privilege that is not held is a no-op.
+
 ## Next action
 
-**Founder decision:** authorize, or decline, one isolated non-production
-Supabase project holding synthetic data only, so that SEC-G1-01 can be run.
-Once it passes, G1 can be re-issued as PASS. Until then, G1 stays BLOCKED on
-that single item.
+1. **Independent verification of the SEC-G1-10 fix** in a fresh session, at
+   the fix's exact SHA.
+2. **Founder decision:** authorize, or decline, one isolated non-production
+   Supabase project holding synthetic data only, so that SEC-G1-01 can be run
+   on the fixed SHA.
+
+Once both pass, G1 can be re-issued as PASS.
