@@ -5,6 +5,10 @@ verified, what the verification covers, and what it deliberately does not
 cover. It is a method record, not a claim of certification. A separate
 reviewer must reproduce it independently before P0 can be closed.
 
+The independent reproduction against `main` @ `b9c68aa` — exact SHA,
+environment, results and accepted scope boundaries — is recorded in
+[`P0_VERIFICATION_RECORD.md`](P0_VERIFICATION_RECORD.md).
+
 ## Why mutation testing is the gate
 
 A green security suite proves nothing on its own. The specific failure this
