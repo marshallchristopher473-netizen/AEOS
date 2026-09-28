@@ -208,9 +208,9 @@ See SEC-G1-10 and section 11.
 | SEC-G1-01 | Validation | Shared data layer | **Gate item** | No isolated hosted Supabase project was available or authorized | High | Supabase-specific behaviour (PostgREST role switching, real `auth.uid()`, issued-token claims) is unverified; the local shim emulates it | Authorize one isolated non-production Supabase project with synthetic data; apply 001–004; rerun the cross-tenant attack set with real tokens | Founder | Proposed |
 | SEC-G1-02 | Completion | Frontend | Medium, blocks G4 | 6 pages call `http://127.0.0.1:8000` directly; `lib/api.ts` `apiFetch` (which honours `NEXT_PUBLIC_API_URL`) is unused | High | A deployed staging frontend cannot reach the backend | Route all six pages through `apiFetch` | None | Proposed |
 | SEC-G1-03 | Completion | Frontend / auth | Medium, blocks G4 | No sign-in flow exists; pages read `localStorage['aeos_access_token']`, which nothing in the app writes | High | Pilot users cannot sign in without manual token injection; a token in localStorage can be read by any XSS | Pick the session approach (e.g. cookie-based `@supabase/ssr`, already a dependency) before staging | Founder (auth design) | Proposed |
-| SEC-G1-04 | Validation | Security suite | Low | WHERE-less probes committed for `students` only; sweep in section 6 is out of suite | High | A future per-table `USING` regression could pass CI | Add a parametrized WHERE-less UPDATE/DELETE test over all RLS tables | None | Proposed |
+| SEC-G1-04 | Validation | Security suite | Medium (raised from Low, section 12) | WHERE-less probes committed for `students` only; sweep in section 6 is out of suite. Demonstrated: the committed suite still passes with `ai_recommendations_delete` widened to `USING (true)` | High | A per-table regression that lets any tenant delete another's rows passes CI | Add a parametrized WHERE-less UPDATE/DELETE test over all RLS tables | None | Fix proposed (section 12); awaiting independent verification |
 | SEC-G1-05 | Completion | Frontend / CI | Low | `npm ci` on Node 20: `@supabase/{supabase,auth,functions,postgrest,realtime,storage}-js@2.111.0` require Node ≥ 22; none is imported by `frontend/src` | High | Unsupported runtime for declared dependencies | Move CI and hosting to Node 22, or drop the unused packages | None | Proposed |
-| SEC-G1-06 | Validation | Backend auth | Low (fails closed) | Reproduced: an RS256 token whose `kid` matches a non-RSA JWKS key raises `jose.exceptions.JWKError`, which `except (JWTError, ValueError, TypeError)` does not catch, so the response is HTTP 500 instead of 401. The backend accepts only `RS256` | High | No access granted. Wrong status code, and if the Supabase project signs with a non-RS256 key every login fails | Catch `JOSEError`; confirm the Supabase project's signing algorithm before staging | None | Proposed (carried from PR #17 item 4) |
+| SEC-G1-06 | Validation | Backend auth | Low (fails closed) | Reproduced: an RS256 token whose `kid` matches a non-RSA JWKS key raises `jose.exceptions.JWKError`, which `except (JWTError, ValueError, TypeError)` does not catch, so the response is HTTP 500 instead of 401. The backend accepts only `RS256` | High | No access granted. Wrong status code, and if the Supabase project signs with a non-RS256 key every login fails | Catch `JOSEError`; confirm the Supabase project's signing algorithm before staging | None | Fix proposed (section 12); awaiting independent verification. Signing-algorithm check still open for staging |
 | SEC-G1-07 | Validation | Frontend | Low | `assessments/[id]` renders raw `organization_id` and `created_by` UUIDs | High | Unnecessary exposure of internal identifiers (data minimization) | Remove or replace with display names | None | Proposed |
 | SEC-G1-08 | Validation | CI | Low | Mutation artifact is named with `github.sha`, which is the merge ref on `pull_request` events | High | Evidence artifact is not keyed to the reviewed head | `${{ github.event.pull_request.head.sha \|\| github.sha }}` | None | Proposed (carried from PR #17 item 1) |
 | SEC-G1-09 | Completion | Repo hygiene | Info | `tsc --noEmit` leaves an untracked `frontend/tsconfig.tsbuildinfo`; not in `.gitignore` | High | Noise in working trees | Add `*.tsbuildinfo` to `.gitignore` | None | Proposed |
@@ -318,10 +318,35 @@ SEC-G1-10 can be closed.
 TRUNCATE for client roles is to be confirmed in the SEC-G1-01 live run. The fix
 is correct either way: revoking a privilege that is not held is a no-op.
 
+## 12. Further security-lane fixes (2026-09-28)
+
+Two ledger items that needed no founder decision were fixed before the
+independent verification and the live Supabase run, so that both can run once,
+on the final code. Both are builder changes and need the same independent
+verification as SEC-G1-10.
+
+### SEC-G1-06 — unusable published keys now fail closed as 401
+
+| | |
+| --- | --- |
+| Change | `backend/app/core/auth.py` catches `JOSEError`, python-jose's base class, instead of `JWTError`. `JWKError` is a `JOSEError` but not a `JWTError` |
+| Test | `test_auth.py::test_unusable_published_key_is_401_not_a_server_error`, with an EC key and a symmetric key published under the token's `kid`. Both cases failed with an escaped `JWKError` before the fix |
+| Mutant | M18h re-raises `JWKError` past the handler, reproducing the old behaviour exactly. M18g's anchor moved with the changed line |
+| Still open | This does not add ES256 support. If the Supabase project signs with a non-RS256 key, logins are refused with 401. Confirm the signing algorithm before staging |
+
+### SEC-G1-04 — the WHERE-less sweep is now part of the suite
+
+| | |
+| --- | --- |
+| Change | `TestWherelessWritesAcrossEveryTable` in `test_rls_enforcement.py`: WHERE-less UPDATE and DELETE on all 11 tables × 4 attackers (suspended organization's admin, suspended organization's teacher, disabled admin account, another organization's teacher) = 88 probes |
+| Isolation | Each probe runs in one privileged transaction that is always rolled back, so a wrongful write never reaches the shared seed data |
+| Negative controls | With RLS off for the table, the same writes reach organization A: UPDATE on all 11 tables, DELETE on 9 (`organizations` and `users` are excluded because RESTRICT foreign keys fail first) |
+| Mutant | M20 widens `ai_recommendations_delete` to `USING (true)`. The suite without the sweep passes under it (189 passed, 0 failed); the sweep fails in all four attacker scenarios |
+
 ## Next action
 
-1. **Independent verification of the SEC-G1-10 fix** in a fresh session, at
-   the fix's exact SHA.
+1. **Independent verification of the SEC-G1-10, SEC-G1-06 and SEC-G1-04
+   fixes** in a fresh session, at the branch's final exact SHA.
 2. **Founder decision:** authorize, or decline, one isolated non-production
    Supabase project holding synthetic data only, so that SEC-G1-01 can be run
    on the fixed SHA.
