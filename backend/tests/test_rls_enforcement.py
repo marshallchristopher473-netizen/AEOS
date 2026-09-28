@@ -1125,6 +1125,173 @@ class TestPrivilegesRlsDoesNotGovern:
 
 
 # ---------------------------------------------------------------------------
+# WHERE-less UPDATE and DELETE on every table (SEC-G1-04).
+# A statement with no WHERE and no RETURNING never consults the SELECT policy,
+# so the UPDATE or DELETE policy's USING clause is the only control left. The
+# M09 tests pin that shape for `students`; these pin it for every table.
+# ---------------------------------------------------------------------------
+
+
+# A text column per table, set to a constant so the SET clause reads no
+# existing value (reading one would make PostgreSQL apply the SELECT policy).
+WHERELESS_PROBE_COLUMN = {
+    "ai_recommendations": "recommendation_text",
+    "assessment_results": "summary",
+    "assessments": "title",
+    "audit_logs": "action",
+    "intervention_actions": "description",
+    "intervention_plans": "title",
+    "organizations": "name",
+    "progress_events": "event_message",
+    "schools": "name",
+    "students": "first_name",
+    "users": "full_name",
+}
+WHERELESS_MARKER = "WHERELESS-PROBE"
+
+# SEED_SQL leaves these four tables without synthetic rows. A probe against a
+# table where organization A owns nothing would prove nothing, so each probe
+# adds one row per organization inside its own transaction.
+RECOMMENDATION_A = "0aaa0000-0000-4000-8000-0000000000a1"
+RECOMMENDATION_B = "0bbb0000-0000-4000-8000-0000000000b1"
+ACTION_A = "0aaa0000-0000-4000-8000-0000000000a2"
+ACTION_B = "0bbb0000-0000-4000-8000-0000000000b2"
+AUDIT_A = "0aaa0000-0000-4000-8000-0000000000a3"
+AUDIT_B = "0bbb0000-0000-4000-8000-0000000000b3"
+EVENT_A = "0aaa0000-0000-4000-8000-0000000000a4"
+EVENT_B = "0bbb0000-0000-4000-8000-0000000000b4"
+WHERELESS_EXTRA_SEED_SQL = f"""
+INSERT INTO public.ai_recommendations
+    (id, organization_id, assessment_id, created_by, model_name, recommendation_text) VALUES
+    ('{RECOMMENDATION_A}', '{ORG_A}', '{ASSESSMENT_A}', '{USER_A}', 'synthetic', 'Org A recommendation'),
+    ('{RECOMMENDATION_B}', '{ORG_B}', '{ASSESSMENT_B}', '{USER_B}', 'synthetic', 'Org B recommendation');
+INSERT INTO public.intervention_actions
+    (id, intervention_plan_id, action_type, description) VALUES
+    ('{ACTION_A}', '{PLAN_A}', 'synthetic', 'Org A action'),
+    ('{ACTION_B}', '{PLAN_B}', 'synthetic', 'Org B action');
+INSERT INTO public.audit_logs
+    (id, organization_id, entity_type, entity_id, action, performed_by) VALUES
+    ('{AUDIT_A}', '{ORG_A}', 'student', '{STUDENT_A}', 'create', '{USER_A}'),
+    ('{AUDIT_B}', '{ORG_B}', 'student', '{STUDENT_B}', 'create', '{USER_B}');
+INSERT INTO public.progress_events
+    (id, organization_id, student_id, actor_id, event_type, event_message) VALUES
+    ('{EVENT_A}', '{ORG_A}', '{STUDENT_A}', '{USER_A}', 'student_created', 'Org A event'),
+    ('{EVENT_B}', '{ORG_B}', '{STUDENT_B}', '{USER_B}', 'student_created', 'Org B event');
+"""
+
+SUSPEND_ORG_A = f"UPDATE public.organizations SET status = 'suspended' WHERE id = '{ORG_A}'"
+DISABLE_ADMIN_A = f"UPDATE public.users SET status = 'disabled' WHERE id = '{ADMIN_A}'"
+
+# (id, acting subject, setup applied first). Every scenario must leave
+# organization A's rows untouched.
+WHERELESS_SCENARIOS = (
+    ("suspended-org-admin", AUTH_ADMIN_A, SUSPEND_ORG_A),
+    ("suspended-org-teacher", AUTH_A, SUSPEND_ORG_A),
+    ("disabled-admin-account", AUTH_ADMIN_A, DISABLE_ADMIN_A),
+    ("other-org-teacher", AUTH_B, None),
+)
+
+
+def _org_a_rows(table):
+    if table == "organizations":
+        return f"id = '{ORG_A}'"
+    if table == "intervention_actions":
+        return f"intervention_plan_id = '{PLAN_A}'"
+    return f"organization_id = '{ORG_A}'"
+
+
+@pytest.fixture
+def privileged_session(migrated_database):
+    """A superuser session for probes that must never commit."""
+    with psycopg.connect(migrated_database) as conn:
+        try:
+            yield conn
+        finally:
+            conn.rollback()
+
+
+def _whereless_write(conn, table, operation, actor_auth, setup_sql=None, disable_rls=False):
+    """Run one WHERE-less write as `actor_auth` and measure organization A.
+
+    Everything happens in one transaction that is always rolled back, so the
+    shared seed data never changes, even when the write wrongly succeeds. The
+    session drops to `authenticated` with `SET LOCAL ROLE` for the write alone,
+    then returns to its privileged role with `RESET ROLE`, which can see the
+    transaction's own uncommitted changes.
+
+    Returns (org A rows before, org A rows after, org A rows carrying the marker).
+    """
+    column = WHERELESS_PROBE_COLUMN[table]
+    org_a = _org_a_rows(table)
+    try:
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        conn.execute(WHERELESS_EXTRA_SEED_SQL)
+        if setup_sql:
+            conn.execute(setup_sql)
+        if disable_rls:
+            conn.execute(f"ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY")
+        (before,) = conn.execute(f"SELECT count(*) FROM public.{table} WHERE {org_a}").fetchone()
+        assert before > 0, f"organization A owns no {table} rows; the probe would prove nothing"
+
+        conn.execute("SET LOCAL ROLE authenticated")
+        conn.execute(
+            "SELECT set_config('request.jwt.claims', %s, true)",
+            (f'{{"sub": "{actor_auth}", "role": "authenticated"}}',),
+        )
+        (who,) = conn.execute("SELECT current_user").fetchone()
+        assert who == "authenticated", "the write must run as a client role"
+        if operation == "UPDATE":
+            # Deliberately no WHERE and no RETURNING.
+            conn.execute(f"UPDATE public.{table} SET {column} = %s", (WHERELESS_MARKER,))
+        else:
+            conn.execute(f"DELETE FROM public.{table}")
+        conn.execute("RESET ROLE")
+
+        (after,) = conn.execute(f"SELECT count(*) FROM public.{table} WHERE {org_a}").fetchone()
+        (marked,) = conn.execute(
+            f"SELECT count(*) FROM public.{table} WHERE {org_a} AND {column} = %s",
+            (WHERELESS_MARKER,),
+        ).fetchone()
+        return before, after, marked
+    finally:
+        conn.rollback()
+
+
+class TestWherelessWritesAcrossEveryTable:
+    """No actor outside organization A's active membership can change or
+    remove organization A's rows with a WHERE-less statement, on any table."""
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "actor_auth,setup_sql",
+        [pytest.param(auth, setup, id=name) for name, auth, setup in WHERELESS_SCENARIOS],
+    )
+    def test_whereless_update_leaves_org_a_untouched(
+        self, privileged_session, table, actor_auth, setup_sql
+    ):
+        before, after, marked = _whereless_write(
+            privileged_session, table, "UPDATE", actor_auth, setup_sql
+        )
+        assert marked == 0, f"a WHERE-less UPDATE rewrote {marked} of org A's {table} rows"
+        assert after == before
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "actor_auth,setup_sql",
+        [pytest.param(auth, setup, id=name) for name, auth, setup in WHERELESS_SCENARIOS],
+    )
+    def test_whereless_delete_leaves_org_a_untouched(
+        self, privileged_session, table, actor_auth, setup_sql
+    ):
+        before, after, _ = _whereless_write(
+            privileged_session, table, "DELETE", actor_auth, setup_sql
+        )
+        assert after == before, (
+            f"a WHERE-less DELETE removed {before - after} of org A's {table} rows"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Negative control.
 # ---------------------------------------------------------------------------
 
@@ -1270,3 +1437,38 @@ class TestNegativeControl:
             (ORG_A,),
         ).fetchone()
         assert restored == 1, "rollback did not restore organization A's row"
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    def test_whereless_update_breach_is_observable_without_rls(
+        self, privileged_session, table
+    ):
+        """With RLS off on the table, the suspended admin's WHERE-less UPDATE
+        must rewrite every one of organization A's rows."""
+        before, _, marked = _whereless_write(
+            privileged_session, table, "UPDATE", AUTH_ADMIN_A, SUSPEND_ORG_A,
+            disable_rls=True,
+        )
+        assert marked == before, (
+            f"negative control failed: only {marked} of {before} org A {table} "
+            "rows changed with RLS disabled, so the sweep proves nothing"
+        )
+
+    # `organizations` and `users` are excluded: every tenant table references
+    # them, several with ON DELETE RESTRICT, so a WHERE-less DELETE fails on a
+    # foreign key before RLS could be observed. Their DELETE denial is still
+    # asserted above, and their UPDATE negative control shows the probe sees
+    # them.
+    @pytest.mark.parametrize(
+        "table", [t for t in PUBLIC_TABLES if t not in ("organizations", "users")]
+    )
+    def test_whereless_delete_breach_is_observable_without_rls(
+        self, privileged_session, table
+    ):
+        before, after, _ = _whereless_write(
+            privileged_session, table, "DELETE", AUTH_ADMIN_A, SUSPEND_ORG_A,
+            disable_rls=True,
+        )
+        assert after == 0, (
+            f"negative control failed: {after} of {before} org A {table} rows "
+            "survived a WHERE-less DELETE with RLS disabled"
+        )

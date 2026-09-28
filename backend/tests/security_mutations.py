@@ -112,7 +112,7 @@ class Mutation:
         needs_db,
         equivalent_because=None,
     ):
-        # Identifier from the M01..M19 mutation contract. Several
+        # Identifier from the M01..M20 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
         # distinct place (e.g. M18's seven separate JWT validation cases).
@@ -675,10 +675,26 @@ MUTATIONS = [
         "Any JWT parse or validation error must fail closed with 401; the "
         "error path may not return an identity.",
         "backend/app/core/auth.py",
-        "    except (JWTError, ValueError, TypeError) as exc:\n"
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
         "        raise unauthorized() from exc",
-        "    except (JWTError, ValueError, TypeError):\n"
+        "    except (JOSEError, ValueError, TypeError):\n"
         '        return {"sub": "auth-user-a"}',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18h",
+        "unusable published keys escape the 401 handler as server errors",
+        "Every JOSE error on the verification path, including a key the caller's "
+        "kid selects but python-jose cannot use, must fail closed with 401.",
+        "backend/app/core/auth.py",
+        "    except (JOSEError, ValueError, TypeError) as exc:\n",
+        # Re-raising JWKError reproduces the original JWTError-only catch
+        # exactly, without depending on a name the fixed module no longer
+        # imports.
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
+        '        if type(exc).__name__ == "JWKError":\n'
+        "            raise\n",
         APP_SUITE,
         False,
     ),
@@ -706,6 +722,25 @@ MUTATIONS = [
         f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
         "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
         "    REVOKE TRIGGER, REFERENCES ON TABLES\n",
+        RLS_SUITE,
+        True,
+    ),
+    # =====================================================================
+    # M20 — WHERE-less writes on tables other than students
+    # =====================================================================
+    Mutation(
+        "M20",
+        "ai_recommendations_delete widened to any authenticated user",
+        "A WHERE-less DELETE never consults the SELECT policy, so the DELETE "
+        "policy's USING clause alone must stop another tenant, a suspended "
+        "tenant or a disabled account from removing a tenant's rows.",
+        f"{MIGRATIONS}/004_org_lifecycle_and_write_authority.sql",
+        "CREATE POLICY ai_recommendations_delete\n"
+        "ON public.ai_recommendations FOR DELETE TO authenticated\n"
+        "USING (public.aeos_is_org_admin(ai_recommendations.organization_id));",
+        "CREATE POLICY ai_recommendations_delete\n"
+        "ON public.ai_recommendations FOR DELETE TO authenticated\n"
+        "USING (true);",
         RLS_SUITE,
         True,
     ),

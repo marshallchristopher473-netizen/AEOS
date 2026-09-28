@@ -51,7 +51,7 @@ pip install -r requirements-dev.txt
 # 2. Unmodified baseline — must be green before anything else means anything
 python -m pytest tests/ -q
 
-# 3. Complete M01-M19 mutation contract
+# 3. Complete M01-M20 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
 ```
@@ -64,7 +64,7 @@ artifact keyed to the exact commit SHA.
 than a silent skip, because a security test that skips quietly is worse than no
 test: CI stays green while proving nothing.
 
-## The M01–M19 contract
+## The M01–M20 contract
 
 | ID | Security boundary | Mutation | Primary killing test |
 | --- | --- | --- | --- |
@@ -92,8 +92,10 @@ test: CI stays green while proving nothing.
 | M18e | Missing `kid` rejected | fall back to the first published key | `test_auth.py::test_token_without_a_key_id_is_401` |
 | M18f | Unknown `kid` rejected | fall back to the first published key | `test_auth.py::test_unknown_key_id_is_401_even_though_a_usable_key_is_published` |
 | M18g | Malformed tokens fail closed | JWT error path returns a default subject | `test_auth.py::test_malformed_token_is_401` |
+| M18h | Unusable published keys fail closed as 401 | `JWKError` re-raised past the 401 handler (the pre-SEC-G1-06 behaviour) | `test_auth.py::test_unusable_published_key_is_401_not_a_server_error[*]` |
 | M19a | Client roles hold no privilege RLS does not govern | 005 stops revoking TRUNCATE on existing tables | `TestPrivilegesRlsDoesNotGovern::test_client_roles_hold_no_rls_blind_privilege`; `test_cross_tenant_truncate_is_refused[*]` |
 | M19b | Tables created later do not regain TRUNCATE | 005 stops revoking TRUNCATE from the default privileges | `TestPrivilegesRlsDoesNotGovern::test_tables_created_later_do_not_inherit_rls_blind_privileges` |
+| M20 | WHERE-less writes cannot reach another tenant on any table | `ai_recommendations_delete` → `USING (true)` | `TestWherelessWritesAcrossEveryTable::test_whereless_delete_leaves_org_a_untouched[*-ai_recommendations]` |
 
 ### On M18e and M18f
 
@@ -144,7 +146,8 @@ merely passing:
 - `test_rls_enforcement.py::TestNegativeControl` disables the specific RLS
   protection under test and asserts the same attack then succeeds — covering
   SELECT, unfiltered scan, UPDATE, DELETE, INSERT and suspension denial, and
-  it re-grants TRUNCATE to show the cross-tenant wipe that 005 prevents. If
+  it re-grants TRUNCATE to show the cross-tenant wipe that 005 prevents, and
+  switches RLS off per table to show the WHERE-less sweep sees every write. If
   those ever stop observing a breach, the module has become vacuous.
 - The mutation contract above, which breaks each control at source and records
   the assertion that fires.
@@ -166,3 +169,12 @@ merely passing:
   frontend would compile.
 - This verification measures whether the security suite can fail. It is not a
   penetration test, not a formal proof, and not a compliance certification.
+
+### On M20
+
+M20 exists to prove the WHERE-less sweep closes a real gap. With
+`ai_recommendations_delete` widened to `USING (true)`, every test that existed
+before the sweep still passes, because none issues a DELETE against
+`ai_recommendations`, and a DELETE carrying a `WHERE` clause would be masked by
+the SELECT policy anyway. Only
+`TestWherelessWritesAcrossEveryTable` fails, in all four attacker scenarios.
