@@ -58,11 +58,12 @@ jobs:
       # NAME intact while removing its effect — e.g. students_select becoming
       # USING (true) — which every string- and regex-based test would accept.
       #
-      # Covers the full M01-M18 contract: authentication, JWT validation, actor
+      # Covers the full M01-M19 contract: authentication, JWT validation, actor
       # and organization authority, RLS tenant isolation, lifecycle, write
-      # authority and service-role exposure. Each mutant is byte-compiled (or
-      # its migrations applied) before any test runs, so a mutant that does not
-      # build is reported INVALID rather than counted as killed.
+      # authority, service-role exposure and RLS-blind table privileges. Each
+      # mutant is byte-compiled (or its migrations applied) before any test
+      # runs, so a mutant that does not build is reported INVALID rather than
+      # counted as killed.
       - name: Prove the security suite can actually fail
         working-directory: backend
         env:

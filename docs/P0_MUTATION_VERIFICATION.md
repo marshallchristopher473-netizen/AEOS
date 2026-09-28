@@ -33,7 +33,7 @@ Every mutant therefore passes a validity precheck before any test runs:
 | Target | Precheck |
 | --- | --- |
 | Python (`*.py`) | `compileall` the tree, then import `app.main` |
-| SQL migration (`*.sql`) | apply shim + migrations 001–004 to a scratch database; every statement must succeed |
+| SQL migration (`*.sql`) | apply shim + migrations 001–005 to a scratch database; every statement must succeed |
 | Frontend (`*.ts`) | textual substitution only; no build step in this harness |
 
 Each mutant is then run against the smallest relevant security subset **and**
@@ -51,7 +51,7 @@ pip install -r requirements-dev.txt
 # 2. Unmodified baseline — must be green before anything else means anything
 python -m pytest tests/ -q
 
-# 3. Complete M01-M18 mutation contract
+# 3. Complete M01-M19 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
 ```
@@ -64,7 +64,7 @@ artifact keyed to the exact commit SHA.
 than a silent skip, because a security test that skips quietly is worse than no
 test: CI stays green while proving nothing.
 
-## The M01–M18 contract
+## The M01–M19 contract
 
 | ID | Security boundary | Mutation | Primary killing test |
 | --- | --- | --- | --- |
@@ -92,6 +92,8 @@ test: CI stays green while proving nothing.
 | M18e | Missing `kid` rejected | fall back to the first published key | `test_auth.py::test_token_without_a_key_id_is_401` |
 | M18f | Unknown `kid` rejected | fall back to the first published key | `test_auth.py::test_unknown_key_id_is_401_even_though_a_usable_key_is_published` |
 | M18g | Malformed tokens fail closed | JWT error path returns a default subject | `test_auth.py::test_malformed_token_is_401` |
+| M19a | Client roles hold no privilege RLS does not govern | 005 stops revoking TRUNCATE on existing tables | `TestPrivilegesRlsDoesNotGovern::test_client_roles_hold_no_rls_blind_privilege`; `test_cross_tenant_truncate_is_refused[*]` |
+| M19b | Tables created later do not regain TRUNCATE | 005 stops revoking TRUNCATE from the default privileges | `TestPrivilegesRlsDoesNotGovern::test_tables_created_later_do_not_inherit_rls_blind_privileges` |
 
 ### On M18e and M18f
 
@@ -141,7 +143,8 @@ merely passing:
 
 - `test_rls_enforcement.py::TestNegativeControl` disables the specific RLS
   protection under test and asserts the same attack then succeeds — covering
-  SELECT, unfiltered scan, UPDATE, DELETE, INSERT and suspension denial. If
+  SELECT, unfiltered scan, UPDATE, DELETE, INSERT and suspension denial, and
+  it re-grants TRUNCATE to show the cross-tenant wipe that 005 prevents. If
   those ever stop observing a breach, the module has become vacuous.
 - The mutation contract above, which breaks each control at source and records
   the assertion that fires.

@@ -28,7 +28,7 @@ proves nothing about the suite. Every mutation therefore goes through an
 explicit validity precheck before any test runs:
 
   * Python targets       -> byte-compile the tree and import `app.main`
-  * SQL targets          -> apply the shim + migrations 001..004 to a scratch
+  * SQL targets          -> apply the shim + migrations 001..005 to a scratch
                             database and require every statement to succeed
   * Frontend TS targets  -> textual substitution only (no build in this harness)
 
@@ -71,6 +71,7 @@ MIGRATION_FILES = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_revoke_rls_blind_table_privileges.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement
@@ -111,7 +112,7 @@ class Mutation:
         needs_db,
         equivalent_because=None,
     ):
-        # Identifier from the requested M01..M18 mutation contract. Several
+        # Identifier from the M01..M19 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
         # distinct place (e.g. M18's seven separate JWT validation cases).
@@ -681,6 +682,33 @@ MUTATIONS = [
         APP_SUITE,
         False,
     ),
+    # =====================================================================
+    # M19 — table privileges that RLS does not govern
+    # =====================================================================
+    Mutation(
+        "M19a",
+        "client roles keep TRUNCATE on existing tables",
+        "TRUNCATE is not subject to row-level security, so a client role "
+        "holding it can empty every tenant's rows regardless of policy.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "REVOKE TRUNCATE, TRIGGER, REFERENCES\n"
+        "    ON ALL TABLES IN SCHEMA public",
+        "REVOKE TRIGGER, REFERENCES\n"
+        "    ON ALL TABLES IN SCHEMA public",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19b",
+        "tables created later regain TRUNCATE from the default privileges",
+        "Revoking TRUNCATE from today's tables is not enough; the standing "
+        "default grant must not hand it to the next migration's tables.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        "    REVOKE TRIGGER, REFERENCES ON TABLES\n",
+        RLS_SUITE,
+        True,
+    ),
 ]
 
 
@@ -732,14 +760,14 @@ def _precheck(root, mutation, database_url):
                 for name in MIGRATION_FILES:
                     conn.execute((root / MIGRATIONS / name).read_text())
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
-            return False, f"migrations 001..004 failed to apply: {exc}"
+            return False, f"migrations 001..005 failed to apply: {exc}"
         finally:
             try:
                 with psycopg.connect(database_url, autocommit=True) as conn:
                     conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
             except Exception:  # noqa: BLE001 - cleanup only
                 pass
-        return True, "migrations 001..004 apply cleanly"
+        return True, "migrations 001..005 apply cleanly"
 
     return True, "textual substitution (no build step in this harness)"
 

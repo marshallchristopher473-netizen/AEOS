@@ -82,6 +82,7 @@ MIGRATIONS = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_revoke_rls_blind_table_privileges.sql",
 )
 
 pytestmark = pytest.mark.skipif(
@@ -196,14 +197,14 @@ def migrated_database():
                 assert path.exists(), f"missing migration: {path}"
                 conn.execute(path.read_text())
 
-            # Mirror Supabase's standing grants for tables created by the
-            # migrations. Without this, cross-tenant access would fail as a
-            # GRANT error rather than an RLS denial and the tests below would
-            # pass for the wrong reason.
-            conn.execute(
-                "GRANT ALL ON ALL TABLES IN SCHEMA public "
-                "TO anon, authenticated, service_role"
-            )
+            # Table privileges come from the shim's ALTER DEFAULT PRIVILEGES,
+            # applied as each migration creates its tables — which is exactly
+            # when Supabase grants them. There is deliberately no blanket
+            # `GRANT ALL ON ALL TABLES` here any more: run once after all the
+            # migrations, it re-granted whatever a migration had revoked
+            # (005), so the suite tested a privilege state production never
+            # has. `test_authenticated_keeps_every_dml_grant_rls_governs`
+            # proves the DML grants the RLS tests rely on are still present.
             conn.execute(
                 "GRANT ALL ON ALL SEQUENCES IN SCHEMA public "
                 "TO anon, authenticated, service_role"
@@ -281,6 +282,14 @@ def as_org_a_support(migrated_database):
     """A support-role member of organization A (read-only by policy)."""
     with psycopg.connect(migrated_database) as conn:
         _become(conn, AUTH_SUPPORT_A)
+        yield conn
+
+
+@pytest.fixture
+def as_org_b(migrated_database):
+    """An authenticated teacher in organization B, attacking organization A."""
+    with psycopg.connect(migrated_database) as conn:
+        _become(conn, AUTH_B)
         yield conn
 
 
@@ -987,6 +996,135 @@ class TestPeerAccessSemantics:
 
 
 # ---------------------------------------------------------------------------
+# Privileges RLS does not govern: TRUNCATE, TRIGGER, REFERENCES.
+# ---------------------------------------------------------------------------
+
+
+# Every table the migrations create in `public`. Kept explicit so a missing
+# table is a visible failure rather than a silently shorter loop.
+PUBLIC_TABLES = (
+    "ai_recommendations",
+    "assessment_results",
+    "assessments",
+    "audit_logs",
+    "intervention_actions",
+    "intervention_plans",
+    "organizations",
+    "progress_events",
+    "schools",
+    "students",
+    "users",
+)
+
+# Table privileges that row-level security does not govern. RLS applies to
+# SELECT, INSERT, UPDATE and DELETE only. TRUNCATE empties a table for every
+# tenant at once; TRIGGER lets the holder attach triggers to every tenant's
+# writes; REFERENCES lets the holder build constraints over the table. The
+# application and PostgREST need none of them, so no client role may hold them.
+RLS_BLIND_PRIVILEGES = ("TRUNCATE", "TRIGGER", "REFERENCES")
+CLIENT_ROLES = ("anon", "authenticated")
+DML_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
+
+
+class TestPrivilegesRlsDoesNotGovern:
+    """Pin the table privileges that sit outside every RLS policy.
+
+    Supabase's standing grant, `GRANT ALL ... TO anon, authenticated`, which
+    the shim mirrors, includes TRUNCATE. PostgreSQL does not apply row-level
+    security to TRUNCATE, so while that grant stands, any authenticated
+    member of any organization can empty every organization's rows in one
+    statement, whatever the policies say. Migration 005 revokes it, for
+    existing tables and, through the default privileges, for tables created
+    later.
+    """
+
+    def test_every_public_table_is_covered(self, admin_conn):
+        (names,) = admin_conn.execute(
+            "SELECT array_agg(tablename::text ORDER BY tablename) "
+            "FROM pg_tables WHERE schemaname = 'public'"
+        ).fetchone()
+        assert tuple(names) == PUBLIC_TABLES, (
+            "public tables changed; update PUBLIC_TABLES so the privilege "
+            f"checks below cover them: {names}"
+        )
+
+    @pytest.mark.parametrize("role", CLIENT_ROLES)
+    def test_client_roles_hold_no_rls_blind_privilege(self, admin_conn, role):
+        held = [
+            f"{table}:{privilege}"
+            for table in PUBLIC_TABLES
+            for privilege in RLS_BLIND_PRIVILEGES
+            if admin_conn.execute(
+                "SELECT has_table_privilege(%s, %s, %s)",
+                (role, f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        assert held == [], f"{role} holds privileges RLS does not govern: {held}"
+
+    def test_authenticated_keeps_every_dml_grant_rls_governs(self, admin_conn):
+        """Guard against over-revoking: if a DML grant went missing, the RLS
+        denial tests would pass on a permission error instead of a policy."""
+        missing = [
+            f"{table}:{privilege}"
+            for table in PUBLIC_TABLES
+            for privilege in DML_PRIVILEGES
+            if not admin_conn.execute(
+                "SELECT has_table_privilege('authenticated', %s, %s)",
+                (f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        assert missing == [], f"authenticated lost DML grants: {missing}"
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    def test_cross_tenant_truncate_is_refused(self, as_org_b, admin_conn, table):
+        """Organization B's teacher tries to empty the table, and with it
+        organization A's rows. The privilege check runs before any foreign-key
+        check, so a refusal here is specifically InsufficientPrivilege."""
+        (before,) = admin_conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()
+
+        as_org_b.execute("SET LOCAL lock_timeout = '10s'")
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                as_org_b.execute(f"TRUNCATE public.{table}")
+        finally:
+            # A connection fixture commits when its block exits normally, so a
+            # TRUNCATE that wrongly succeeds must be undone here, before the
+            # failure propagates, or it wipes the seed data every later test
+            # depends on.
+            as_org_b.rollback()
+
+        (after,) = admin_conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()
+        assert after == before, f"{table} lost rows to a refused TRUNCATE"
+
+    def test_tables_created_later_do_not_inherit_rls_blind_privileges(
+        self, migrated_database
+    ):
+        """005 must also change the default privileges; otherwise the next
+        migration's table silently regains TRUNCATE."""
+        with psycopg.connect(migrated_database) as conn:
+            try:
+                conn.execute("CREATE TABLE public.aeos_privilege_probe (id int)")
+                held = {
+                    privilege: conn.execute(
+                        "SELECT has_table_privilege("
+                        "'authenticated', 'public.aeos_privilege_probe', %s)",
+                        (privilege,),
+                    ).fetchone()[0]
+                    for privilege in (*RLS_BLIND_PRIVILEGES, "SELECT")
+                }
+            finally:
+                conn.rollback()
+
+        assert held["SELECT"], (
+            "default privileges no longer grant DML, so this probe no longer "
+            "models Supabase"
+        )
+        assert not any(held[p] for p in RLS_BLIND_PRIVILEGES), (
+            f"a newly created table grants RLS-blind privileges: {held}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Negative control.
 # ---------------------------------------------------------------------------
 
@@ -1091,3 +1229,44 @@ class TestNegativeControl:
         assert affected == 1, (
             "negative control failed: INSERT into org B was still blocked with RLS disabled"
         )
+
+    def test_truncate_breach_is_observable_with_the_privilege_restored(
+        self, admin_conn, as_org_b
+    ):
+        """Negative control for the TRUNCATE denial: grant the privilege back
+        and the same cross-tenant attack empties organization A's rows.
+
+        TRUNCATE holds ACCESS EXCLUSIVE until the attacker's transaction ends,
+        so the privileged connection cannot look until then. The attacker's
+        own transaction therefore drops to the session's privileged role with
+        `RESET ROLE` to inspect, and the rollback that follows restores both
+        the table and the `authenticated` identity.
+        """
+        as_org_b.rollback()
+        admin_conn.execute("GRANT TRUNCATE ON public.assessment_results TO authenticated")
+        try:
+            as_org_b.execute("SET LOCAL lock_timeout = '10s'")
+            (who,) = as_org_b.execute("SELECT current_user").fetchone()
+            assert who == "authenticated", "attack must run as a client role"
+            as_org_b.execute("TRUNCATE public.assessment_results")
+            as_org_b.execute("RESET ROLE")
+            (org_a_left,) = as_org_b.execute(
+                "SELECT count(*) FROM public.assessment_results "
+                "WHERE organization_id = %s",
+                (ORG_A,),
+            ).fetchone()
+        finally:
+            as_org_b.rollback()
+            admin_conn.execute(
+                "REVOKE TRUNCATE ON public.assessment_results FROM authenticated"
+            )
+
+        assert org_a_left == 0, (
+            "negative control failed: TRUNCATE with the privilege restored did "
+            "not empty organization A's rows, so the denial test proves nothing"
+        )
+        (restored,) = admin_conn.execute(
+            "SELECT count(*) FROM public.assessment_results WHERE organization_id = %s",
+            (ORG_A,),
+        ).fetchone()
+        assert restored == 1, "rollback did not restore organization A's row"
