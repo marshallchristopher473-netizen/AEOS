@@ -187,7 +187,7 @@ MUTATIONS = [
         "        payload = jwt.decode(\n"
         "            token,\n"
         "            matching_key,\n"
-        '            algorithms=["RS256"],\n'
+        "            algorithms=[algorithm],\n"
         "            audience=SUPABASE_JWT_AUDIENCE,\n"
         "            issuer=SUPABASE_JWT_ISSUER,\n"
         "            options={\n"
@@ -636,6 +636,32 @@ MUTATIONS = [
         False,
     ),
     Mutation(
+        "M18i",
+        "symmetric (oct) published keys accepted as HS256",
+        "A shared secret must never verify a token, even one published in the "
+        "JWKS; otherwise anyone who can read the JWKS can mint any session.",
+        "backend/app/core/auth.py",
+        '    elif key_type == "EC" and jwk.get("crv") == "P-256":\n'
+        '        algorithm = "ES256"\n',
+        '    elif key_type == "EC" and jwk.get("crv") == "P-256":\n'
+        '        algorithm = "ES256"\n'
+        '    elif key_type == "oct":\n'
+        '        algorithm = "HS256"\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18j",
+        "verification algorithm taken from the token header",
+        "The algorithm is pinned by the published key the `kid` selects; the "
+        "token's own `alg` header may not choose it.",
+        "backend/app/core/auth.py",
+        "            algorithms=[algorithm],\n",
+        '            algorithms=[unverified_header.get("alg")],\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
         "M18e",
         "missing key ID falls back to the first published key",
         "A token whose header carries no `kid` must be rejected; the "
@@ -674,9 +700,9 @@ MUTATIONS = [
         "Any JWT parse or validation error must fail closed with 401; the "
         "error path may not return an identity.",
         "backend/app/core/auth.py",
-        "    except (JWTError, ValueError, TypeError) as exc:\n"
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
         "        raise unauthorized() from exc",
-        "    except (JWTError, ValueError, TypeError):\n"
+        "    except (JOSEError, ValueError, TypeError):\n"
         '        return {"sub": "auth-user-a"}',
         APP_SUITE,
         False,

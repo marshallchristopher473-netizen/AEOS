@@ -3,7 +3,8 @@ from typing import Any, Dict, Optional
 import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import jwt
+from jose.exceptions import JOSEError
 
 from app.core.config import (
     SUPABASE_JWKS_URL,
@@ -60,6 +61,35 @@ def find_jwk(jwks: Dict[str, Any], kid: str) -> Optional[Dict[str, Any]]:
     )
 
 
+def signing_algorithm(jwk: Dict[str, Any]) -> Optional[str]:
+    """Return the one algorithm a published key may verify, or None.
+
+    Supabase signs sessions with an asymmetric key: ECC P-256 (ES256, its
+    recommended default) or RSA (RS256). The algorithm is pinned by the key the
+    token's `kid` selects, never taken from the token's own `alg` header, and
+    each key type maps to exactly one algorithm. Symmetric ("oct") keys are
+    never accepted: a shared secret that appears in a JWKS lets anyone mint
+    tokens. The curve is checked here because python-jose will verify ES256
+    over a P-384 key.
+
+    A key that passes this check can still be unusable, for example an EC key
+    published without its coordinates. python-jose then raises JWKError, which
+    get_current_user turns into a 401 by catching JOSEError.
+    """
+    key_type = jwk.get("kty")
+    if key_type == "RSA":
+        algorithm = "RS256"
+    elif key_type == "EC" and jwk.get("crv") == "P-256":
+        algorithm = "ES256"
+    else:
+        return None
+
+    declared = jwk.get("alg")
+    if declared is not None and declared != algorithm:
+        return None
+    return algorithm
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
 ):
@@ -87,10 +117,14 @@ async def get_current_user(
         if matching_key is None:
             raise unauthorized("JWT signing key is unknown")
 
+        algorithm = signing_algorithm(matching_key)
+        if algorithm is None:
+            raise unauthorized("JWT signing key type is not supported")
+
         payload = jwt.decode(
             token,
             matching_key,
-            algorithms=["RS256"],
+            algorithms=[algorithm],
             audience=SUPABASE_JWT_AUDIENCE,
             issuer=SUPABASE_JWT_ISSUER,
             options={
@@ -116,5 +150,8 @@ async def get_current_user(
         if not isinstance(subject, str) or not subject.strip():
             raise unauthorized("JWT is missing a usable subject")
         return payload
-    except (JWTError, ValueError, TypeError) as exc:
+    # JOSEError, not JWTError: python-jose raises JWKError (a JOSEError that is
+    # not a JWTError) when the key selected by the caller's `kid` is not an RSA
+    # key. Catching only JWTError let that escape as a 500 (SEC-G1-06).
+    except (JOSEError, ValueError, TypeError) as exc:
         raise unauthorized() from exc
