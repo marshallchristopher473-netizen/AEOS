@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from jose.exceptions import JOSEError
+from jose.jwk import construct as construct_jwk
 
 from app.core.config import (
     SUPABASE_JWKS_URL,
@@ -64,17 +65,15 @@ def find_jwk(jwks: Dict[str, Any], kid: str) -> Optional[Dict[str, Any]]:
 def signing_algorithm(jwk: Dict[str, Any]) -> Optional[str]:
     """Return the one algorithm a published key may verify, or None.
 
-    Supabase signs sessions with an asymmetric key: ECC P-256 (ES256, its
-    recommended default) or RSA (RS256). The algorithm is pinned by the key the
-    token's `kid` selects, never taken from the token's own `alg` header, and
-    each key type maps to exactly one algorithm. Symmetric ("oct") keys are
-    never accepted: a shared secret that appears in a JWKS lets anyone mint
-    tokens. The curve is checked here because python-jose will verify ES256
-    over a P-384 key.
-
-    A key that passes this check can still be unusable, for example an EC key
-    published without its coordinates. python-jose then raises JWKError, which
-    get_current_user turns into a 401 by catching JOSEError.
+    Only Supabase's asymmetric signing keys are trusted: ECC P-256 (ES256, the
+    algorithm Supabase recommends) or RSA (RS256). A project still signing with
+    the legacy HS256 secret publishes no keys, so its tokens are refused as
+    signed by an unknown key. The algorithm is pinned by the key the token's
+    `kid` selects, never taken from the token's own `alg` header, and each key
+    type maps to exactly one algorithm. Symmetric ("oct") keys are never
+    accepted: a shared secret that appears in a JWKS lets anyone mint tokens.
+    The curve is checked here because python-jose will verify ES256 over a
+    P-384 key.
     """
     key_type = jwk.get("kty")
     if key_type == "RSA":
@@ -121,9 +120,13 @@ async def get_current_user(
         if algorithm is None:
             raise unauthorized("JWT signing key type is not supported")
 
+        # Build the key for the pinned algorithm here rather than handing
+        # python-jose the raw entry: given a dict with a "keys" member it
+        # verifies against those nested keys instead of the entry checked above.
+        verification_key = construct_jwk(matching_key, algorithm)
         payload = jwt.decode(
             token,
-            matching_key,
+            verification_key,
             algorithms=[algorithm],
             audience=SUPABASE_JWT_AUDIENCE,
             issuer=SUPABASE_JWT_ISSUER,
@@ -151,7 +154,8 @@ async def get_current_user(
             raise unauthorized("JWT is missing a usable subject")
         return payload
     # JOSEError, not JWTError: python-jose raises JWKError (a JOSEError that is
-    # not a JWTError) when the key selected by the caller's `kid` is not an RSA
-    # key. Catching only JWTError let that escape as a 500 (SEC-G1-06).
+    # not a JWTError) when it cannot build the key the caller's `kid` selects,
+    # for example an EC key published without its coordinates. Catching only
+    # JWTError let that escape as a 500 instead of a 401.
     except (JOSEError, ValueError, TypeError) as exc:
         raise unauthorized() from exc

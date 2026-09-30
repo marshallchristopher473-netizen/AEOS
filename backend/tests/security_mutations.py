@@ -114,7 +114,7 @@ class Mutation:
         # Identifier from the requested M01..M18 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
-        # distinct place (e.g. M18's seven separate JWT validation cases).
+        # distinct place (e.g. M18's separate JWT validation cases).
         self.contract = contract
         self.name = name
         # Plain-language statement of the security property being removed.
@@ -186,7 +186,7 @@ MUTATIONS = [
         "backend/app/core/auth.py",
         "        payload = jwt.decode(\n"
         "            token,\n"
-        "            matching_key,\n"
+        "            verification_key,\n"
         "            algorithms=[algorithm],\n"
         "            audience=SUPABASE_JWT_AUDIENCE,\n"
         "            issuer=SUPABASE_JWT_ISSUER,\n"
@@ -656,8 +656,29 @@ MUTATIONS = [
         "The algorithm is pinned by the published key the `kid` selects; the "
         "token's own `alg` header may not choose it.",
         "backend/app/core/auth.py",
+        # The pinned algorithm is enforced twice: the key is built for it and
+        # decode allows only it. Taking the header's alg means both.
+        "        verification_key = construct_jwk(matching_key, algorithm)\n"
+        "        payload = jwt.decode(\n"
+        "            token,\n"
+        "            verification_key,\n"
         "            algorithms=[algorithm],\n",
+        '        verification_key = construct_jwk(matching_key, unverified_header.get("alg"))\n'
+        "        payload = jwt.decode(\n"
+        "            token,\n"
+        "            verification_key,\n"
         '            algorithms=[unverified_header.get("alg")],\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18k",
+        "raw JWKS entry handed to python-jose instead of the checked key",
+        "The key that verifies the signature must be exactly the published "
+        "entry whose type and curve were checked, not keys nested inside it.",
+        "backend/app/core/auth.py",
+        "        verification_key = construct_jwk(matching_key, algorithm)\n",
+        "        verification_key = matching_key\n",
         APP_SUITE,
         False,
     ),

@@ -381,11 +381,12 @@ async def test_algorithm_the_published_key_does_not_allow_is_401(both_key_types,
 async def test_symmetric_key_in_the_jwks_is_never_accepted(monkeypatch, configured_auth):
     """M18i: a shared secret must never verify a token, even when published.
 
-    A self-hosted Supabase JWKS can carry the legacy HS256 `JWT_SECRET` as an
-    "oct" key so that internal services keep verifying old tokens. If this
-    backend accepted it, anyone who can read the JWKS could mint a session for
-    any user. The token below is correctly signed with that secret, so the only
-    thing that can reject it is the refusal to use symmetric keys at all.
+    Supabase's self-hosting guide builds a key set for its internal services
+    that includes the legacy HS256 `JWT_SECRET` as an "oct" key. If a set like
+    that ever reached this backend and it accepted the key, anyone who can read
+    the set could mint a session for any user. The token below is correctly
+    signed with that secret, so the only thing that can reject it is the
+    refusal to use symmetric keys at all.
     """
     secret = b"legacy-jwt-secret-that-is-now-public-0123456789"
     oct_jwk = {"kid": "test-kid", "kty": "oct", "alg": "HS256", "k": b64url_bytes(secret)}
@@ -402,44 +403,67 @@ async def test_symmetric_key_in_the_jwks_is_never_accepted(monkeypatch, configur
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "case",
-    ["ec-p384-key", "ed25519-okp-key", "rsa-key-declared-for-rs512"],
+    [
+        "ec-p384-key",
+        "ec-p384-key-declared-es256",
+        "rsa-key-declared-for-rs512",
+        "rsa-key-declared-for-es256",
+        "ec-p256-entry-wrapping-nested-keys",
+    ],
 )
-async def test_published_key_type_this_backend_does_not_support_is_401(
-    monkeypatch, configured_auth, case
+async def test_published_key_this_backend_must_not_use_is_401_even_if_jose_accepts(
+    monkeypatch, configured_auth, signing_material, case
 ):
-    """Only RSA/RS256 and EC P-256/ES256 keys may verify a token.
+    """Each token below is correctly signed and python-jose alone accepts it.
 
-    `ec-p384-key` matters most: python-jose itself verifies an ES256 signature
-    over a P-384 key, so only the explicit curve check rejects it.
+    Only RSA/RS256 and EC P-256/ES256 keys may verify, and only for the one
+    algorithm the key is published for. The P-384 cases matter because
+    python-jose verifies ES256 over a P-384 key. The declared-alg cases sign
+    RS256 with the REAL published RSA key, so only the declared-alg check can
+    reject them. The nested-keys case (M18k) is a P-256 entry wrapping a P-384
+    key: python-jose treats any dict with a "keys" member as a key set, so
+    handing it the raw entry would verify against the key it wraps.
     """
-    if case == "ec-p384-key":
-        private_key = ec.generate_private_key(ec.SECP384R1())
-        published = ec_public_jwk(private_key, kid="test-kid", crv="P-384", size=48, alg=None)
-        token = make_token(pkcs8_pem(private_key), algorithm="ES256")
-        # Precondition: without the curve check this token would be accepted.
-        assert jwt.decode(token, published, algorithms=["ES256"], audience=AUDIENCE)["sub"]
-    elif case == "ed25519-okp-key":
-        public_raw = (
-            ed25519.Ed25519PrivateKey.generate()
-            .public_key()
-            .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-        )
-        published = {"kid": "test-kid", "kty": "OKP", "crv": "Ed25519", "x": b64url_bytes(public_raw)}
+    _, rsa_jwk = signing_material
+    if case.startswith("ec-p384-key"):
+        p384 = ec.generate_private_key(ec.SECP384R1())
+        declared = "ES256" if case.endswith("declared-es256") else None
+        published = ec_public_jwk(p384, kid="test-kid", crv="P-384", size=48, alg=declared)
+        token = make_token(pkcs8_pem(p384), algorithm="ES256")
+    elif case.startswith("rsa-key-declared-for"):
+        published = {**rsa_jwk, "alg": case.rsplit("-", 1)[1].upper()}
         token = make_token(configured_auth)
     else:
-        rsa_private = serialization.load_pem_private_key(configured_auth, password=None)
-        numbers = rsa_private.public_key().public_numbers()
+        p384 = ec.generate_private_key(ec.SECP384R1())
+        wrapped = ec_public_jwk(p384, kid="test-kid", crv="P-384", size=48, alg=None)
         published = {
-            "kid": "test-kid",
-            "kty": "RSA",
-            "alg": "RS512",
-            "n": b64url_uint(numbers.n),
-            "e": b64url_uint(numbers.e),
+            **ec_public_jwk(ec.generate_private_key(ec.SECP256R1()), kid="test-kid"),
+            "keys": [wrapped],
         }
-        token = make_token(configured_auth, algorithm="RS512")
+        token = make_token(pkcs8_pem(p384), algorithm="ES256")
+
+    # Precondition: python-jose alone accepts the token, so the rejection
+    # below comes from our key policy and not from a broken fixture.
+    algorithm = jwt.get_unverified_header(token)["alg"]
+    assert jwt.decode(token, published, algorithms=[algorithm], audience=AUDIENCE)["sub"]
 
     publish_only(monkeypatch, published)
     await assert_rejected(token)
+
+
+@pytest.mark.asyncio
+async def test_published_okp_key_is_401(monkeypatch, configured_auth):
+    """Ed25519 ("OKP") is not a key type this backend verifies with."""
+    public_raw = (
+        ed25519.Ed25519PrivateKey.generate()
+        .public_key()
+        .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    )
+    publish_only(
+        monkeypatch,
+        {"kid": "test-kid", "kty": "OKP", "crv": "Ed25519", "x": b64url_bytes(public_raw)},
+    )
+    await assert_rejected(make_token(configured_auth))
 
 
 @pytest.mark.asyncio

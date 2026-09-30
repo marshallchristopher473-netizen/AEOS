@@ -1,15 +1,20 @@
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 BACKEND = Path(__file__).resolve().parents[1]
 
 
-def config_value(name, **env):
-    """Read one setting from a fresh interpreter, so no module state leaks."""
+def config_value(tmp_path, name, **env):
+    """Read one setting from a fresh interpreter, so no module state leaks.
+
+    config.py loads `backend/.env` with override=True, so it runs from a copy of
+    the `app` package that has no .env beside it. Otherwise a developer's own
+    .env would decide the result.
+    """
+    shutil.copytree(BACKEND / "app", tmp_path / "app")
     child_env = {
         key: value
         for key, value in os.environ.items()
@@ -18,7 +23,7 @@ def config_value(name, **env):
     child_env.update(env)
     result = subprocess.run(
         [sys.executable, "-c", f"from app.core import config; print(config.{name})"],
-        cwd=BACKEND,
+        cwd=tmp_path,
         env=child_env,
         capture_output=True,
         text=True,
@@ -27,11 +32,7 @@ def config_value(name, **env):
     return result.stdout.strip()
 
 
-@pytest.mark.skipif(
-    (BACKEND / ".env").exists(),
-    reason="backend/.env overrides the environment, so the derived default is not observable",
-)
-def test_default_jwks_url_is_supabases_documented_discovery_endpoint():
+def test_default_jwks_url_is_supabases_documented_discovery_endpoint(tmp_path):
     """The key set must be fetched from the endpoint Supabase documents.
 
     https://supabase.com/docs/guides/auth/signing-keys gives
@@ -40,6 +41,6 @@ def test_default_jwks_url_is_supabases_documented_discovery_endpoint():
     A wrong default makes every authenticated request fail with 503.
     """
     assert (
-        config_value("SUPABASE_JWKS_URL", SUPABASE_URL="https://project-ref.supabase.co/")
+        config_value(tmp_path, "SUPABASE_JWKS_URL", SUPABASE_URL="https://project-ref.supabase.co/")
         == "https://project-ref.supabase.co/auth/v1/.well-known/jwks.json"
     )
