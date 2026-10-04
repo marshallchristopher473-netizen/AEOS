@@ -77,6 +77,16 @@ with the actual TypeScript request modules and synthetic fetch responses.
 They can run before `npm ci`; they do not render React. CI now uses Node 22
 to meet the pinned frontend packages' engine requirement and runs these checks.
 
+CI also builds the actual Next.js frontend, starts the loopback-only
+`backend/tests/review_fixture_server.py` with `AEOS_SYNTHETIC_REVIEW=1`, and runs
+`frontend/tests/browser_review.py` against Chrome. The fixture uses production
+HTTP routes, actor resolution, services, and schemas with synthetic sessions
+and storage. The browser check covers intake, empty reviews, saving/reloading
+both states, zero/optional scores, validation, discard, failed-save retention,
+role and cross-tenant denial, and missing-session feedback. It uses the
+existing backend dependencies and the runner's Chrome; no lockfile is changed.
+It does not establish JWT verification or real PostgREST persistence.
+
 For the limited offline business-logic check from the repository root:
 
 ```bash
@@ -130,6 +140,14 @@ The draft workflow PR is the place to reconcile the existing GitHub Actions
 jobs against its exact pushed head. Historical PR test counts are not evidence
 that this modified candidate passed. Hosted Supabase, browser verification,
 and independent P0 certification require separate evidence.
+
+The initial PR #23 candidate `823dcdf` passed the backend and RLS CI jobs but
+failed the frontend audit on the unchanged lockfile: 7 reported vulnerabilities
+(6 high, 1 critical), including the Next.js ImageResponse advisory
+`GHSA-vcvr-r3jv-pc5j`. That run skipped subsequent frontend steps. CI now runs
+the functional checks after a successful install even when audit fails;
+the audit remains a failing gate. Dependencies and the lockfile are preserved,
+and this workflow is not cleared for merge or deployment by that evidence.
 
 ## Claims this workflow supports
 
