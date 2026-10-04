@@ -143,6 +143,7 @@ jobs:
         run: npm ci
 
       - name: Audit frontend dependency vulnerabilities
+        shell: bash
         working-directory: frontend
         # tee preserves a machine-readable inventory; bash pipefail keeps every
         # audit finding at or above low severity a failing security gate.
