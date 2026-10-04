@@ -142,9 +142,17 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Audit frontend dependency vulnerabilities
+      # Production dependencies ship to users: any advisory fails, no exceptions.
+      - name: Audit production dependencies
         working-directory: frontend
-        run: npm audit --audit-level=low
+        run: npm audit --omit=dev --audit-level=low
+
+      # Development tooling is audited in full. This fails on any advisory not
+      # listed in frontend/audit-exceptions.json, and on any listed exception
+      # whose expiry date has passed, so an exception cannot outlive its review.
+      - name: Audit all dependencies against dated exceptions
+        working-directory: frontend
+        run: node ../.github/scripts/check-npm-audit.mjs audit-exceptions.json
 
       - name: Verify frontend dependency tree
         working-directory: frontend
