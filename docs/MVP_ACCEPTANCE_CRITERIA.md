@@ -1,5 +1,11 @@
 # AEOS MVP Acceptance Criteria
 
+These are target acceptance criteria, not a report that the current repository
+implements or has verified every item. The bounded teacher assessment review
+workflow and its evidence are recorded in
+[TEACHER_ASSESSMENT_REVIEW.md](TEACHER_ASSESSMENT_REVIEW.md). Current role support
+is teacher, admin, and support; the additional roles below remain targets.
+
 ## Product Scope
 This document defines the minimum acceptance criteria for the AEOS Intervention Intelligence Platform MVP. The MVP is limited to a secure, teacher-focused workflow for student intervention planning, assessment review, and AI-assisted recommendation drafting.
 
