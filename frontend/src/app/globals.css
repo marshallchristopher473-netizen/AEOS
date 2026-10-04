@@ -15,7 +15,7 @@ a {
   text-decoration: none;
 }
 
-button, input, select {
+button, input, select, textarea {
   font: inherit;
 }
 
@@ -86,7 +86,8 @@ button, input, select {
 
 .search-bar input,
 .form-grid input,
-.form-grid select {
+.form-grid select,
+.form-grid textarea {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 10px 12px;
@@ -172,6 +173,15 @@ button, input, select {
   color: #475569;
   padding: 24px 0;
 }
+
+.review-section { margin-top: 24px; }
+.review-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.review-summary-field { grid-column: 1 / -1; }
+.review-actions { margin-top: 20px; }
+.review-list { list-style: none; padding: 0; display: grid; gap: 12px; }
+.review-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.form-grid textarea { resize: vertical; }
+button:disabled { cursor: wait; opacity: 0.65; }
 
 @media (max-width: 640px) {
   .topbar {

@@ -130,35 +130,91 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install pinned frontend dependencies
+        id: frontend-install
         working-directory: frontend
         run: npm ci
 
       - name: Audit frontend dependency vulnerabilities
+        shell: bash
         working-directory: frontend
-        run: npm audit --audit-level=low
+        # tee preserves a machine-readable inventory; bash pipefail keeps every
+        # audit finding at or above low severity a failing security gate.
+        run: npm audit --audit-level=low --json | tee npm-audit.json
+
+      - name: Publish dependency audit for the checked-out tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dependency-audit-${{ github.sha }}
+          path: frontend/npm-audit.json
+          if-no-files-found: warn
 
       - name: Verify frontend dependency tree
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npm ls --all
 
+      - name: Verify assessment request contracts
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: node --experimental-vm-modules tests/assessment-api.test.mjs
+
       - name: Lint frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         env:
           CI: '1'
         run: npm run lint
 
       - name: Type-check frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npx tsc --noEmit
 
       - name: Build frontend
+        id: frontend-build
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npm run build
+
+      - name: Set up Python for the synthetic review fixture
+        if: ${{ !cancelled() && steps.frontend-build.outcome == 'success' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install existing backend dependencies for browser verification
+        id: review-fixture-deps
+        if: ${{ !cancelled() && steps.frontend-build.outcome == 'success' }}
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Verify teacher review in Chrome against the synthetic backend
+        if: ${{ !cancelled() && steps.review-fixture-deps.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AEOS_SYNTHETIC_REVIEW=1
+          (cd backend && python -m tests.review_fixture_server) > /tmp/aeos-review-backend.log 2>&1 &
+          review_backend_pid=$!
+          (cd frontend && npm run start -- --hostname 127.0.0.1) > /tmp/aeos-review-frontend.log 2>&1 &
+          review_frontend_pid=$!
+          google-chrome --headless --no-sandbox --disable-dev-shm-usage --remote-debugging-port=9222 --user-data-dir=/tmp/aeos-review-chrome about:blank > /tmp/aeos-review-chrome.log 2>&1 &
+          review_chrome_pid=$!
+          trap 'kill "$review_backend_pid" "$review_frontend_pid" "$review_chrome_pid" 2>/dev/null || true' EXIT
+          python frontend/tests/browser_review.py
+
+      - name: Publish synthetic browser fixture logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: teacher-review-browser-logs-${{ github.sha }}
+          path: /tmp/aeos-review-*.log
+          if-no-files-found: ignore

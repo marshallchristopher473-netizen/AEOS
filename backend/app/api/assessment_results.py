@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies import get_current_actor, require_privileged_write
 from app.models.schemas import (
@@ -27,10 +27,14 @@ def create_assessment_result(
 
 @router.get("", response_model=list[AssessmentResultResponse])
 def list_assessment_results(
+    assessment_id: str | None = Query(default=None, min_length=1),
     actor: AuthenticatedActor = Depends(get_current_actor),
     client=Depends(get_supabase_admin_client),
 ):
-    return AssessmentResultService(client).list_assessment_results(actor.organization_id)
+    return AssessmentResultService(client).list_assessment_results(
+        actor.organization_id,
+        assessment_id=assessment_id,
+    )
 
 
 @router.get("/{assessment_result_id}", response_model=AssessmentResultResponse)

@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
+import { getAccessToken } from '@/lib/api';
+import { createAssessment } from '@/lib/assessments';
 
 export default function NewAssessmentPage() {
   const router = useRouter();
@@ -24,25 +26,13 @@ export default function NewAssessmentPage() {
     };
 
     try {
-      const token = localStorage.getItem('aeos_access_token');
+      const token = getAccessToken();
       if (!token) {
         throw new Error('Please sign in before creating an assessment.');
       }
 
-      const response = await fetch('http://127.0.0.1:8000/assessments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      router.push('/assessments');
+      const assessment = await createAssessment(payload);
+      router.push(`/assessments/${assessment.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create assessment.');
     } finally {
@@ -59,7 +49,7 @@ export default function NewAssessmentPage() {
         </div>
       </div>
 
-      {error ? <div className="error">{error}</div> : null}
+      {error ? <div role="alert" className="error">{error}</div> : null}
 
       <div className="card">
         <form onSubmit={handleSubmit}>
