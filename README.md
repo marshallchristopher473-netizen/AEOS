@@ -1,77 +1,52 @@
-# AEOS - AI Education Operations System
+# AEOS — AI Education Operations System
 
-## Mission
+AEOS is an education operations prototype with a Next.js/React frontend, a
+FastAPI backend, and versioned Supabase/PostgreSQL migrations.
 
-AEOS is an AI-powered education operations platform designed to improve:
+The current teacher assessment review slice supports assessment intake, reading
+an assessment and its saved results, and adding a teacher-entered review with an
+optional score and a draft or complete status. Start at `/assessments`.
+See [the workflow guide](docs/TEACHER_ASSESSMENT_REVIEW.md) for prerequisites,
+reproduction commands, and the recorded verification limits.
 
-- Teacher productivity
-- Student learning outcomes
-- Parent engagement
-- Assessment intelligence
-- Special education workflows
+The existing backend also exposes student and intervention-plan create/list/read
+routes. Authenticated requests resolve the actor, role, and organization on the
+server; teacher/admin writes use the shared tenant-scoped services. This is an
+implementation description, not independent P0 security certification.
 
-## Core Systems
+AI generation, diagnostic accuracy, rubric generation, standards alignment,
+teacher analytics, parent communication, and improved educational outcomes are
+not established by this slice. The repository does not demonstrate time savings,
+learning gains, or pilot readiness. The
+[MVP acceptance criteria](docs/MVP_ACCEPTANCE_CRITERIA.md) describe target behavior.
 
-### 1. AI Assessment Engine
-- Diagnostic assessments
-- Rubric generation
-- Standards alignment
-- Feedback generation
+## Local development
 
-### 2. Learning Intelligence Layer
-- Student profiles
-- Learning pathways
-- Intervention recommendations
+Use Python 3.11+ and Node.js 22.13+ (the pinned Supabase frontend packages require
+Node 22). Install the existing dependencies without changing the lockfile:
 
-### 3. Education Operations Dashboard
-- Teacher analytics
-- Parent communication
-- Progress monitoring
+```bash
+cd backend
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-## Technology Stack
+In a separate terminal:
 
-Frontend:
-- React / Next.js
+```bash
+cd frontend
+npm ci
+npm run dev
+```
 
-Backend:
-- FastAPI
+Next.js proxies `/api` to `http://127.0.0.1:8000`. Set the server-side
+`AEOS_API_URL` from `frontend/.env.example` if the backend lives elsewhere.
+The assessment pages use the shared API client and this same-origin proxy.
 
-Database:
-- PostgreSQL + pgvector
-
-AI:
-- Claude API
-- RAG pipelines
-- AI agents
-
-## Development Status
-
-Current Phase:
-MVP Development
-
-Priority:
-Pilot → Validation → Revenue
-
-## Environment and Deployment Notes
-
-### Secret handling
-- Keep all sensitive values in local environment files and GitHub Codespaces secrets.
-- Do not commit Supabase URL, anon key, service-role key, or other credentials to the repository.
-- The repository already ignores local environment files through .gitignore.
-
-### Local development template
-- Copy backend/.env.example to backend/.env and replace the placeholder values with your own local settings.
-- The backend reads the Supabase configuration from backend/.env during development.
-
-### Connection flow
-- Codespaces: store secrets in the Codespaces environment or GitHub repository secrets, then expose them as environment variables in the dev container.
-- GitHub: use repository or organization secrets for CI/CD and deployment workflows.
-- Vercel: set the same environment variables in Vercel project settings for frontend/backend deployments.
-- Supabase: use the project URL and service role or anon keys from the Supabase project settings. Keep service-role keys only in server-side environments.
-
-### Recommended setup
-1. Create a Supabase project and copy its URL and keys.
-2. Create a backend/.env file from backend/.env.example.
-3. Add the same values to GitHub or Codespaces secrets if you want CI/CD or remote development to access them.
-4. Configure Vercel environment variables to match the production values used by the deployed app.
-
+Use `backend/.env.example` for backend configuration. Keep credentials in ignored
+environment files or your environment's secret manager; service-role credentials
+must stay server-side. A configured, migrated database and a supported Supabase
+session are prerequisites for a real database run. This slice has no sign-in UI.
+Follow the workflow guide for the existing session-token convention and the
+separate synthetic-data verification path.
