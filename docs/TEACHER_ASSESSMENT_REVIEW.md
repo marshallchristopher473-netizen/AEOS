@@ -67,6 +67,7 @@ python -m pytest tests/ -q -rs
 cd frontend
 node --experimental-vm-modules tests/assessment-api.test.mjs
 npm ci
+npm audit --audit-level=low
 npm run lint
 npx tsc --noEmit
 npm run build
@@ -84,7 +85,7 @@ HTTP routes, actor resolution, services, and schemas with synthetic sessions
 and storage. The browser check covers intake, empty reviews, saving/reloading
 both states, zero/optional scores, validation, discard, failed-save retention,
 role and cross-tenant denial, and missing-session feedback. It uses the
-existing backend dependencies and the runner's Chrome; no lockfile is changed.
+existing backend dependencies and the runner's Chrome.
 It does not establish JWT verification or real PostgREST persistence.
 
 For the limited offline business-logic check from the repository root:
@@ -146,8 +147,12 @@ failed the frontend audit on the unchanged lockfile: 7 reported vulnerabilities
 (6 high, 1 critical), including the Next.js ImageResponse advisory
 `GHSA-vcvr-r3jv-pc5j`. That run skipped subsequent frontend steps. CI now runs
 the functional checks after a successful install even when audit fails;
-the audit remains a failing gate. Dependencies and the lockfile are preserved,
-and this workflow is not cleared for merge or deployment by that evidence.
+the audit remains a failing gate. The dependency follow-up raises Next.js to
+16.3.6 and patches both installed brace-expansion lines without changing the
+teacher review implementation or shared services. The complete inventory,
+patch ranges, and unresolved braces advisory are recorded in
+[DEPENDENCY_SECURITY_REVIEW.md](DEPENDENCY_SECURITY_REVIEW.md).
+This workflow is not cleared for merge or deployment by that evidence.
 
 ## Claims this workflow supports
 

@@ -144,7 +144,17 @@ jobs:
 
       - name: Audit frontend dependency vulnerabilities
         working-directory: frontend
-        run: npm audit --audit-level=low
+        # tee preserves a machine-readable inventory; bash pipefail keeps every
+        # audit finding at or above low severity a failing security gate.
+        run: npm audit --audit-level=low --json | tee npm-audit.json
+
+      - name: Publish dependency audit for the checked-out tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dependency-audit-${{ github.sha }}
+          path: frontend/npm-audit.json
+          if-no-files-found: warn
 
       - name: Verify frontend dependency tree
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
