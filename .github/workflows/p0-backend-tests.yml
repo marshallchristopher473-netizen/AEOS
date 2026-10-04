@@ -167,6 +167,11 @@ jobs:
         working-directory: frontend
         run: node --experimental-vm-modules tests/assessment-api.test.mjs
 
+      - name: Verify Next.js lint glob override
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: node tests/lint-glob-override.test.mjs
+
       - name: Lint frontend
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
