@@ -153,6 +153,31 @@ and the override removed.
 stops depending on fast-glob, or when a braces release outside the advisory
 range is published and reaches this tree, and re-run the audit.
 
+## Follow-up: source-map-js advisory (2026-10-06)
+
+The "`npm audit --omit=dev` reports 0 findings" statement above describes the
+braces chain as audited on 2026-10-04. A later advisory changed the result:
+on 2026-10-06 the tree with the override still failed both
+`npm audit --audit-level=low` and `npm audit --omit=dev` with one high finding,
+[GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)
+(source-map-js `1.0.0 - 1.2.1`, event-loop denial of service through indexed
+source-map section offsets). Unlike the braces chain, this is a **production**
+path: `next → postcss → source-map-js@1.2.1`.
+
+**Change.** Lockfile only: `npm audit fix --package-lock-only` moved
+`node_modules/source-map-js` from `1.2.1` to `1.2.2`, a patched release inside
+the range `postcss` already accepts. No other lockfile entry and no
+`package.json` field changed. No audit exception or forced upgrade was used.
+
+**Local checks on 2026-10-06** (Node 22.22.0, npm 10.9.4; exit codes): `npm ci` 0;
+`npm ls --all` 0; `npm ls source-map-js` → `1.2.2` only; `npm ls braces` → empty;
+`npm audit --audit-level=low` 0 (0 vulnerabilities); `npm audit --omit=dev` 0
+(0 vulnerabilities); contract tests 0 (6/6); lint-glob guards 0 (3/3);
+`npm run lint` 0; `npx tsc --noEmit` 0; `npm run build` 0. The Chrome synthetic
+check was not run locally (backend Python dependencies were not installed).
+These are local results, not CI results. Audit results depend on the advisory
+feed on the day they are run.
+
 ## Verification and limits
 
 The final PR description records the full head SHA and corresponding Actions
