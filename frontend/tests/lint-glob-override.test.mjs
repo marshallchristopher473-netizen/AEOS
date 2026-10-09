@@ -38,12 +38,18 @@ test('plugin resolves fast-glob to tinyglobby and only uses members it provides'
   for (const member of members) assert.equal(typeof glob[member], 'function', `fast-glob.${member}`);
 });
 
-test('ESLint config leaves settings.next.rootDir unset', async () => {
+test('ESLint config leaves settings.next.rootDir unset for every linted file', async () => {
   // tinyglobby expands directory patterns that fast-glob would not, so the
   // override is only equivalent while the plugin globs nothing (rootDir unset).
+  // Flat config can scope `settings` to a `files` glob, so check every file
+  // `eslint .` lints (ESLint's own enumeration), not one sample file.
   const eslint = new ESLint({ cwd: frontend });
-  const config = await eslint.calculateConfigForFile(path.join(frontend, 'src/app/assessments/page.tsx'));
-  assert.equal(config.settings?.next?.rootDir, undefined);
+  const files = (await eslint.lintFiles(['.'])).map((result) => result.filePath);
+  assert.ok(files.includes(path.join(frontend, 'src/app/assessments/page.tsx')), 'linted file discovery is broken');
+  for (const file of files) {
+    const config = await eslint.calculateConfigForFile(file);
+    assert.equal(config.settings?.next?.rootDir, undefined, path.relative(frontend, file));
+  }
 });
 
 test('no-html-link-for-pages still reports raw links to app routes', async () => {
