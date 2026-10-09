@@ -92,7 +92,7 @@ test: CI stays green while proving nothing.
 | M18e | Missing `kid` rejected | fall back to the first published key | `test_auth.py::test_token_without_a_key_id_is_401` |
 | M18f | Unknown `kid` rejected | fall back to the first published key | `test_auth.py::test_unknown_key_id_is_401_even_though_a_usable_key_is_published` |
 | M18g | Malformed tokens fail closed | JWT error path returns a default subject | `test_auth.py::test_malformed_token_is_401` |
-| M18h | Unusable published keys fail closed as 401 | `JWKError` re-raised past the 401 handler (the pre-SEC-G1-06 behaviour) | `test_auth.py::test_unusable_published_key_is_401_not_a_server_error[*]` |
+| M18h | Unusable published keys fail closed as 401 | `JWKError` re-raised past the 401 handler (the pre-SEC-G1-06 behaviour) | `test_auth.py::test_published_key_python_jose_cannot_load_is_401_not_a_server_error` (since #22; the original `test_unusable_published_key_is_401_not_a_server_error[*]` cases no longer reach `JWKError`) |
 | M19a | Client roles hold no privilege RLS does not govern | 005 stops revoking TRUNCATE on existing tables | `TestPrivilegesRlsDoesNotGovern::test_client_roles_hold_no_rls_blind_privilege`; `test_cross_tenant_truncate_is_refused[*]` |
 | M19b | Tables created later do not regain TRUNCATE | 005 stops revoking TRUNCATE from the default privileges | `TestPrivilegesRlsDoesNotGovern::test_tables_created_later_do_not_inherit_rls_blind_privileges` |
 | M20 | WHERE-less writes cannot reach another tenant on any table | `ai_recommendations_delete` → `USING (true)` | `TestWherelessWritesAcrossEveryTable::test_whereless_delete_leaves_org_a_untouched[*-ai_recommendations]` |

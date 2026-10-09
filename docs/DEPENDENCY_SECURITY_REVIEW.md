@@ -178,6 +178,39 @@ check was not run locally (backend Python dependencies were not installed).
 These are local results, not CI results. Audit results depend on the advisory
 feed on the day they are run.
 
+## Follow-up: release-candidate integration (2026-10-09)
+
+The RC integration branch merges #23 → #24 → #25 with #20 and #22. Its first
+strict audit failed with two **production** findings, both high:
+
+| Package | Affected | Advisories | Integrated by |
+| --- | --- | --- | --- |
+| `next` | 16.0.0–16.3.7 | GHSA-3w37-wq28-93x7, GHSA-4jqv-mc3x-m676, GHSA-39w2-rjm5-chcv, GHSA-f87g-xv8r-7p7x, GHSA-mcj8-r9mp-w47p, GHSA-cjq9-62q9-8jv4 | #20 (16.3.8), not mergeable as a lockfile |
+| `sharp` (via `next`) | < 0.35.5 | GHSA-wq5f-xc86-pv6w | none; published after #25 |
+
+**Change.** `npm install next@16.3.8` (package.json floor `^16.3.6` → `^16.3.8`)
+and `npm update sharp`. Lockfile: `next`, `@next/env`, `@next/swc-*`
+16.3.6 → 16.3.8; `sharp` and `@img/sharp-*` 0.35.4 → 0.35.5;
+`@img/sharp-libvips-*` 1.3.3 → 1.3.4. Nothing else changes. `npm audit fix`
+was not used because it proposed `next` 16.4.0, a minor upgrade the advisories
+do not require. `eslint-config-next` stays at 16.3.4; the #24 tinyglobby
+override is unchanged.
+
+**#20's dated exception is not carried forward.** #20 gated dev-only advisories
+on `frontend/audit-exceptions.json` (braces, expiring 2026-12-31). With #24's
+override no braces copy is installed, so the exception covers nothing; the RC
+keeps the strict policy instead: `npm audit --audit-level=low` on the full tree
+and `npm audit --omit=dev --audit-level=low` on production, no suppression.
+
+**Glob guard.** The rootDir guard in `tests/lint-glob-override.test.mjs` now
+checks every file `eslint .` lints. Checking one sample file missed a `rootDir`
+scoped by a flat-config `files` glob to another path.
+
+**Local checks on 2026-10-09** (Node 22.22.0, npm 10.9.4, clean `npm ci`):
+both audits exit 0 with 0 vulnerabilities; `npm ls --all`, contracts (6/6),
+glob guards (3/3), lint, `tsc --noEmit` and build exit 0; `npm ls braces
+fast-glob micromatch` shows only the aliased tinyglobby. Local results only.
+
 ## Verification and limits
 
 The final PR description records the full head SHA and corresponding Actions
