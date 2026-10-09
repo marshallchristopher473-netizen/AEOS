@@ -597,6 +597,13 @@ async def test_unusable_published_key_is_401_not_a_server_error(
     `JWTError` let it escape as an unhandled exception, so the request
     returned 500 instead of 401. It never granted access, but a caller could
     turn any non-RSA key in the JWKS into server errors on demand.
+
+    Since the ES256 repair (PR #22) neither case reaches `JWKError`:
+    `signing_algorithm` refuses the symmetric key outright, and pins the P-256
+    key to ES256, so decoding this RS256 token fails as an ordinary `JWTError`.
+    The `JWKError` path itself is covered by
+    `test_published_key_python_jose_cannot_load_is_401_not_a_server_error` and
+    mutant M18h. This test still guards the 401 outcome for these inputs.
     """
     token = make_token(configured_auth)
 
