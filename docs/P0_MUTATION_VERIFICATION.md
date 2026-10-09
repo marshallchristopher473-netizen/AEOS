@@ -102,6 +102,27 @@ a guessing implementation would genuinely accept the token.
 `test_unknown_signing_key_is_401` alone could not detect this: it publishes a
 JWKS with no usable key, so a guessing implementation still fails.
 
+### M18i–M18k — the published key pins the algorithm
+
+Supabase signs sessions with ES256 (ECC P-256, the algorithm it recommends) or
+RS256, and a JWKS can hold both during a rotation. `signing_algorithm()` maps
+each published key to exactly one algorithm: RSA → RS256, EC P-256 → ES256.
+Every other key is refused with 401, and a symmetric key is always refused.
+The key is then built for that one algorithm before any signature is checked.
+
+| ID | Security boundary | Mutation | Primary killing test |
+| --- | --- | --- | --- |
+| M18i | A published symmetric key never verifies a token | `oct` keys mapped to HS256 | `test_auth.py::test_symmetric_key_in_the_jwks_is_never_accepted` |
+| M18j | The token header cannot choose the algorithm | key built for, and decode allowed, the header's `alg` | `test_auth.py::test_algorithm_the_published_key_does_not_allow_is_401[rs512-signed-by-the-published-rsa-key]` |
+| M18k | The key that verifies is exactly the entry that was checked | raw JWKS entry handed to python-jose | `test_auth.py::test_published_key_this_backend_must_not_use_is_401_even_if_jose_accepts[ec-p256-entry-wrapping-nested-keys]` |
+
+All three killing tests use a token that verifies against a key the JWKS
+really contains, so a weakened implementation would genuinely accept it. The
+M18i token is correctly HMAC-signed with the published secret. The M18j token
+is signed by the real RSA private key, but with RS512 rather than the RS256 the
+key is published for. The M18k token is signed by a P-384 key nested inside a
+P-256 entry: python-jose treats any dict with a `keys` member as a key set.
+
 ## No mutant is excluded from the score
 
 Every mutant in the contract is scored. There is no EQUIVALENT category in use
