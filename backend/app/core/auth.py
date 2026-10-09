@@ -156,6 +156,6 @@ async def get_current_user(
     # JOSEError, not JWTError: python-jose raises JWKError (a JOSEError that is
     # not a JWTError) when it cannot build the key the caller's `kid` selects,
     # for example an EC key published without its coordinates. Catching only
-    # JWTError let that escape as a 500 instead of a 401.
+    # JWTError let that escape as a 500 instead of a 401 (SEC-G1-06).
     except (JOSEError, ValueError, TypeError) as exc:
         raise unauthorized() from exc

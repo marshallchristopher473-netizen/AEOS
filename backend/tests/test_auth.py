@@ -559,3 +559,54 @@ async def test_malformed_token_is_401(configured_auth):
         await auth.get_current_user(credentials)
 
     assert exc_info.value.status_code == 401
+
+
+def _ec_public_jwk(kid):
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    numbers = ec.generate_private_key(ec.SECP256R1()).public_key().public_numbers()
+    return {
+        "kid": kid,
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "ES256",
+        "x": b64url_uint(numbers.x),
+        "y": b64url_uint(numbers.y),
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "published_key",
+    [
+        pytest.param(_ec_public_jwk("test-kid"), id="non-rsa-key-under-the-token-kid"),
+        pytest.param(
+            {"kid": "test-kid", "kty": "oct", "k": "c3ltbWV0cmljLXNlY3JldA"},
+            id="symmetric-key-under-the-token-kid",
+        ),
+    ],
+)
+async def test_unusable_published_key_is_401_not_a_server_error(
+    monkeypatch, configured_auth, published_key
+):
+    """SEC-G1-06: a key python-jose cannot use must fail closed as 401.
+
+    The token's `kid` selects the published key, and the caller chooses the
+    `kid`. When that key is not an RSA key (an EC or a symmetric key), python-jose
+    raises `JWKError`, which is a `JOSEError` but not a `JWTError`. Catching only
+    `JWTError` let it escape as an unhandled exception, so the request
+    returned 500 instead of 401. It never granted access, but a caller could
+    turn any non-RSA key in the JWKS into server errors on demand.
+    """
+    token = make_token(configured_auth)
+
+    async def jwks_with_unusable_key(force_refresh=False):
+        return {"keys": [published_key]}
+
+    monkeypatch.setattr(auth, "get_jwks", jwks_with_unusable_key)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials)
+
+    assert exc_info.value.status_code == 401
