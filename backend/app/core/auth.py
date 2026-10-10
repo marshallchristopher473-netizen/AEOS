@@ -1,9 +1,12 @@
+import time
 from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import jwt
+from jose.exceptions import JOSEError
+from jose.jwk import construct as construct_jwk
 
 from app.core.config import (
     SUPABASE_JWKS_URL,
@@ -14,6 +17,15 @@ from app.core.config import (
 security_scheme = HTTPBearer(auto_error=False)
 
 _jwks: Optional[Dict[str, Any]] = None
+_jwks_fetched_at: float = 0.0
+
+# How long a fetched key set is trusted before it is fetched again. Without a
+# limit, a key the issuer has revoked keeps verifying tokens for as long as the
+# process runs, because a cached `kid` that still matches never triggers a
+# refresh. This bounds how long a revoked key can still be accepted here. When
+# a refresh is due and fails, verification fails closed with 503 rather than
+# falling back to the expired set.
+JWKS_MAX_AGE_SECONDS = 600.0
 
 
 def unauthorized(detail: str = "Invalid authentication credentials") -> HTTPException:
@@ -25,8 +37,9 @@ def unauthorized(detail: str = "Invalid authentication credentials") -> HTTPExce
 
 
 async def get_jwks(force_refresh: bool = False) -> Dict[str, Any]:
-    global _jwks
-    if _jwks is None or force_refresh:
+    global _jwks, _jwks_fetched_at
+    expired = time.monotonic() - _jwks_fetched_at >= JWKS_MAX_AGE_SECONDS
+    if _jwks is None or force_refresh or expired:
         if not SUPABASE_JWKS_URL:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -50,6 +63,7 @@ async def get_jwks(force_refresh: bool = False) -> Dict[str, Any]:
                 detail="Authentication key service returned an invalid response",
             )
         _jwks = candidate
+        _jwks_fetched_at = time.monotonic()
     return _jwks
 
 
@@ -58,6 +72,33 @@ def find_jwk(jwks: Dict[str, Any], kid: str) -> Optional[Dict[str, Any]]:
         (key for key in jwks.get("keys", []) if key.get("kid") == kid),
         None,
     )
+
+
+def signing_algorithm(jwk: Dict[str, Any]) -> Optional[str]:
+    """Return the one algorithm a published key may verify, or None.
+
+    Only Supabase's asymmetric signing keys are trusted: ECC P-256 (ES256, the
+    algorithm Supabase recommends) or RSA (RS256). A project still signing with
+    the legacy HS256 secret publishes no keys, so its tokens are refused as
+    signed by an unknown key. The algorithm is pinned by the key the token's
+    `kid` selects, never taken from the token's own `alg` header, and each key
+    type maps to exactly one algorithm. Symmetric ("oct") keys are never
+    accepted: a shared secret that appears in a JWKS lets anyone mint tokens.
+    The curve is checked here because python-jose will verify ES256 over a
+    P-384 key.
+    """
+    key_type = jwk.get("kty")
+    if key_type == "RSA":
+        algorithm = "RS256"
+    elif key_type == "EC" and jwk.get("crv") == "P-256":
+        algorithm = "ES256"
+    else:
+        return None
+
+    declared = jwk.get("alg")
+    if declared is not None and declared != algorithm:
+        return None
+    return algorithm
 
 
 async def get_current_user(
@@ -87,10 +128,18 @@ async def get_current_user(
         if matching_key is None:
             raise unauthorized("JWT signing key is unknown")
 
+        algorithm = signing_algorithm(matching_key)
+        if algorithm is None:
+            raise unauthorized("JWT signing key type is not supported")
+
+        # Build the key for the pinned algorithm here rather than handing
+        # python-jose the raw entry: given a dict with a "keys" member it
+        # verifies against those nested keys instead of the entry checked above.
+        verification_key = construct_jwk(matching_key, algorithm)
         payload = jwt.decode(
             token,
-            matching_key,
-            algorithms=["RS256"],
+            verification_key,
+            algorithms=[algorithm],
             audience=SUPABASE_JWT_AUDIENCE,
             issuer=SUPABASE_JWT_ISSUER,
             options={
@@ -100,7 +149,7 @@ async def get_current_user(
                 "verify_iss": True,
             },
         )
-        # python-jose 3.3.0 returns early from `_validate_aud` when the `aud`
+        # python-jose (3.3.0-3.5.0) returns early from `_validate_aud` when the `aud`
         # claim is absent, so `verify_aud: True` above rejects a WRONG audience
         # but silently accepts a MISSING one. Configuring an audience expresses
         # the intent that audience be enforced, so require the claim here.
@@ -112,9 +161,23 @@ async def get_current_user(
         if SUPABASE_JWT_AUDIENCE not in presented:
             raise unauthorized("JWT audience is not accepted")
 
+        # python-jose (3.3.0-3.5.0) treats `exp` as optional: `_validate_exp` returns
+        # early when the claim is absent, so `verify_exp: True` rejects an
+        # EXPIRED token but accepts one that never expires. Require the claim
+        # here. Its value was already validated by `verify_exp` when present.
+        # This is not done with python-jose's `require_exp` option because that
+        # also forces `verify_exp` on, which would hide a regression that turns
+        # expiry verification off.
+        if "exp" not in payload:
+            raise unauthorized("JWT is missing the expiry claim")
+
         subject = payload.get("sub")
         if not isinstance(subject, str) or not subject.strip():
             raise unauthorized("JWT is missing a usable subject")
         return payload
-    except (JWTError, ValueError, TypeError) as exc:
+    # JOSEError, not JWTError: python-jose raises JWKError (a JOSEError that is
+    # not a JWTError) when it cannot build the key the caller's `kid` selects,
+    # for example an EC key published without its coordinates. Catching only
+    # JWTError let that escape as a 500 instead of a 401 (SEC-G1-06).
+    except (JOSEError, ValueError, TypeError) as exc:
         raise unauthorized() from exc
