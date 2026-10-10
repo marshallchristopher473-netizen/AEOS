@@ -2,17 +2,20 @@
 
 ## Overview
 
-An AI-powered education operations platform covering teacher productivity, student learning outcomes, parent engagement, assessment intelligence, and special education workflows.
+An education operations prototype. The current slice lets teachers read
+assessments and add teacher-entered reviews. AI generation, improved educational
+outcomes, parent communication, and pilot readiness have not been demonstrated.
+See `docs/TEACHER_ASSESSMENT_REVIEW.md` for the workflow and verification limits.
 
 **Stack:**
 - Backend: FastAPI (Python 3.12) served with Uvicorn
 - Database: Supabase (PostgreSQL + pgvector)
-- Frontend: React / Next.js (not yet built)
+- Frontend: React / Next.js; assessment and student pages exist
 - AI: Claude API, RAG pipelines (planned)
 
 ## Running the app
 
-The backend workflow is configured and runs automatically:
+The backend can be started with:
 
 ```
 cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -25,6 +28,13 @@ Key endpoints:
 - `POST /assessments` — create an assessment
 - `GET /assessments/{id}` — retrieve an assessment
 - `GET /students/{id}` — retrieve a student
+- `GET /assessment-results?assessment_id={id}` — read reviews for an accessible assessment
+- `POST /assessment-results` — save a teacher-entered review
+
+Start the frontend separately with `cd frontend && npm ci && npm run dev`.
+Open `/assessments`; Next.js proxies its `/api` requests to the backend using
+`AEOS_API_URL` (default `http://127.0.0.1:8000`). A supported session and database
+configuration are required; this slice has no sign-in page.
 
 ## Required secrets
 
@@ -37,9 +47,9 @@ Set in Replit Secrets:
 
 ```
 backend/       FastAPI app (entry: backend/app/main.py)
-frontend/      React/Next.js (empty — not yet scaffolded)
-agents/        AI agent workflows (empty — planned)
-database/      Schema / migrations (empty — planned)
+frontend/      React/Next.js assessment and student pages
+agents/        Empty placeholder on main; separate draft PRs contain agent work
+database/      Empty placeholder; migrations live in backend/supabase/migrations/
 ```
 
 ## User preferences

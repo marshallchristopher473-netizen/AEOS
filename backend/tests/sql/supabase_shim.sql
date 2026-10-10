@@ -91,7 +91,7 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
--- Applied again after the AEOS migrations run (see conftest) so that tables
--- created by 001/003 are covered.
+-- Covers every table the AEOS migrations create, at creation time, as
+-- Supabase's standing grant does. Migration 005 later narrows it.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT ALL ON TABLES TO anon, authenticated, service_role;

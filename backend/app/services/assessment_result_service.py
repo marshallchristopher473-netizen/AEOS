@@ -37,7 +37,17 @@ class AssessmentResultService:
         )
         return AssessmentResultResponse(**row)
 
-    def list_assessment_results(self, organization_id: str) -> List[AssessmentResultResponse]:
+    def list_assessment_results(
+        self, organization_id: str, assessment_id: str | None = None
+    ) -> List[AssessmentResultResponse]:
+        if assessment_id is not None:
+            assert_related_row_in_tenant(
+                self.client,
+                "assessments",
+                assessment_id,
+                organization_id,
+                "Assessment not found",
+            )
         return [
             AssessmentResultResponse(**row)
             for row in list_tenant_scoped_rows(
@@ -45,6 +55,7 @@ class AssessmentResultService:
                 "assessment_results",
                 organization_id,
             )
+            if assessment_id is None or row["assessment_id"] == assessment_id
         ]
 
     def get_assessment_result(
