@@ -82,6 +82,7 @@ MIGRATIONS = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_revoke_rls_blind_table_privileges.sql",
 )
 
 pytestmark = pytest.mark.skipif(
@@ -196,14 +197,14 @@ def migrated_database():
                 assert path.exists(), f"missing migration: {path}"
                 conn.execute(path.read_text())
 
-            # Mirror Supabase's standing grants for tables created by the
-            # migrations. Without this, cross-tenant access would fail as a
-            # GRANT error rather than an RLS denial and the tests below would
-            # pass for the wrong reason.
-            conn.execute(
-                "GRANT ALL ON ALL TABLES IN SCHEMA public "
-                "TO anon, authenticated, service_role"
-            )
+            # Table privileges come from the shim's ALTER DEFAULT PRIVILEGES,
+            # applied as each migration creates its tables — which is exactly
+            # when Supabase grants them. There is deliberately no blanket
+            # `GRANT ALL ON ALL TABLES` here any more: run once after all the
+            # migrations, it re-granted whatever a migration had revoked
+            # (005), so the suite tested a privilege state production never
+            # has. `test_authenticated_keeps_every_dml_grant_rls_governs`
+            # proves the DML grants the RLS tests rely on are still present.
             conn.execute(
                 "GRANT ALL ON ALL SEQUENCES IN SCHEMA public "
                 "TO anon, authenticated, service_role"
@@ -281,6 +282,14 @@ def as_org_a_support(migrated_database):
     """A support-role member of organization A (read-only by policy)."""
     with psycopg.connect(migrated_database) as conn:
         _become(conn, AUTH_SUPPORT_A)
+        yield conn
+
+
+@pytest.fixture
+def as_org_b(migrated_database):
+    """An authenticated teacher in organization B, attacking organization A."""
+    with psycopg.connect(migrated_database) as conn:
+        _become(conn, AUTH_B)
         yield conn
 
 
@@ -987,6 +996,302 @@ class TestPeerAccessSemantics:
 
 
 # ---------------------------------------------------------------------------
+# Privileges RLS does not govern: TRUNCATE, TRIGGER, REFERENCES.
+# ---------------------------------------------------------------------------
+
+
+# Every table the migrations create in `public`. Kept explicit so a missing
+# table is a visible failure rather than a silently shorter loop.
+PUBLIC_TABLES = (
+    "ai_recommendations",
+    "assessment_results",
+    "assessments",
+    "audit_logs",
+    "intervention_actions",
+    "intervention_plans",
+    "organizations",
+    "progress_events",
+    "schools",
+    "students",
+    "users",
+)
+
+# Table privileges that row-level security does not govern. RLS applies to
+# SELECT, INSERT, UPDATE and DELETE only. TRUNCATE empties a table for every
+# tenant at once; TRIGGER lets the holder attach triggers to every tenant's
+# writes; REFERENCES lets the holder build constraints over the table. The
+# application and PostgREST need none of them, so no client role may hold them.
+RLS_BLIND_PRIVILEGES = ("TRUNCATE", "TRIGGER", "REFERENCES")
+CLIENT_ROLES = ("anon", "authenticated")
+DML_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
+
+
+class TestPrivilegesRlsDoesNotGovern:
+    """Pin the table privileges that sit outside every RLS policy.
+
+    Supabase's standing grant, `GRANT ALL ... TO anon, authenticated`, which
+    the shim mirrors, includes TRUNCATE. PostgreSQL does not apply row-level
+    security to TRUNCATE, so while that grant stands, any authenticated
+    member of any organization can empty every organization's rows in one
+    statement, whatever the policies say. Migration 005 revokes it, for
+    existing tables and, through the default privileges, for tables created
+    later.
+    """
+
+    def test_every_public_table_is_covered(self, admin_conn):
+        (names,) = admin_conn.execute(
+            "SELECT array_agg(tablename::text ORDER BY tablename) "
+            "FROM pg_tables WHERE schemaname = 'public'"
+        ).fetchone()
+        assert tuple(names) == PUBLIC_TABLES, (
+            "public tables changed; update PUBLIC_TABLES so the privilege "
+            f"checks below cover them: {names}"
+        )
+
+    @pytest.mark.parametrize("role", CLIENT_ROLES)
+    def test_client_roles_hold_no_rls_blind_privilege(self, admin_conn, role):
+        held = [
+            f"{table}:{privilege}"
+            for table in PUBLIC_TABLES
+            for privilege in RLS_BLIND_PRIVILEGES
+            if admin_conn.execute(
+                "SELECT has_table_privilege(%s, %s, %s)",
+                (role, f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        assert held == [], f"{role} holds privileges RLS does not govern: {held}"
+
+    def test_authenticated_keeps_every_dml_grant_rls_governs(self, admin_conn):
+        """Guard against over-revoking: if a DML grant went missing, the RLS
+        denial tests would pass on a permission error instead of a policy."""
+        missing = [
+            f"{table}:{privilege}"
+            for table in PUBLIC_TABLES
+            for privilege in DML_PRIVILEGES
+            if not admin_conn.execute(
+                "SELECT has_table_privilege('authenticated', %s, %s)",
+                (f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        assert missing == [], f"authenticated lost DML grants: {missing}"
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    def test_cross_tenant_truncate_is_refused(self, as_org_b, admin_conn, table):
+        """Organization B's teacher tries to empty the table, and with it
+        organization A's rows. The privilege check runs before any foreign-key
+        check, so a refusal here is specifically InsufficientPrivilege."""
+        (before,) = admin_conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()
+
+        as_org_b.execute("SET LOCAL lock_timeout = '10s'")
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                as_org_b.execute(f"TRUNCATE public.{table}")
+        finally:
+            # A connection fixture commits when its block exits normally, so a
+            # TRUNCATE that wrongly succeeds must be undone here, before the
+            # failure propagates, or it wipes the seed data every later test
+            # depends on.
+            as_org_b.rollback()
+
+        (after,) = admin_conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()
+        assert after == before, f"{table} lost rows to a refused TRUNCATE"
+
+    def test_tables_created_later_do_not_inherit_rls_blind_privileges(
+        self, migrated_database
+    ):
+        """005 must also change the default privileges; otherwise the next
+        migration's table silently regains TRUNCATE."""
+        with psycopg.connect(migrated_database) as conn:
+            try:
+                conn.execute("CREATE TABLE public.aeos_privilege_probe (id int)")
+                held = {
+                    privilege: conn.execute(
+                        "SELECT has_table_privilege("
+                        "'authenticated', 'public.aeos_privilege_probe', %s)",
+                        (privilege,),
+                    ).fetchone()[0]
+                    for privilege in (*RLS_BLIND_PRIVILEGES, "SELECT")
+                }
+            finally:
+                conn.rollback()
+
+        assert held["SELECT"], (
+            "default privileges no longer grant DML, so this probe no longer "
+            "models Supabase"
+        )
+        assert not any(held[p] for p in RLS_BLIND_PRIVILEGES), (
+            f"a newly created table grants RLS-blind privileges: {held}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# WHERE-less UPDATE and DELETE on every table (SEC-G1-04).
+# A statement with no WHERE and no RETURNING never consults the SELECT policy,
+# so the UPDATE or DELETE policy's USING clause is the only control left. The
+# M09 tests pin that shape for `students`; these pin it for every table.
+# ---------------------------------------------------------------------------
+
+
+# A text column per table, set to a constant so the SET clause reads no
+# existing value (reading one would make PostgreSQL apply the SELECT policy).
+WHERELESS_PROBE_COLUMN = {
+    "ai_recommendations": "recommendation_text",
+    "assessment_results": "summary",
+    "assessments": "title",
+    "audit_logs": "action",
+    "intervention_actions": "description",
+    "intervention_plans": "title",
+    "organizations": "name",
+    "progress_events": "event_message",
+    "schools": "name",
+    "students": "first_name",
+    "users": "full_name",
+}
+WHERELESS_MARKER = "WHERELESS-PROBE"
+
+# SEED_SQL leaves these four tables without synthetic rows. A probe against a
+# table where organization A owns nothing would prove nothing, so each probe
+# adds one row per organization inside its own transaction.
+RECOMMENDATION_A = "0aaa0000-0000-4000-8000-0000000000a1"
+RECOMMENDATION_B = "0bbb0000-0000-4000-8000-0000000000b1"
+ACTION_A = "0aaa0000-0000-4000-8000-0000000000a2"
+ACTION_B = "0bbb0000-0000-4000-8000-0000000000b2"
+AUDIT_A = "0aaa0000-0000-4000-8000-0000000000a3"
+AUDIT_B = "0bbb0000-0000-4000-8000-0000000000b3"
+EVENT_A = "0aaa0000-0000-4000-8000-0000000000a4"
+EVENT_B = "0bbb0000-0000-4000-8000-0000000000b4"
+WHERELESS_EXTRA_SEED_SQL = f"""
+INSERT INTO public.ai_recommendations
+    (id, organization_id, assessment_id, created_by, model_name, recommendation_text) VALUES
+    ('{RECOMMENDATION_A}', '{ORG_A}', '{ASSESSMENT_A}', '{USER_A}', 'synthetic', 'Org A recommendation'),
+    ('{RECOMMENDATION_B}', '{ORG_B}', '{ASSESSMENT_B}', '{USER_B}', 'synthetic', 'Org B recommendation');
+INSERT INTO public.intervention_actions
+    (id, intervention_plan_id, action_type, description) VALUES
+    ('{ACTION_A}', '{PLAN_A}', 'synthetic', 'Org A action'),
+    ('{ACTION_B}', '{PLAN_B}', 'synthetic', 'Org B action');
+INSERT INTO public.audit_logs
+    (id, organization_id, entity_type, entity_id, action, performed_by) VALUES
+    ('{AUDIT_A}', '{ORG_A}', 'student', '{STUDENT_A}', 'create', '{USER_A}'),
+    ('{AUDIT_B}', '{ORG_B}', 'student', '{STUDENT_B}', 'create', '{USER_B}');
+INSERT INTO public.progress_events
+    (id, organization_id, student_id, actor_id, event_type, event_message) VALUES
+    ('{EVENT_A}', '{ORG_A}', '{STUDENT_A}', '{USER_A}', 'student_created', 'Org A event'),
+    ('{EVENT_B}', '{ORG_B}', '{STUDENT_B}', '{USER_B}', 'student_created', 'Org B event');
+"""
+
+SUSPEND_ORG_A = f"UPDATE public.organizations SET status = 'suspended' WHERE id = '{ORG_A}'"
+DISABLE_ADMIN_A = f"UPDATE public.users SET status = 'disabled' WHERE id = '{ADMIN_A}'"
+
+# (id, acting subject, setup applied first). Every scenario must leave
+# organization A's rows untouched.
+WHERELESS_SCENARIOS = (
+    ("suspended-org-admin", AUTH_ADMIN_A, SUSPEND_ORG_A),
+    ("suspended-org-teacher", AUTH_A, SUSPEND_ORG_A),
+    ("disabled-admin-account", AUTH_ADMIN_A, DISABLE_ADMIN_A),
+    ("other-org-teacher", AUTH_B, None),
+)
+
+
+def _org_a_rows(table):
+    if table == "organizations":
+        return f"id = '{ORG_A}'"
+    if table == "intervention_actions":
+        return f"intervention_plan_id = '{PLAN_A}'"
+    return f"organization_id = '{ORG_A}'"
+
+
+@pytest.fixture
+def privileged_session(migrated_database):
+    """A superuser session for probes that must never commit."""
+    with psycopg.connect(migrated_database) as conn:
+        try:
+            yield conn
+        finally:
+            conn.rollback()
+
+
+def _whereless_write(conn, table, operation, actor_auth, setup_sql=None, disable_rls=False):
+    """Run one WHERE-less write as `actor_auth` and measure organization A.
+
+    Everything happens in one transaction that is always rolled back, so the
+    shared seed data never changes, even when the write wrongly succeeds. The
+    session drops to `authenticated` with `SET LOCAL ROLE` for the write alone,
+    then returns to its privileged role with `RESET ROLE`, which can see the
+    transaction's own uncommitted changes.
+
+    Returns (org A rows before, org A rows after, org A rows carrying the marker).
+    """
+    column = WHERELESS_PROBE_COLUMN[table]
+    org_a = _org_a_rows(table)
+    try:
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        conn.execute(WHERELESS_EXTRA_SEED_SQL)
+        if setup_sql:
+            conn.execute(setup_sql)
+        if disable_rls:
+            conn.execute(f"ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY")
+        (before,) = conn.execute(f"SELECT count(*) FROM public.{table} WHERE {org_a}").fetchone()
+        assert before > 0, f"organization A owns no {table} rows; the probe would prove nothing"
+
+        conn.execute("SET LOCAL ROLE authenticated")
+        conn.execute(
+            "SELECT set_config('request.jwt.claims', %s, true)",
+            (f'{{"sub": "{actor_auth}", "role": "authenticated"}}',),
+        )
+        (who,) = conn.execute("SELECT current_user").fetchone()
+        assert who == "authenticated", "the write must run as a client role"
+        if operation == "UPDATE":
+            # Deliberately no WHERE and no RETURNING.
+            conn.execute(f"UPDATE public.{table} SET {column} = %s", (WHERELESS_MARKER,))
+        else:
+            conn.execute(f"DELETE FROM public.{table}")
+        conn.execute("RESET ROLE")
+
+        (after,) = conn.execute(f"SELECT count(*) FROM public.{table} WHERE {org_a}").fetchone()
+        (marked,) = conn.execute(
+            f"SELECT count(*) FROM public.{table} WHERE {org_a} AND {column} = %s",
+            (WHERELESS_MARKER,),
+        ).fetchone()
+        return before, after, marked
+    finally:
+        conn.rollback()
+
+
+class TestWherelessWritesAcrossEveryTable:
+    """No actor outside organization A's active membership can change or
+    remove organization A's rows with a WHERE-less statement, on any table."""
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "actor_auth,setup_sql",
+        [pytest.param(auth, setup, id=name) for name, auth, setup in WHERELESS_SCENARIOS],
+    )
+    def test_whereless_update_leaves_org_a_untouched(
+        self, privileged_session, table, actor_auth, setup_sql
+    ):
+        before, after, marked = _whereless_write(
+            privileged_session, table, "UPDATE", actor_auth, setup_sql
+        )
+        assert marked == 0, f"a WHERE-less UPDATE rewrote {marked} of org A's {table} rows"
+        assert after == before
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "actor_auth,setup_sql",
+        [pytest.param(auth, setup, id=name) for name, auth, setup in WHERELESS_SCENARIOS],
+    )
+    def test_whereless_delete_leaves_org_a_untouched(
+        self, privileged_session, table, actor_auth, setup_sql
+    ):
+        before, after, _ = _whereless_write(
+            privileged_session, table, "DELETE", actor_auth, setup_sql
+        )
+        assert after == before, (
+            f"a WHERE-less DELETE removed {before - after} of org A's {table} rows"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Negative control.
 # ---------------------------------------------------------------------------
 
@@ -1090,4 +1395,80 @@ class TestNegativeControl:
         as_org_a.rollback()
         assert affected == 1, (
             "negative control failed: INSERT into org B was still blocked with RLS disabled"
+        )
+
+    def test_truncate_breach_is_observable_with_the_privilege_restored(
+        self, admin_conn, as_org_b
+    ):
+        """Negative control for the TRUNCATE denial: grant the privilege back
+        and the same cross-tenant attack empties organization A's rows.
+
+        TRUNCATE holds ACCESS EXCLUSIVE until the attacker's transaction ends,
+        so the privileged connection cannot look until then. The attacker's
+        own transaction therefore drops to the session's privileged role with
+        `RESET ROLE` to inspect, and the rollback that follows restores both
+        the table and the `authenticated` identity.
+        """
+        as_org_b.rollback()
+        admin_conn.execute("GRANT TRUNCATE ON public.assessment_results TO authenticated")
+        try:
+            as_org_b.execute("SET LOCAL lock_timeout = '10s'")
+            (who,) = as_org_b.execute("SELECT current_user").fetchone()
+            assert who == "authenticated", "attack must run as a client role"
+            as_org_b.execute("TRUNCATE public.assessment_results")
+            as_org_b.execute("RESET ROLE")
+            (org_a_left,) = as_org_b.execute(
+                "SELECT count(*) FROM public.assessment_results "
+                "WHERE organization_id = %s",
+                (ORG_A,),
+            ).fetchone()
+        finally:
+            as_org_b.rollback()
+            admin_conn.execute(
+                "REVOKE TRUNCATE ON public.assessment_results FROM authenticated"
+            )
+
+        assert org_a_left == 0, (
+            "negative control failed: TRUNCATE with the privilege restored did "
+            "not empty organization A's rows, so the denial test proves nothing"
+        )
+        (restored,) = admin_conn.execute(
+            "SELECT count(*) FROM public.assessment_results WHERE organization_id = %s",
+            (ORG_A,),
+        ).fetchone()
+        assert restored == 1, "rollback did not restore organization A's row"
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    def test_whereless_update_breach_is_observable_without_rls(
+        self, privileged_session, table
+    ):
+        """With RLS off on the table, the suspended admin's WHERE-less UPDATE
+        must rewrite every one of organization A's rows."""
+        before, _, marked = _whereless_write(
+            privileged_session, table, "UPDATE", AUTH_ADMIN_A, SUSPEND_ORG_A,
+            disable_rls=True,
+        )
+        assert marked == before, (
+            f"negative control failed: only {marked} of {before} org A {table} "
+            "rows changed with RLS disabled, so the sweep proves nothing"
+        )
+
+    # `organizations` and `users` are excluded: every tenant table references
+    # them, several with ON DELETE RESTRICT, so a WHERE-less DELETE fails on a
+    # foreign key before RLS could be observed. Their DELETE denial is still
+    # asserted above, and their UPDATE negative control shows the probe sees
+    # them.
+    @pytest.mark.parametrize(
+        "table", [t for t in PUBLIC_TABLES if t not in ("organizations", "users")]
+    )
+    def test_whereless_delete_breach_is_observable_without_rls(
+        self, privileged_session, table
+    ):
+        before, after, _ = _whereless_write(
+            privileged_session, table, "DELETE", AUTH_ADMIN_A, SUSPEND_ORG_A,
+            disable_rls=True,
+        )
+        assert after == 0, (
+            f"negative control failed: {after} of {before} org A {table} rows "
+            "survived a WHERE-less DELETE with RLS disabled"
         )

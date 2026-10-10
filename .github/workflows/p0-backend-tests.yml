@@ -17,6 +17,8 @@ jobs:
   # apply or fails to deny.
   rls-enforcement:
     runs-on: ubuntu-latest
+    env:
+      AEOS_EVIDENCE_DIR: /tmp/aeos-command-evidence
 
     services:
       postgres:
@@ -37,13 +39,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Record reviewed head and actual checkout identity
+        env:
+          REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          mkdir -p "$AEOS_EVIDENCE_DIR"
+          {
+            echo "reviewed_head=$REVIEWED_HEAD"
+            echo "event_sha=$EVENT_SHA"
+            git rev-parse HEAD HEAD^{tree}
+            sha256sum frontend/package-lock.json
+            git status --short
+          } | tee "$AEOS_EVIDENCE_DIR/identity.txt"
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.11.15'
 
       - name: Install dependencies
         run: pip install -r backend/requirements-dev.txt
+
+      - name: Run complete backend suite with required PostgreSQL RLS
+        working-directory: backend
+        env:
+          AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          AEOS_REQUIRE_RLS_TESTS: '1'
+        run: python ../.github/scripts/record-command.py backend-required python -m pytest tests/ -v -rs --junitxml=/tmp/aeos-command-evidence/backend-required.xml
 
       - name: Prove tenant isolation is enforced by the database
         working-directory: backend
@@ -51,23 +75,24 @@ jobs:
           AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           # Turns a missing database into a hard failure rather than a silent skip.
           AEOS_REQUIRE_RLS_TESTS: '1'
-        run: python -m pytest tests/test_rls_enforcement.py -v -rs
+        run: python ../.github/scripts/record-command.py rls-required python -m pytest tests/test_rls_enforcement.py -v -rs --junitxml=/tmp/aeos-command-evidence/rls-required.xml
 
       # Breaks each tenant control in a throwaway copy and asserts the suite
       # notices. Guards specifically against regressions that leave a policy's
       # NAME intact while removing its effect — e.g. students_select becoming
       # USING (true) — which every string- and regex-based test would accept.
       #
-      # Covers the full M01-M18 contract: authentication, JWT validation, actor
+      # Covers the full M01-M20 contract including M18h-M18k: authentication, JWT validation, actor
       # and organization authority, RLS tenant isolation, lifecycle, write
-      # authority and service-role exposure. Each mutant is byte-compiled (or
+      # authority, service-role exposure and RLS-blind table privileges. Each mutant is byte-compiled (or
       # its migrations applied) before any test runs, so a mutant that does not
       # build is reported INVALID rather than counted as killed.
       - name: Prove the security suite can actually fail
         working-directory: backend
         env:
           AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: python -m tests.security_mutations --json "$GITHUB_WORKSPACE/mutation-matrix.json"
+          AEOS_REQUIRE_RLS_TESTS: '1'
+        run: python ../.github/scripts/record-command.py mutation-contract python -m tests.security_mutations --json "$GITHUB_WORKSPACE/mutation-matrix.json"
 
       # No mutant is excluded from the score any more. The one former
       # EQUIVALENT exclusion (aeos_can_write_org) was refuted by independent
@@ -82,17 +107,42 @@ jobs:
           path: mutation-matrix.json
           if-no-files-found: warn
 
+      - name: Publish command evidence and checkout identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-evidence-${{ github.job }}-${{ github.sha }}
+          path: /tmp/aeos-command-evidence/
+          if-no-files-found: error
+
   backend-tests:
     runs-on: ubuntu-latest
+    env:
+      AEOS_EVIDENCE_DIR: /tmp/aeos-command-evidence
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Record reviewed head and actual checkout identity
+        env:
+          REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          mkdir -p "$AEOS_EVIDENCE_DIR"
+          {
+            echo "reviewed_head=$REVIEWED_HEAD"
+            echo "event_sha=$EVENT_SHA"
+            git rev-parse HEAD HEAD^{tree}
+            sha256sum frontend/package-lock.json
+            git status --short
+          } | tee "$AEOS_EVIDENCE_DIR/identity.txt"
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.11.15'
 
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
@@ -117,48 +167,152 @@ jobs:
 
       - name: Run complete backend test suite
         working-directory: backend
-        run: python -m pytest tests/ -v
+        run: python ../.github/scripts/record-command.py backend-no-db python -m pytest tests/ -v -rs --junitxml=/tmp/aeos-command-evidence/backend-no-db.xml
 
       - name: Run assessment tests separately
         working-directory: backend
         run: python -m pytest tests/test_assessments.py -v
 
+      - name: Publish command evidence and checkout identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-evidence-${{ github.job }}-${{ github.sha }}
+          path: /tmp/aeos-command-evidence/
+          if-no-files-found: error
+
   frontend-validation:
     runs-on: ubuntu-latest
+    env:
+      AEOS_EVIDENCE_DIR: /tmp/aeos-command-evidence
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Record reviewed head and actual checkout identity
+        env:
+          REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          mkdir -p "$AEOS_EVIDENCE_DIR"
+          {
+            echo "reviewed_head=$REVIEWED_HEAD"
+            echo "event_sha=$EVENT_SHA"
+            git rev-parse HEAD HEAD^{tree}
+            sha256sum frontend/package-lock.json
+            git status --short
+          } | tee "$AEOS_EVIDENCE_DIR/identity.txt"
+
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.22.2'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Pin npm
+        run: npm install --global npm@10.9.7
+
       - name: Install pinned frontend dependencies
+        id: frontend-install
         working-directory: frontend
-        run: npm ci
+        run: python ../.github/scripts/record-command.py npm-ci npm ci
 
       - name: Audit frontend dependency vulnerabilities
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        shell: bash
         working-directory: frontend
-        run: npm audit --audit-level=low
+        # tee preserves a machine-readable inventory; bash pipefail keeps every
+        # audit finding at or above low severity a failing security gate.
+        run: python ../.github/scripts/record-command.py audit-full npm audit --audit-level=low --json | tee npm-audit.json
+
+      - name: Audit production dependencies without exceptions
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        shell: bash
+        working-directory: frontend
+        run: python ../.github/scripts/record-command.py audit-production npm audit --omit=dev --audit-level=low --json | tee npm-audit-production.json
+
+      - name: Publish dependency audit for the checked-out tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dependency-audit-${{ github.sha }}
+          path: frontend/npm-audit*.json
+          if-no-files-found: warn
 
       - name: Verify frontend dependency tree
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
-        run: npm ls --all
+        run: python ../.github/scripts/record-command.py npm-tree npm ls --all
+
+      - name: Verify assessment request contracts
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: python ../.github/scripts/record-command.py request-contract node --experimental-vm-modules tests/assessment-api.test.mjs
+
+      - name: Verify Next.js lint glob override
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: python ../.github/scripts/record-command.py lint-glob-guards node tests/lint-glob-override.test.mjs
 
       - name: Lint frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         env:
           CI: '1'
-        run: npm run lint
+        run: python ../.github/scripts/record-command.py lint npm run lint
 
       - name: Type-check frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: python ../.github/scripts/record-command.py typecheck npx --no-install tsc --noEmit
 
       - name: Build frontend
+        id: frontend-build
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
-        run: npm run build
+        run: python ../.github/scripts/record-command.py build npm run build
+
+      - name: Set up Python for the synthetic review fixture
+        if: ${{ !cancelled() && steps.frontend-build.outcome == 'success' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.15'
+
+      - name: Install existing backend dependencies for browser verification
+        id: review-fixture-deps
+        if: ${{ !cancelled() && steps.frontend-build.outcome == 'success' }}
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Verify teacher review in Chrome against the synthetic backend
+        if: ${{ !cancelled() && steps.review-fixture-deps.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AEOS_SYNTHETIC_REVIEW=1
+          (cd backend && python -m tests.review_fixture_server) > /tmp/aeos-review-backend.log 2>&1 &
+          review_backend_pid=$!
+          (cd frontend && npm run start -- --hostname 127.0.0.1) > /tmp/aeos-review-frontend.log 2>&1 &
+          review_frontend_pid=$!
+          google-chrome --headless --no-sandbox --disable-dev-shm-usage --remote-debugging-port=9222 --user-data-dir=/tmp/aeos-review-chrome about:blank > /tmp/aeos-review-chrome.log 2>&1 &
+          review_chrome_pid=$!
+          trap 'kill "$review_backend_pid" "$review_frontend_pid" "$review_chrome_pid" 2>/dev/null || true' EXIT
+          python .github/scripts/record-command.py browser-review python frontend/tests/browser_review.py
+
+      - name: Publish synthetic browser fixture logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: teacher-review-browser-logs-${{ github.sha }}
+          path: /tmp/aeos-review-*.log
+          if-no-files-found: ignore
+
+      - name: Publish command evidence and checkout identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-evidence-${{ github.job }}-${{ github.sha }}
+          path: /tmp/aeos-command-evidence/
+          if-no-files-found: error
