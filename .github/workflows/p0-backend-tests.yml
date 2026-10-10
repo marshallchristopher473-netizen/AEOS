@@ -53,16 +53,55 @@ jobs:
           AEOS_REQUIRE_RLS_TESTS: '1'
         run: python -m pytest tests/test_rls_enforcement.py -v -rs
 
+      # The complete, unfiltered tests/ directory against the same database.
+      # The backend-tests job below has no database, so the RLS module skips
+      # there; this is the only run of every test together with live RLS.
+      - name: Run the complete backend suite against PostgreSQL 16
+        working-directory: backend
+        env:
+          AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          AEOS_REQUIRE_RLS_TESTS: '1'
+        run: python -m pytest tests/ -v -rs --junitxml="$GITHUB_WORKSPACE/backend-junit.xml"
+
+      # pytest exits 0 when tests skip. A skipped security test proves nothing,
+      # so any skip, failure or error in the complete run fails the job.
+      - name: Require zero failed, errored or skipped tests
+        run: |
+          python - "$GITHUB_WORKSPACE/backend-junit.xml" <<'EOF'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse(sys.argv[1]).getroot()
+          suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+          totals = {
+              key: sum(int(suite.get(key, 0)) for suite in suites)
+              for key in ("tests", "failures", "errors", "skipped")
+          }
+          print(totals)
+          if totals["tests"] == 0 or any(totals[k] for k in ("failures", "errors", "skipped")):
+              sys.exit("complete backend suite did not pass with zero skips")
+          EOF
+
+      - name: Publish the complete-suite results for this exact SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-junit-${{ github.sha }}
+          path: backend-junit.xml
+          if-no-files-found: warn
+
       # Breaks each tenant control in a throwaway copy and asserts the suite
       # notices. Guards specifically against regressions that leave a policy's
       # NAME intact while removing its effect — e.g. students_select becoming
       # USING (true) — which every string- and regex-based test would accept.
       #
-      # Covers the full M01-M18 contract: authentication, JWT validation, actor
-      # and organization authority, RLS tenant isolation, lifecycle, write
-      # authority and service-role exposure. Each mutant is byte-compiled (or
-      # its migrations applied) before any test runs, so a mutant that does not
-      # build is reported INVALID rather than counted as killed.
+      # Covers the full M01-M20 contract: authentication, JWT validation
+      # (including key-type pinning, expiry presence and key-set freshness),
+      # actor and organization authority, RLS tenant isolation, lifecycle,
+      # write authority, service-role exposure and RLS-blind table privileges.
+      # Each mutant is byte-compiled (or its migrations applied) before any test
+      # runs, so a mutant that does not build is reported INVALID rather than
+      # counted as killed.
       - name: Prove the security suite can actually fail
         working-directory: backend
         env:
@@ -130,35 +169,66 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install pinned frontend dependencies
+        id: frontend-install
         working-directory: frontend
         run: npm ci
 
-      - name: Audit frontend dependency vulnerabilities
+      # Full threshold, every dependency, no exceptions file. tee keeps a
+      # machine-readable inventory; bash pipefail keeps any finding at or above
+      # low severity a failing gate.
+      - name: Audit all frontend dependencies
+        shell: bash
         working-directory: frontend
-        run: npm audit --audit-level=low
+        run: npm audit --audit-level=low --json | tee npm-audit.json
 
+      - name: Audit production frontend dependencies
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Publish dependency audit for the checked-out tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dependency-audit-${{ github.sha }}
+          path: frontend/npm-audit.json
+          if-no-files-found: warn
+
+      # The remaining gates still run when an audit fails, so a new advisory
+      # does not hide a lint, type or build regression.
       - name: Verify frontend dependency tree
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npm ls --all
 
+      # package.json replaces the Next.js lint plugin's fast-glob with
+      # tinyglobby. These guards pin the conditions that make that safe.
+      - name: Verify Next.js lint glob override
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: node tests/lint-glob-override.test.mjs
+
       - name: Lint frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         env:
           CI: '1'
         run: npm run lint
 
       - name: Type-check frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npx tsc --noEmit
 
       - name: Build frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npm run build
