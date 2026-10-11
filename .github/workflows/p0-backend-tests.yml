@@ -6,6 +6,7 @@ on:
       - fix/p0-0-stabilization-reconstruction
       - 'p0/security-*'
       - 'claude/aeos-p0-**'
+      - 'claude/aeos-rc-**'
   pull_request:
     branches:
       - main
@@ -36,6 +37,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # A pull_request run checks out GitHub's merge of the head into the base,
+      # not the head itself. Record both so evidence names the tree that ran.
+      - name: Record checkout identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          echo "event:          $EVENT_NAME"
+          echo "github.sha:     $RUN_SHA"
+          echo "pr head sha:    ${PR_HEAD_SHA:-n/a}"
+          echo "pr base sha:    ${PR_BASE_SHA:-n/a}"
+          echo "checkout HEAD:  $(git rev-parse HEAD)"
+          echo "checkout tree:  $(git rev-parse 'HEAD^{tree}')"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -90,6 +107,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # A pull_request run checks out GitHub's merge of the head into the base,
+      # not the head itself. Record both so evidence names the tree that ran.
+      - name: Record checkout identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          echo "event:          $EVENT_NAME"
+          echo "github.sha:     $RUN_SHA"
+          echo "pr head sha:    ${PR_HEAD_SHA:-n/a}"
+          echo "pr base sha:    ${PR_BASE_SHA:-n/a}"
+          echo "checkout HEAD:  $(git rev-parse HEAD)"
+          echo "checkout tree:  $(git rev-parse 'HEAD^{tree}')"
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -130,6 +163,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # A pull_request run checks out GitHub's merge of the head into the base,
+      # not the head itself. Record both so evidence names the tree that ran.
+      - name: Record checkout identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          echo "event:          $EVENT_NAME"
+          echo "github.sha:     $RUN_SHA"
+          echo "pr head sha:    ${PR_HEAD_SHA:-n/a}"
+          echo "pr base sha:    ${PR_BASE_SHA:-n/a}"
+          echo "checkout HEAD:  $(git rev-parse HEAD)"
+          echo "checkout tree:  $(git rev-parse 'HEAD^{tree}')"
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
