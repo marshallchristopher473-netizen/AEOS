@@ -20,7 +20,15 @@ async function pluginGlobMembers() {
   const files = (await readdir(pluginDist, { recursive: true })).filter((file) => file.endsWith('.js'));
   for (const file of files) {
     const source = await readFile(path.join(pluginDist, file), 'utf8');
-    for (const [, binding] of source.matchAll(/var (\w+) = require\("fast-glob"\)/g)) {
+    const bindings = [...source.matchAll(/var (\w+) = require\("fast-glob"\)/g)];
+    // Every require of fast-glob must be one of the recognised bindings, or
+    // the members used through an unrecognised import form would go unchecked.
+    assert.equal(
+      bindings.length,
+      [...source.matchAll(/require\(["']fast-glob["']\)/g)].length,
+      `${file} requires fast-glob in a form this guard does not inspect`,
+    );
+    for (const [, binding] of bindings) {
       for (const [, member] of source.matchAll(new RegExp(`\\b${binding}\\.(\\w+)`, 'g'))) members.add(member);
     }
   }
@@ -38,12 +46,18 @@ test('plugin resolves fast-glob to tinyglobby and only uses members it provides'
   for (const member of members) assert.equal(typeof glob[member], 'function', `fast-glob.${member}`);
 });
 
-test('ESLint config leaves settings.next.rootDir unset', async () => {
+test('ESLint config leaves settings.next.rootDir unset for every linted file', async () => {
   // tinyglobby expands directory patterns that fast-glob would not, so the
   // override is only equivalent while the plugin globs nothing (rootDir unset).
+  // Flat config can scope settings to some files, so check every file that
+  // `npm run lint` (eslint .) lints rather than a sample.
   const eslint = new ESLint({ cwd: frontend });
-  const config = await eslint.calculateConfigForFile(path.join(frontend, 'src/app/assessments/page.tsx'));
-  assert.equal(config.settings?.next?.rootDir, undefined);
+  const linted = (await eslint.lintFiles(['.'])).map((result) => result.filePath);
+  assert.ok(linted.length > 0, 'eslint . linted no files');
+  for (const filePath of linted) {
+    const config = await eslint.calculateConfigForFile(filePath);
+    assert.equal(config.settings?.next?.rootDir, undefined, path.relative(frontend, filePath));
+  }
 });
 
 test('no-html-link-for-pages still reports raw links to app routes', async () => {
