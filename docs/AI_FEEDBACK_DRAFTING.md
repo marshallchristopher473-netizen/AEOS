@@ -202,7 +202,7 @@ Environment: Python 3.11 with a fresh install of `backend/requirements-dev.txt` 
 | Full backend suite after changes (RLS required) | **521 passed, 0 skipped** (+99 workflow, +20 adapter, +33 migration-006 DB, +4 route auth, +30 RLS sweep cases over the new tables) |
 | RLS enforcement module with 006 applied | 217 passed (was 187) |
 | AI feedback slice mutation check (`docs/evidence/ai-feedback/`) | **17 / 17 killed** (first run 16/17; the survivor exposed a real gap, a replay during an outage, now tested) |
-| Existing P0 security mutation contract | Running at the time of this commit; recorded in a follow-up commit |
+| Existing P0 security mutation contract | **37 / 37 killed**, 0 survived / invalid, migrations 001–006 applied (`docs/evidence/ai-feedback/p0-mutation-matrix-with-006.json`; run on `fd0a756`, full suite 521 cases per mutant) |
 | `compileall`, mutation anchors | pass; 37 anchors |
 | Frontend request contracts | 6 new + 6 existing passed; lint-glob guards 3 passed |
 | `npm run lint`, `tsc --noEmit`, `npm run build` | pass, pass, pass |
