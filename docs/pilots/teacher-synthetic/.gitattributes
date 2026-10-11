@@ -1,0 +1,4 @@
+# Frozen files are bound by sha256; never rewrite line endings.
+fixtures/*.json -text
+harness/pter01.py -text
+manifest.json -text

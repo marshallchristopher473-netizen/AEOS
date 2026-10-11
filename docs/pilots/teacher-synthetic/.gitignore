@@ -1,0 +1,5 @@
+# Filled outcome tables, tester packets and schedules hold tester data: keep them in private storage.
+runs/
+# Provisional keys are hidden; this repository is public.
+keys/
+*key*.json

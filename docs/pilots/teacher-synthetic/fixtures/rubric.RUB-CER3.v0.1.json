@@ -1,0 +1,45 @@
+{
+  "id": "RUB-CER3",
+  "version": "0.1",
+  "status": "PROPOSED-UNREVIEWED",
+  "provenance": "Provisional rubric authored for harness preparation. It does not replace the P-TER-01 v0.2 codebook rubric, which was not located.",
+  "allowed_values": [
+    "0",
+    "1",
+    "2",
+    "IE"
+  ],
+  "value_notes": {
+    "IE": "Insufficient evidence: the response is too incomplete to judge this criterion."
+  },
+  "not_scored": "Spelling, punctuation, capitalization and transcription artifacts are not scored.",
+  "criteria": [
+    {
+      "id": "C1",
+      "name": "Claim",
+      "levels": {
+        "2": "States a benefit of cool roofs that the passage supports.",
+        "1": "States a feature, a vague benefit, or a benefit the passage does not support.",
+        "0": "No claim about cool roofs."
+      }
+    },
+    {
+      "id": "C2",
+      "name": "Evidence",
+      "levels": {
+        "2": "Cites or accurately paraphrases passage details that support the claim.",
+        "1": "Uses passage details that are related but imprecise, or that do not support the claim.",
+        "0": "No passage evidence."
+      }
+    },
+    {
+      "id": "C3",
+      "name": "Reasoning",
+      "levels": {
+        "2": "Explains how the evidence supports the claim.",
+        "1": "States a connection without explaining it.",
+        "0": "No connection between evidence and claim."
+      }
+    }
+  ]
+}
