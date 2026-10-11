@@ -83,6 +83,7 @@ MIGRATIONS = (
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
     "005_revoke_rls_blind_table_privileges.sql",
+    "006_ai_feedback_drafts.sql",
 )
 
 pytestmark = pytest.mark.skipif(
@@ -1003,6 +1004,9 @@ class TestPeerAccessSemantics:
 # Every table the migrations create in `public`. Kept explicit so a missing
 # table is a visible failure rather than a silently shorter loop.
 PUBLIC_TABLES = (
+    "ai_feedback_decisions",
+    "ai_feedback_drafts",
+    "ai_feedback_requests",
     "ai_recommendations",
     "assessment_results",
     "assessments",
@@ -1022,6 +1026,9 @@ PUBLIC_TABLES = (
 # writes; REFERENCES lets the holder build constraints over the table. The
 # application and PostgREST need none of them, so no client role may hold them.
 RLS_BLIND_PRIVILEGES = ("TRUNCATE", "TRIGGER", "REFERENCES")
+
+# Migration 006 tables refuse UPDATE for every role by trigger.
+APPEND_ONLY_FEEDBACK_TABLES = ("ai_feedback_decisions", "ai_feedback_drafts", "ai_feedback_requests")
 CLIENT_ROLES = ("anon", "authenticated")
 DML_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
 
@@ -1135,6 +1142,9 @@ class TestPrivilegesRlsDoesNotGovern:
 # A text column per table, set to a constant so the SET clause reads no
 # existing value (reading one would make PostgreSQL apply the SELECT policy).
 WHERELESS_PROBE_COLUMN = {
+    "ai_feedback_decisions": "approved_text",
+    "ai_feedback_drafts": "draft_text",
+    "ai_feedback_requests": "response_text",
     "ai_recommendations": "recommendation_text",
     "assessment_results": "summary",
     "assessments": "title",
@@ -1149,7 +1159,7 @@ WHERELESS_PROBE_COLUMN = {
 }
 WHERELESS_MARKER = "WHERELESS-PROBE"
 
-# SEED_SQL leaves these four tables without synthetic rows. A probe against a
+# SEED_SQL leaves these tables without synthetic rows. A probe against a
 # table where organization A owns nothing would prove nothing, so each probe
 # adds one row per organization inside its own transaction.
 RECOMMENDATION_A = "0aaa0000-0000-4000-8000-0000000000a1"
@@ -1160,6 +1170,14 @@ AUDIT_A = "0aaa0000-0000-4000-8000-0000000000a3"
 AUDIT_B = "0bbb0000-0000-4000-8000-0000000000b3"
 EVENT_A = "0aaa0000-0000-4000-8000-0000000000a4"
 EVENT_B = "0bbb0000-0000-4000-8000-0000000000b4"
+# Migration 006 tables, seeded in dependency order (request -> draft -> decision).
+FEEDBACK_REQUEST_A = "0aaa0000-0000-4000-8000-0000000000a5"
+FEEDBACK_REQUEST_B = "0bbb0000-0000-4000-8000-0000000000b5"
+FEEDBACK_DRAFT_A = "0aaa0000-0000-4000-8000-0000000000a6"
+FEEDBACK_DRAFT_B = "0bbb0000-0000-4000-8000-0000000000b6"
+FEEDBACK_DECISION_A = "0aaa0000-0000-4000-8000-0000000000a7"
+FEEDBACK_DECISION_B = "0bbb0000-0000-4000-8000-0000000000b7"
+_SHA = "0" * 64
 WHERELESS_EXTRA_SEED_SQL = f"""
 INSERT INTO public.ai_recommendations
     (id, organization_id, assessment_id, created_by, model_name, recommendation_text) VALUES
@@ -1177,6 +1195,25 @@ INSERT INTO public.progress_events
     (id, organization_id, student_id, actor_id, event_type, event_message) VALUES
     ('{EVENT_A}', '{ORG_A}', '{STUDENT_A}', '{USER_A}', 'student_created', 'Org A event'),
     ('{EVENT_B}', '{ORG_B}', '{STUDENT_B}', '{USER_B}', 'student_created', 'Org B event');
+INSERT INTO public.ai_feedback_requests
+    (id, organization_id, assessment_id, student_id, created_by, request_key, input_sha256,
+     data_classification, response_text, rubric_id, rubric_version, rubric_sha256,
+     prompt_version, provider, model_id, reserved_cost_microusd) VALUES
+    ('{FEEDBACK_REQUEST_A}', '{ORG_A}', '{ASSESSMENT_A}', '{STUDENT_A}', '{USER_A}', gen_random_uuid(), '{_SHA}',
+     'synthetic', 'Org A synthetic response', 'RUB-CER3', '0.1', '{_SHA}', 'v1', 'synthetic', 'synthetic', 1),
+    ('{FEEDBACK_REQUEST_B}', '{ORG_B}', '{ASSESSMENT_B}', '{STUDENT_B}', '{USER_B}', gen_random_uuid(), '{_SHA}',
+     'synthetic', 'Org B synthetic response', 'RUB-CER3', '0.1', '{_SHA}', 'v1', 'synthetic', 'synthetic', 1);
+INSERT INTO public.ai_feedback_drafts
+    (id, organization_id, request_id, status, output, draft_text) VALUES
+    ('{FEEDBACK_DRAFT_A}', '{ORG_A}', '{FEEDBACK_REQUEST_A}', 'ready', '{{}}', 'Org A draft'),
+    ('{FEEDBACK_DRAFT_B}', '{ORG_B}', '{FEEDBACK_REQUEST_B}', 'ready', '{{}}', 'Org B draft');
+INSERT INTO public.ai_feedback_decisions
+    (id, organization_id, draft_id, decided_by, decision, approved_text, teacher_confirmed,
+     decision_key, payload_sha256) VALUES
+    ('{FEEDBACK_DECISION_A}', '{ORG_A}', '{FEEDBACK_DRAFT_A}', '{USER_A}', 'accepted', 'Org A draft', true,
+     gen_random_uuid(), '{_SHA}'),
+    ('{FEEDBACK_DECISION_B}', '{ORG_B}', '{FEEDBACK_DRAFT_B}', '{USER_B}', 'accepted', 'Org B draft', true,
+     gen_random_uuid(), '{_SHA}');
 """
 
 SUSPEND_ORG_A = f"UPDATE public.organizations SET status = 'suspended' WHERE id = '{ORG_A}'"
@@ -1438,7 +1475,14 @@ class TestNegativeControl:
         ).fetchone()
         assert restored == 1, "rollback did not restore organization A's row"
 
-    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    # The migration 006 tables are excluded from this UPDATE control only: an
+    # append-only trigger refuses every UPDATE on them, so with RLS disabled the
+    # write still fails rather than demonstrating a breach. That second layer
+    # has its own negative control in tests/test_ai_feedback_rls.py, and the
+    # DELETE control below still covers these tables.
+    @pytest.mark.parametrize(
+        "table", [t for t in PUBLIC_TABLES if t not in APPEND_ONLY_FEEDBACK_TABLES]
+    )
     def test_whereless_update_breach_is_observable_without_rls(
         self, privileged_session, table
     ):

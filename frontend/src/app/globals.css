@@ -189,3 +189,32 @@ button:disabled { cursor: wait; opacity: 0.65; }
     align-items: flex-start;
   }
 }
+
+.ai-meta {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.ai-flags {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 10px 10px 10px 28px;
+}
+
+.ai-criteria {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.ai-evidence {
+  color: #334155;
+  font-style: italic;
+}
+
+.ai-ack {
+  display: block;
+  margin: 12px 0;
+}

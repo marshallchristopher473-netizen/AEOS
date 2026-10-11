@@ -12,6 +12,7 @@ import {
   ReviewDraft,
   saveAssessmentReview,
 } from '@/lib/assessments';
+import AiFeedbackPanel from './AiFeedbackPanel';
 
 function ReviewForm({ assessmentId, onSave }: {
   assessmentId: string;
@@ -203,6 +204,7 @@ export default function AssessmentDetailPage() {
         )}
       </section>
       <ReviewForm key={assessment.id} assessmentId={assessment.id} onSave={(result) => setResults((previous) => [result, ...previous])} />
+      <AiFeedbackPanel key={`ai-${assessment.id}`} assessmentId={assessment.id} />
     </main>
   );
 }

@@ -28,7 +28,7 @@ proves nothing about the suite. Every mutation therefore goes through an
 explicit validity precheck before any test runs:
 
   * Python targets       -> byte-compile the tree and import `app.main`
-  * SQL targets          -> apply the shim + migrations 001..005 to a scratch
+  * SQL targets          -> apply the shim + migrations 001..006 to a scratch
                             database and require every statement to succeed
   * Frontend TS targets  -> textual substitution only (no build in this harness)
 
@@ -72,6 +72,7 @@ MIGRATION_FILES = (
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
     "005_revoke_rls_blind_table_privileges.sql",
+    "006_ai_feedback_drafts.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement
@@ -842,14 +843,14 @@ def _precheck(root, mutation, database_url):
                 for name in MIGRATION_FILES:
                     conn.execute((root / MIGRATIONS / name).read_text())
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
-            return False, f"migrations 001..005 failed to apply: {exc}"
+            return False, f"migrations 001..006 failed to apply: {exc}"
         finally:
             try:
                 with psycopg.connect(database_url, autocommit=True) as conn:
                     conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
             except Exception:  # noqa: BLE001 - cleanup only
                 pass
-        return True, "migrations 001..005 apply cleanly"
+        return True, "migrations 001..006 apply cleanly"
 
     return True, "textual substitution (no build step in this harness)"
 
