@@ -178,6 +178,46 @@ check was not run locally (backend Python dependencies were not installed).
 These are local results, not CI results. Audit results depend on the advisory
 feed on the day they are run.
 
+## Release-candidate integration (#20 + #22 + #23–#25), 2026-10-11
+
+**Audit policy decision.** #20 audited development dependencies through a
+dated exception list (braces GHSA-vfj7-8cjw-p6xm, expiring 2026-12-31).
+#23/#24 require a strict full-tree audit. The integrated candidate keeps both
+strict gates and **no exception path**:
+
+- `npm audit --omit=dev --audit-level=low` (production tree)
+- `npm audit --audit-level=low` (full tree, raw JSON kept as a CI artifact)
+
+#20's `check-npm-audit.mjs` and `audit-exceptions.json` are removed. An
+advisory without a compatible fix now blocks the candidate.
+
+**New advisories since #25.** On the integrated tree both strict audits failed
+with 2 high-severity packages, each with a compatible patch release:
+
+| Package | Installed | Advisories | Remedy |
+| --- | --- | --- | --- |
+| `next` | `16.3.6` | GHSA-3w37-wq28-93x7, GHSA-4jqv-mc3x-m676, GHSA-39w2-rjm5-chcv, GHSA-f87g-xv8r-7p7x, GHSA-mcj8-r9mp-w47p, GHSA-cjq9-62q9-8jv4 (range `16.0.0–16.3.7`) | `16.3.8` patch with its coupled `@next/env` and SWC binaries; manifest floor `^16.3.8`. `16.4.0` deliberately not taken |
+| `sharp` (via `next`) | `0.35.4` | GHSA-wq5f-xc86-pv6w (`<0.35.5`) | `0.35.5`, inside `next`'s `^0.35.4` range, with its `@img` platform packages; lockfile only |
+
+No exception, threshold change, new override or force upgrade. `eslint-config-next`
+and `@next/eslint-plugin-next` stay at `16.3.4`.
+
+**tinyglobby review.** tinyglobby is not a general drop-in replacement for
+fast-glob: it expands directory patterns differently. The override is safe here
+only because the plugin's single call, `globSync(rootDir, { onlyDirectories: true })`
+in `dist/utils/get-root-dirs.js`, is reached only when `settings.next.rootDir` is
+set, and AEOS never sets it, so tinyglobby never executes during lint. Upstream is
+unchanged: the latest `@next/eslint-plugin-next` still requires `fast-glob@3.3.1`.
+`tests/lint-glob-override.test.mjs` was strengthened to check `rootDir` on every
+file `eslint .` lints (previously one sample file; a flat-config block setting
+`rootDir` for `src/lib/**` passed the old guard) and to fail on any
+`require("fast-glob")` form it does not inspect. Each guard was shown to fail under
+a deliberate break. If a future AEOS config needs `rootDir`, the override must be
+re-reviewed, not extended.
+
+The measured local and CI results for the integrated candidate are recorded in
+`docs/RC_INTEGRATION_HANDOFF.md`.
+
 ## Verification and limits
 
 The final PR description records the full head SHA and corresponding Actions
