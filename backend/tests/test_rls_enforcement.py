@@ -1159,7 +1159,7 @@ WHERELESS_PROBE_COLUMN = {
 }
 WHERELESS_MARKER = "WHERELESS-PROBE"
 
-# SEED_SQL leaves these four tables without synthetic rows. A probe against a
+# SEED_SQL leaves these tables without synthetic rows. A probe against a
 # table where organization A owns nothing would prove nothing, so each probe
 # adds one row per organization inside its own transaction.
 RECOMMENDATION_A = "0aaa0000-0000-4000-8000-0000000000a1"
