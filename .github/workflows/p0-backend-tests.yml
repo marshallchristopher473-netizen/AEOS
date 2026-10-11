@@ -252,6 +252,11 @@ jobs:
         working-directory: frontend
         run: python ../.github/scripts/record-command.py request-contract node --experimental-vm-modules tests/assessment-api.test.mjs
 
+      - name: Verify AI feedback request contracts
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: python ../.github/scripts/record-command.py ai-feedback-request-contract node --experimental-vm-modules tests/ai-feedback-api.test.mjs
+
       - name: Verify Next.js lint glob override
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
