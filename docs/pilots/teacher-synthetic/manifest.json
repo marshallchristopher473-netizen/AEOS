@@ -1,0 +1,95 @@
+{
+  "experiment": "P-TER-01 offline synthetic teacher ELA review",
+  "manifest_version": "0.1",
+  "scope": "Preparation only. Synthetic authored Grade 6-8 ELA responses. No participants, records, live model or billing.",
+  "protocol": {
+    "id": "P-TER-01",
+    "version": "0.2",
+    "status": "SOURCE_NOT_LOCATED",
+    "sha256": null,
+    "file_name": null
+  },
+  "codebook": {
+    "id": "ASSESSMENT-CONSTRUCT-CODEBOOK",
+    "version": null,
+    "status": "SOURCE_NOT_LOCATED",
+    "sha256": null,
+    "file_name": null
+  },
+  "versions": {
+    "passage_ref": "PSG-COOLROOF@0.1",
+    "rubric_ref": "RUB-CER3@0.1",
+    "response_set_version": "0.1",
+    "adapter_ref": "fixture-adapter@0.1",
+    "harness_version": "0.1"
+  },
+  "files": {
+    "fixtures/passage.PSG-COOLROOF.v0.1.json": "043da966209a49d983dd3d5a2cd4e3f23837e2f081733a451e020a3bba28418e",
+    "fixtures/rubric.RUB-CER3.v0.1.json": "a57cdbe16f87472734dc9f9e1fa45517c71f4f35163ef52cec77dbde7eb766f8",
+    "fixtures/responses.v0.1.json": "62844c5dbd3fd2547189e289dff6ed82b36f9c6eace25b57d025a54fd3c2d2ce",
+    "fixtures/drafts.fixture-adapter.v0.1.json": "dccd0f6b8a6cc4edcbc86eb0ac06c8cae238f9e5f32e2811df72da719ae877f8",
+    "harness/pter01.py": "5217dbe3e1bbe2e2b492d43c2215dd7dff5174d4d9e1a804e6c0fa30a95e09d2"
+  },
+  "key": {
+    "id": "KEY-PTER01-PROV",
+    "version": "0.1",
+    "status": "PROVISIONAL-UNREVIEWED",
+    "visibility": "HIDDEN: stored outside the public repository",
+    "sha256": "725f599bc3ab0f4fab40d1c0b64e1059d61a7ed3fdf772c2ec9127d8b95f24a5"
+  },
+  "thresholds": {
+    "status": "UNBOUND",
+    "note": "P-TER-01 v0.2 was not located. No threshold is computed or applied. When bound, values are proposals, not validated cutoffs.",
+    "values": {}
+  },
+  "open_items": [
+    {
+      "id": "protocol-source",
+      "description": "Locate the authoritative P-TER-01 v0.2 packet and bind it by hash (freeze --protocol-file).",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "codebook-source",
+      "description": "Locate the current Assessment Construct Codebook and bind it by hash (freeze --codebook-file).",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "fixture-review",
+      "description": "Independent content review of the PROPOSED passage, rubric and responses (Grade 6-8 ELA).",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "key-review",
+      "description": "Independent review of the PROVISIONAL key, including ambiguous items and seeded errors.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "comparator-review",
+      "description": "Independent review that the manual comparator is a fair equivalent of the assisted task.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "order-procedure",
+      "description": "Confirm whether the protocol requires randomization/counterbalancing and adopt or replace the proposed schedule.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "thresholds",
+      "description": "Copy the protocol's measures and thresholds into the manifest as PROPOSALS; they are not validated cutoffs.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "tester-notice",
+      "description": "Adult tester notice prepared, approved and delivered per protocol before any session.",
+      "status": "OPEN",
+      "evidence": null
+    }
+  ]
+}

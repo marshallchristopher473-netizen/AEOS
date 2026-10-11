@@ -1,0 +1,345 @@
+{
+  "adapter": {
+    "id": "fixture-adapter",
+    "version": "0.1",
+    "kind": "deterministic frozen drafts; no model call, no network, no billing"
+  },
+  "status": "PROPOSED-UNREVIEWED",
+  "author": "AI assistant (Claude Code) for P-TER-01 preparation; not student work",
+  "response_set_version": "0.1",
+  "rubric_ref": "RUB-CER3@0.1",
+  "drafts": [
+    {
+      "draft_id": "D-R01-C1",
+      "response_id": "R01",
+      "criterion_id": "C1",
+      "value": "2",
+      "span": {
+        "start": 38,
+        "end": 70,
+        "quote": "keeps the building cooler inside"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R01-C2",
+      "response_id": "R01",
+      "criterion_id": "C2",
+      "value": "2",
+      "span": {
+        "start": 102,
+        "end": 141,
+        "quote": "reflects much of it back toward the sky"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R01-C3",
+      "response_id": "R01",
+      "criterion_id": "C3",
+      "value": "2",
+      "span": {
+        "start": 168,
+        "end": 242,
+        "quote": "Because less sunlight turns into heat, less heat moves down into the rooms"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R02-C1",
+      "response_id": "R02",
+      "criterion_id": "C1",
+      "value": "1",
+      "span": {
+        "start": 0,
+        "end": 50,
+        "quote": "Cool roofs are good because they are light colored"
+      },
+      "rationale": "Meets the level 1 descriptor."
+    },
+    {
+      "draft_id": "D-R02-C2",
+      "response_id": "R02",
+      "criterion_id": "C2",
+      "value": "1",
+      "span": {
+        "start": 52,
+        "end": 85,
+        "quote": "The library felt more comfortable"
+      },
+      "rationale": "Meets the level 1 descriptor."
+    },
+    {
+      "draft_id": "D-R02-C3",
+      "response_id": "R02",
+      "criterion_id": "C3",
+      "value": "0",
+      "span": null,
+      "rationale": "No qualifying text found."
+    },
+    {
+      "draft_id": "D-R03-C1",
+      "response_id": "R03",
+      "criterion_id": "C1",
+      "value": "IE",
+      "span": null,
+      "rationale": "Response too incomplete to judge."
+    },
+    {
+      "draft_id": "D-R03-C2",
+      "response_id": "R03",
+      "criterion_id": "C2",
+      "value": "IE",
+      "span": null,
+      "rationale": "Response too incomplete to judge."
+    },
+    {
+      "draft_id": "D-R03-C3",
+      "response_id": "R03",
+      "criterion_id": "C3",
+      "value": "IE",
+      "span": null,
+      "rationale": "Response too incomplete to judge."
+    },
+    {
+      "draft_id": "D-R04-C1",
+      "response_id": "R04",
+      "criterion_id": "C1",
+      "value": "2",
+      "span": {
+        "start": 27,
+        "end": 56,
+        "quote": "they make the inside less hot"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R04-C2",
+      "response_id": "R04",
+      "criterion_id": "C2",
+      "value": "1",
+      "span": {
+        "start": 82,
+        "end": 176,
+        "quote": "dark roofs absorb the sunlight and turn it into heat and cool roofs reflect it back to the sky"
+      },
+      "rationale": "Evidence is not quoted and the response contains errors."
+    },
+    {
+      "draft_id": "D-R04-C3",
+      "response_id": "R04",
+      "criterion_id": "C3",
+      "value": "2",
+      "span": {
+        "start": 177,
+        "end": 248,
+        "quote": "so the rooms done get as much heat and the air conditioner can run less"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R05-C1",
+      "response_id": "R05",
+      "criterion_id": "C1",
+      "value": "2",
+      "span": {
+        "start": 0,
+        "end": 28,
+        "quote": "Cool roofs reflect sunlight."
+      },
+      "rationale": "Clear claim about a benefit."
+    },
+    {
+      "draft_id": "D-R05-C2",
+      "response_id": "R05",
+      "criterion_id": "C2",
+      "value": "2",
+      "span": {
+        "start": 0,
+        "end": 28,
+        "quote": "Cool roofs reflect sunlight."
+      },
+      "rationale": "Accurate passage evidence."
+    },
+    {
+      "draft_id": "D-R05-C3",
+      "response_id": "R05",
+      "criterion_id": "C3",
+      "value": "2",
+      "span": {
+        "start": 128,
+        "end": 143,
+        "quote": "They are white."
+      },
+      "rationale": "Explains the connection."
+    },
+    {
+      "draft_id": "D-R06-C1",
+      "response_id": "R06",
+      "criterion_id": "C1",
+      "value": "2",
+      "span": {
+        "start": 0,
+        "end": 51,
+        "quote": "Cool roofs can help a building use less electricity"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R06-C2",
+      "response_id": "R06",
+      "criterion_id": "C2",
+      "value": "2",
+      "span": {
+        "start": 92,
+        "end": 155,
+        "quote": "used less electricity for cooling than it had the summer before"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R06-C3",
+      "response_id": "R06",
+      "criterion_id": "C3",
+      "value": "2",
+      "span": {
+        "start": 184,
+        "end": 255,
+        "quote": "The coating reflects sunlight, so the building does not heat up as much"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R07-C1",
+      "response_id": "R07",
+      "criterion_id": "C1",
+      "value": "1",
+      "span": {
+        "start": 0,
+        "end": 20,
+        "quote": "They help with heat."
+      },
+      "rationale": "Meets the level 1 descriptor."
+    },
+    {
+      "draft_id": "D-R07-C2",
+      "response_id": "R07",
+      "criterion_id": "C2",
+      "value": "2",
+      "span": {
+        "start": 45,
+        "end": 92,
+        "quote": "the reading room being more comfortable in July"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R07-C3",
+      "response_id": "R07",
+      "criterion_id": "C3",
+      "value": "1",
+      "span": {
+        "start": 93,
+        "end": 115,
+        "quote": "so that shows it works"
+      },
+      "rationale": "Meets the level 1 descriptor."
+    },
+    {
+      "draft_id": "D-R08-C1",
+      "response_id": "R08",
+      "criterion_id": "C1",
+      "value": "IE",
+      "span": null,
+      "rationale": "Response too incomplete to judge."
+    },
+    {
+      "draft_id": "D-R08-C2",
+      "response_id": "R08",
+      "criterion_id": "C2",
+      "value": "IE",
+      "span": null,
+      "rationale": "Response too incomplete to judge."
+    },
+    {
+      "draft_id": "D-R08-C3",
+      "response_id": "R08",
+      "criterion_id": "C3",
+      "value": "IE",
+      "span": null,
+      "rationale": "Response too incomplete to judge."
+    },
+    {
+      "draft_id": "D-R09-C1",
+      "response_id": "R09",
+      "criterion_id": "C1",
+      "value": "2",
+      "span": {
+        "start": 105,
+        "end": 130,
+        "quote": "the building stays cooler"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R09-C2",
+      "response_id": "R09",
+      "criterion_id": "C2",
+      "value": "1",
+      "span": {
+        "start": 36,
+        "end": 101,
+        "quote": "bounce the sun light back up to the sky in stead of soaking it up"
+      },
+      "rationale": "Evidence is imprecise and contains spelling errors."
+    },
+    {
+      "draft_id": "D-R09-C3",
+      "response_id": "R09",
+      "criterion_id": "C3",
+      "value": "2",
+      "span": {
+        "start": 102,
+        "end": 130,
+        "quote": "so the building stays cooler"
+      },
+      "rationale": "Meets the level 2 descriptor."
+    },
+    {
+      "draft_id": "D-R10-C1",
+      "response_id": "R10",
+      "criterion_id": "C1",
+      "value": "2",
+      "span": {
+        "start": 86,
+        "end": 101,
+        "quote": "They look nice."
+      },
+      "rationale": "Clear claim about a benefit."
+    },
+    {
+      "draft_id": "D-R10-C2",
+      "response_id": "R10",
+      "criterion_id": "C2",
+      "value": "2",
+      "span": {
+        "start": 64,
+        "end": 85,
+        "quote": "Cool roofs are white."
+      },
+      "rationale": "Accurate passage evidence."
+    },
+    {
+      "draft_id": "D-R10-C3",
+      "response_id": "R10",
+      "criterion_id": "C3",
+      "value": "2",
+      "span": {
+        "start": 86,
+        "end": 101,
+        "quote": "They look nice."
+      },
+      "rationale": "Explains the connection."
+    }
+  ]
+}
