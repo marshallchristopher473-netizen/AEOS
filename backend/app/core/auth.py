@@ -3,7 +3,8 @@ from typing import Any, Dict, Optional
 import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import jwt
+from jose.exceptions import JOSEError
 
 from app.core.config import (
     SUPABASE_JWKS_URL,
@@ -116,5 +117,8 @@ async def get_current_user(
         if not isinstance(subject, str) or not subject.strip():
             raise unauthorized("JWT is missing a usable subject")
         return payload
-    except (JWTError, ValueError, TypeError) as exc:
+    # JOSEError, not JWTError: python-jose raises JWKError (a JOSEError that is
+    # not a JWTError) when the key selected by the caller's `kid` is not an RSA
+    # key. Catching only JWTError let that escape as a 500 (SEC-G1-06).
+    except (JOSEError, ValueError, TypeError) as exc:
         raise unauthorized() from exc
