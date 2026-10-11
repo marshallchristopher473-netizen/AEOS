@@ -589,14 +589,19 @@ def _ec_public_jwk(kid):
 async def test_unusable_published_key_is_401_not_a_server_error(
     monkeypatch, configured_auth, published_key
 ):
-    """SEC-G1-06: a key python-jose cannot use must fail closed as 401.
+    """SEC-G1-06: a published key that cannot verify an RS256 token is a 401.
 
     The token's `kid` selects the published key, and the caller chooses the
-    `kid`. When that key is not an RSA key (an EC or a symmetric key), python-jose
-    raises `JWKError`, which is a `JOSEError` but not a `JWTError`. Catching only
-    `JWTError` let it escape as an unhandled exception, so the request
-    returned 500 instead of 401. It never granted access, but a caller could
-    turn any non-RSA key in the JWKS into server errors on demand.
+    `kid`. Before the ES256 repair, any non-RSA key under that `kid` made
+    python-jose raise `JWKError`, a `JOSEError` that is not a `JWTError`, so
+    catching only `JWTError` returned 500 instead of 401.
+
+    Since the repair neither case reaches `JWKError`: an EC P-256 key is a
+    supported ES256 key, so the RS256 token is refused by the pinned
+    algorithm, and a symmetric key is refused by `signing_algorithm` before
+    python-jose runs. Both must still be 401. The remaining `JWKError` path
+    is covered by
+    `test_published_key_python_jose_cannot_load_is_401_not_a_server_error`.
     """
     token = make_token(configured_auth)
 
