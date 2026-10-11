@@ -5,14 +5,16 @@
 **Scope:** Gate 1 only (independent local reproduction plus adversarial review). The
 candidate was **not modified**. Nothing was written to any hosted Supabase project.
 
-## Decision
+## Decision (updated 2026-10-11, run 2)
 
 | Gate | Decision | Basis |
 | --- | --- | --- |
-| 1. Independent local reproduction of `bcf58e1` | **VERIFIED** | Every builder claim reproduced exactly (table below) |
-| 2. Isolated non-production Supabase verification | **BLOCKED** | Not run. Needs explicit approval to write to a hosted project |
-| 3. Remaining findings → final P0 decision | **BLOCKED** on Gate 2 | Two new non-blocking findings (F1, F2) recorded below |
-| **P0 overall** | **BLOCKED** | Gate 2 is unresolved. Do not merge, deploy or use real student data |
+| 1. Independent local reproduction of `bcf58e1` | **VERIFIED** (twice) | Every builder claim reproduced exactly in two separate clean checkouts (section 3 and section 6) |
+| 2a. Hosted target confirmed | **CONFIRMED** | Section 6.2 |
+| 2b. Hosted privilege inventory | **MEASURED: 1 pass, 3 gaps** | Section 6.3. New findings F3 and F4 |
+| 2c. Hosted two-tenant attack, TRUNCATE … CASCADE denial, row survival | **BLOCKED** | First attempt timed out with no residue. The retry now needs per-call approval in the session (section 6.4) |
+| 2d. Asymmetric JWT against real Supabase Auth | **BLOCKED** | The container's network policy denies `*.supabase.co` (section 6.1) |
+| **P0 overall** | **BLOCKED** | 2c and 2d have not run. F4 is a hosted-only gap in the class migration 005 exists to close. Do not merge, deploy or use real student data |
 
 ## 1. Candidate identity
 
@@ -133,3 +135,84 @@ seen in the account: `aeos-v05-verify-disposable` (`doblbkfogcykpfwkfycs`, PG 17
 
 **Definition of done for P0:** Gate 2 steps 1–6 all pass and are recorded with outputs, F1 is
 confirmed or refuted on hosted, and a final `VERIFIED` / `REJECTED` decision is written here.
+
+## 6. Run 2: clean re-checkout, local reproduction, hosted-native checks (2026-10-11)
+
+### 6.1 Network and retries (reported separately from results)
+
+| Path | Outcome |
+| --- | --- |
+| `git fetch` of the PR head, `main` and `refs/pull/27/merge` | Succeeded on the first attempt. No retry needed |
+| PyPI and npm registry (dependency install) | Succeeded |
+| Supabase management API (through the Supabase MCP connector) | **502 Bad Gateway twice**, then recovered after backoff. One later call timed out at 60 s (section 6.4). The connector also disconnected and reconnected several times during the run |
+| Direct HTTPS from the container to `*.supabase.co` (Auth sign-in, JWKS, PostgREST) | **Denied with 403 by the environment's network policy.** This is a configuration block, not a transient error, so it was not retried |
+
+Local test infrastructure stayed local. `AEOS_TEST_DATABASE_URL` pointed only at a throwaway PostgreSQL 16.15 cluster on `localhost:55433`, which the verifier created and later stopped. The test suite's create/drop-database behavior never touched the hosted project.
+
+### 6.2 Hosted target confirmation (read-only)
+
+| Check | Result |
+| --- | --- |
+| Project | `doblbkfogcykpfwkfycs` "aeos-v05-verify-disposable", org `yhvgioxlphpruwcalklk`, us-west-1, PostgreSQL 17.6, ACTIVE_HEALTHY |
+| Not the integration-linked project | GitHub and Vercel previews point at `hbcgsukmbgiytcznmmec` (AEOS-MVP), which was not touched |
+| Data (exact `count(*)`, not planner estimates) | `auth.users` 0, `auth.identities` 0, `storage.objects` 0. Public tables hold 4 orgs, 9 users and 7 students. Every row is either the fictional seed in `001_initial_schema.sql` ("Demo District", "Northview Academy", "Ava Johnson", "Maya Patel") or earlier verifier fixtures ("Synthetic District A/B/S", `*@synthetic.invalid`, `SYN-*`). **Synthetic only** |
+| Schema equals the candidate | Applied 005 is byte-identical to `bcf58e1` (md5 `74584b3a…`). Applied 001–004 differ in bytes only because comments were stripped. A behavioral fingerprint of every policy (33), function body (7), constraint (41), column (107), trigger (14), enum (11) and RLS flag (11) gave **identical digests** on hosted and on a local database built from `bcf58e1`, so no migration or reset was needed |
+| Scope used | Read-only catalog queries, plus one attack transaction designed to roll back. No DDL was applied and nothing was committed. A post-timeout check found no verifier rows and unchanged counts |
+
+### 6.3 Hosted privilege inventory (read-only, `has_*_privilege` and `pg_default_acl`)
+
+| Check | Result |
+| --- | --- |
+| TRUNCATE, TRIGGER and REFERENCES on the 11 existing tables for `anon` and `authenticated` | **0 of 11 each: PASS** (005 is effective on hosted) |
+| Future tables created by `postgres` | `anon=arwdm`, `authenticated=arwdm`: no `D`, `x` or `t`. **PASS** |
+| **F3: future tables created by `supabase_admin`** | `anon=arwdDxtm`, `authenticated=arwdDxtm`. **GAP.** A table that `supabase_admin` creates in `public` would grant TRUNCATE, TRIGGER and REFERENCES to client roles. 005's `ALTER DEFAULT PRIVILEGES` covers only the role that runs it, and `postgres` cannot alter `supabase_admin`'s defaults |
+| **F4: MAINTAIN (PostgreSQL 17)** | `anon` and `authenticated` hold **MAINTAIN on 11 of 11 tables**, and the `postgres` default ACL also grants it (`m`). **GAP.** MAINTAIN is not governed by RLS. It permits `LOCK TABLE` in any mode, `VACUUM`, `ANALYZE`, `CLUSTER`, `REINDEX` and `REFRESH MATERIALIZED VIEW` on every tenant's table. The local suite runs PostgreSQL 16, which has no MAINTAIN, so neither the tests nor the mutation harness can see this |
+| F1: `anon` EXECUTE on the 5 SECURITY DEFINER helpers | **Confirmed on hosted** (`anon=true` for all 5) |
+
+**F4 assessment.** PostgREST exposes no `LOCK`, `VACUUM`, `CLUSTER` or `REINDEX` operation, so no known HTTP route reaches it today. That is the same reachability argument migration 005 already rejected for TRUNCATE ("any direct database session as a client role, or any future function that runs dynamic SQL… would turn the grant into a wipe"). MAINTAIN is the availability version of that hole: an `ACCESS EXCLUSIVE` lock on `students` blocks every tenant. Disposition: **blocking for P0 VERIFIED.** It should be fixed in a forward-only migration 006, for example `REVOKE MAINTAIN ON ALL TABLES IN SCHEMA public FROM anon, authenticated` plus the matching `ALTER DEFAULT PRIVILEGES … REVOKE MAINTAIN`, with a PostgreSQL 17 CI service so a test can pin it. The behavioral `LOCK TABLE` probe was part of the transaction that has not yet completed (section 6.4).
+
+**F3 assessment.** This is reachable only if `supabase_admin` creates a table in `public`. AEOS migrations run as `postgres`, so it is not triggered by the current workflow. Disposition: an **owner decision** (accept and document, or add an event-trigger or CI check that rejects `public` tables not owned by `postgres`).
+
+### 6.4 Hosted attack transaction: not yet completed
+
+A single `DO` block was prepared. It inserts two verifier-only synthetic tenants (`e7000000-…`), then acts as teacher B with PostgREST-equivalent claims (`SET LOCAL ROLE authenticated` plus `request.jwt.claims`) and asserts the following:
+
+- B cannot read A's org, schools, users, students or assessments, while B can read its own rows (positive control).
+- B's UPDATE and DELETE of A's rows affect 0 rows.
+- B's INSERT into A, and B moving its own row into A, are denied.
+- `TRUNCATE … CASCADE` is denied with 42501 for `anon` and `authenticated` on all 11 tables (22 attempts).
+- Row counts on all 11 tables are unchanged.
+- Negative control: an owner truncate shows that the measurement can see a wipe.
+- F4 behavioral probe: `LOCK TABLE … ACCESS EXCLUSIVE` as `authenticated`.
+
+The block ends with `RAISE EXCEPTION` so the whole transaction rolls back by construction.
+
+- **Attempt 1** timed out at 60 s in the connector. The most likely cause is an `ACCESS EXCLUSIVE` step waiting on a lock. The follow-up showed no active sessions, no verifier rows and unchanged counts.
+- **Attempt 2** split the run, kept only the steps that need no `ACCESS EXCLUSIVE` lock, and added `lock_timeout` and `statement_timeout`. The connector stopped it with "MCP tool call requires approval". It did not run, and it was not retried around the approval.
+
+**These hosted results are therefore NOT established.** Restoring or confirming the project does not count as a passing gate.
+
+### 6.5 Local reproduction, run 2 (fresh worktree at `bcf58e1`, fresh Python 3.11.17 venv, fresh `npm ci`, PostgreSQL 16.15)
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `compileall` and the 3 import checks | 0 | |
+| `pytest tests/test_rls_enforcement.py` (`AEOS_REQUIRE_RLS_TESTS=1`) | 0 | 214 passed |
+| `pytest tests/` (`AEOS_REQUIRE_RLS_TESTS=1`) | 0 | **347 passed, 0 failed, 0 skipped** |
+| JUnit zero-skip gate | 0 | `{'tests': 347, 'failures': 0, 'errors': 0, 'skipped': 0}` |
+| `python -m tests.security_mutations --json` | 0 | **41/41 killed**: 0 survived, 0 invalid, 0 equivalent, 0 not executed |
+| `pytest tests/` with no database | 0 | 133 passed, 214 skipped (expected) |
+| `npm audit --audit-level=low` (full and `--omit=dev`) | 0 / 0 | 0 vulnerabilities each |
+| `npm ls --all`, glob guards (3 pass, 0 fail), lint, `tsc`, build | all 0 | |
+| Worktree after all runs | | No tracked file changed |
+
+### 6.6 Unchanged-head recheck
+
+After all checks: head `bcf58e1660a47738450d9795a327a75f7e573c90`, tree `3f296e04488010ea45d7a1dfbd8a5477ea1ff843`, `main` `b9c68aa`. **Unchanged.**
+
+### 6.7 Verdict: **P0 BLOCKED**
+
+- **Blocked gates:**
+  - 2c (hosted two-tenant attack, TRUNCATE CASCADE denial, row survival) needs approval for one rolled-back transaction.
+  - 2d (asymmetric JWT) needs `*.supabase.co` allowed in the environment's network settings, or the JWT checks run from a machine that can reach the project.
+- **Expected outcome once unblocked:** `bcf58e1` cannot be VERIFIED as is, because F4 (MAINTAIN) is open on the hosted engine. Unless the owner explicitly accepts F4 as a documented risk, the path is a small follow-up candidate (migration 006 plus PostgreSQL 17 in CI), then rerun 2c and 2d against it.
