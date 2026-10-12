@@ -1,0 +1,98 @@
+{
+  "experiment": "P-TER-01 offline synthetic teacher ELA review",
+  "manifest_version": "0.3-candidate",
+  "scope": "Reconciliation of PR #32 with P-TER-01 and an unapproved attendance candidate. Synthetic authored text only.",
+  "protocol": {
+    "id": "P-TER-01",
+    "version": "0.3",
+    "status": "SOURCE_NOT_LOCATED",
+    "sha256": null,
+    "file_name": null,
+    "searched": "2026-10-12: all repository branches and PR refs, Google Drive full text, Notion"
+  },
+  "candidates": {
+    "task_ref": "TASK-ATTEND@0.3",
+    "rubric_ref": "RUB-ATTEND3@0.3",
+    "status": "CANDIDATE-UNAPPROVED",
+    "in_server_registry": false,
+    "key": {
+      "status": "NOT_CREATED",
+      "visibility": "An adjudicated key, when created, is stored outside this public repository; only its sha256 is recorded here.",
+      "sha256": null
+    }
+  },
+  "files": {
+    "candidates/attendance/task.TASK-ATTEND.v0.3.candidate.json": "2fdba92783792e416ea8008e3626127a9eba8baf6a0baca647288a8e1ca5471c",
+    "candidates/attendance/rubric.RUB-ATTEND3.v0.3.candidate.json": "4a79990b38a09d0007bf3faf82c3f79a25891ad8c5ba1287e362b5cd46537030",
+    "SCORING_BOUNDARIES.md": "05ad99b66642800722f1f2621b88dc91765f44ab1db26204570e344cdfc5ee5c",
+    "REVIEW_WORKSHEET.md": "5b0ce5419fe89004bac6cb747c6806a1f17eff9646972579ccdd81e6f9f008a9"
+  },
+  "preserved_engineering_fixtures": {
+    "backend/app/services/ai_feedback/rubrics/RUB-CER3.v0.1.json": "8dbec68ec3cf98ad3e6810fb09d6b8683a29bb78e6c62628e52f003451d0b3e1",
+    "backend/tests/fixtures/ai_feedback/synthetic_ela.json": "97f534a305d936674e84e14df3dfdbdea6505bda096d441b6a70813706758efa"
+  },
+  "feature_flag_default": {
+    "AEOS_AI_FEEDBACK_ENABLED": false
+  },
+  "approval_pins": [],
+  "thresholds": {
+    "status": "UNBOUND",
+    "values": {}
+  },
+  "open_items": [
+    {
+      "id": "protocol-v0.3-source",
+      "description": "Supply P-TER-01 v0.3, bind it by sha256 here, and re-check reconciliation rows R1-R12.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "decision-D1-ai-values",
+      "description": "Does the assisted condition show AI-suggested rubric values (PR #30) or feedback text only (PR #32)?",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "decision-D2-decision-granularity",
+      "description": "Teacher accept/revise/reject per criterion, per draft, or both.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "decision-D3-off-topic",
+      "description": "Off-topic but substantive response: 0 (proposed) or IE.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "decision-D4-ie-scope",
+      "description": "IE per criterion (proposed) or whole response only.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "decision-D5-topic",
+      "description": "Attendance accepted as a pilot topic.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "candidate-review",
+      "description": "REVIEW_WORKSHEET.md Part F completed by a qualified Grade 6-8 ELA reviewer with APPROVE for every artifact.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "candidate-key",
+      "description": "At least two blind Part B scorings adjudicated into a key stored outside the repository.",
+      "status": "OPEN",
+      "evidence": null
+    },
+    {
+      "id": "models-reconstruction-review",
+      "description": "Human review of the reconstructed backend/app/models/ai_feedback.py.",
+      "status": "OPEN",
+      "evidence": null
+    }
+  ]
+}
