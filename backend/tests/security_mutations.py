@@ -28,7 +28,7 @@ proves nothing about the suite. Every mutation therefore goes through an
 explicit validity precheck before any test runs:
 
   * Python targets       -> byte-compile the tree and import `app.main`
-  * SQL targets          -> apply the shim + migrations 001..004 to a scratch
+  * SQL targets          -> apply the shim + migrations 001..005 to a scratch
                             database and require every statement to succeed
   * Frontend TS targets  -> textual substitution only (no build in this harness)
 
@@ -71,6 +71,7 @@ MIGRATION_FILES = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_revoke_rls_blind_table_privileges.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement
@@ -111,10 +112,10 @@ class Mutation:
         needs_db,
         equivalent_because=None,
     ):
-        # Identifier from the requested M01..M18 mutation contract. Several
+        # Identifier from the M01..M20 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
-        # distinct place (e.g. M18's seven separate JWT validation cases).
+        # distinct place (e.g. M18's separate JWT validation cases).
         self.contract = contract
         self.name = name
         # Plain-language statement of the security property being removed.
@@ -186,8 +187,8 @@ MUTATIONS = [
         "backend/app/core/auth.py",
         "        payload = jwt.decode(\n"
         "            token,\n"
-        "            matching_key,\n"
-        '            algorithms=["RS256"],\n'
+        "            verification_key,\n"
+        "            algorithms=[algorithm],\n"
         "            audience=SUPABASE_JWT_AUDIENCE,\n"
         "            issuer=SUPABASE_JWT_ISSUER,\n"
         "            options={\n"
@@ -600,14 +601,14 @@ MUTATIONS = [
         # Audience is enforced in TWO places, so the mutation must remove both
         # to represent the boundary the contract names. Targeting only
         # `"verify_aud": True` proves nothing: the explicit check below strictly
-        # subsumes it (jose 3.3.0 returns early from `_validate_aud` when the
+        # subsumes it (jose 3.3.0-3.5.0 returns early from `_validate_aud` when the
         # claim is absent), so flipping the flag alone changes no observable
         # behaviour and the mutant would survive forever as a dead control.
         '                "verify_aud": True,\n'
         '                "verify_iss": True,\n'
         "            },\n"
         "        )\n"
-        "        # python-jose 3.3.0 returns early from `_validate_aud` when the `aud`\n"
+        "        # python-jose (3.3.0-3.5.0) returns early from `_validate_aud` when the `aud`\n"
         "        # claim is absent, so `verify_aud: True` above rejects a WRONG audience\n"
         "        # but silently accepts a MISSING one. Configuring an audience expresses\n"
         "        # the intent that audience be enforced, so require the claim here.\n"
@@ -632,6 +633,53 @@ MUTATIONS = [
         "backend/app/core/auth.py",
         '                "verify_signature": True,',
         '                "verify_signature": False,',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18i",
+        "symmetric (oct) published keys accepted as HS256",
+        "A shared secret must never verify a token, even one published in the "
+        "JWKS; otherwise anyone who can read the JWKS can mint any session.",
+        "backend/app/core/auth.py",
+        '    elif key_type == "EC" and jwk.get("crv") == "P-256":\n'
+        '        algorithm = "ES256"\n',
+        '    elif key_type == "EC" and jwk.get("crv") == "P-256":\n'
+        '        algorithm = "ES256"\n'
+        '    elif key_type == "oct":\n'
+        '        algorithm = "HS256"\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18j",
+        "verification algorithm taken from the token header",
+        "The algorithm is pinned by the published key the `kid` selects; the "
+        "token's own `alg` header may not choose it.",
+        "backend/app/core/auth.py",
+        # The pinned algorithm is enforced twice: the key is built for it and
+        # decode allows only it. Taking the header's alg means both.
+        "        verification_key = construct_jwk(matching_key, algorithm)\n"
+        "        payload = jwt.decode(\n"
+        "            token,\n"
+        "            verification_key,\n"
+        "            algorithms=[algorithm],\n",
+        '        verification_key = construct_jwk(matching_key, unverified_header.get("alg"))\n'
+        "        payload = jwt.decode(\n"
+        "            token,\n"
+        "            verification_key,\n"
+        '            algorithms=[unverified_header.get("alg")],\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18k",
+        "raw JWKS entry handed to python-jose instead of the checked key",
+        "The key that verifies the signature must be exactly the published "
+        "entry whose type and curve were checked, not keys nested inside it.",
+        "backend/app/core/auth.py",
+        "        verification_key = construct_jwk(matching_key, algorithm)\n",
+        "        verification_key = matching_key\n",
         APP_SUITE,
         False,
     ),
@@ -674,12 +722,124 @@ MUTATIONS = [
         "Any JWT parse or validation error must fail closed with 401; the "
         "error path may not return an identity.",
         "backend/app/core/auth.py",
-        "    except (JWTError, ValueError, TypeError) as exc:\n"
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
         "        raise unauthorized() from exc",
-        "    except (JWTError, ValueError, TypeError):\n"
+        "    except (JOSEError, ValueError, TypeError):\n"
         '        return {"sub": "auth-user-a"}',
         APP_SUITE,
         False,
+    ),
+    Mutation(
+        "M18h",
+        "unusable published keys escape the 401 handler as server errors",
+        "Every JOSE error on the verification path, including a key the caller's "
+        "kid selects but python-jose cannot use, must fail closed with 401.",
+        "backend/app/core/auth.py",
+        "    except (JOSEError, ValueError, TypeError) as exc:\n",
+        # Re-raising JWKError reproduces the original JWTError-only catch
+        # exactly, without depending on a name the fixed module no longer
+        # imports.
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
+        '        if type(exc).__name__ == "JWKError":\n'
+        "            raise\n",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18l",
+        "tokens without an expiry claim accepted",
+        "A token must carry `exp`; python-jose treats the claim as optional, "
+        "so without the explicit check a token minted without one never expires.",
+        "backend/app/core/auth.py",
+        '        if "exp" not in payload:\n'
+        '            raise unauthorized("JWT is missing the expiry claim")\n',
+        "",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18m",
+        "cached key set never expires, so revoked keys keep verifying",
+        "A key the issuer stops publishing must stop verifying within the "
+        "cache's maximum age; a matching cached kid never forces a refresh.",
+        "backend/app/core/auth.py",
+        "    if _jwks is None or force_refresh or expired:\n",
+        "    if _jwks is None or force_refresh:\n",
+        APP_SUITE,
+        False,
+    ),
+    # =====================================================================
+    # M19 — table privileges that RLS does not govern
+    # =====================================================================
+    Mutation(
+        "M19a",
+        "client roles keep TRUNCATE on existing tables",
+        "TRUNCATE is not subject to row-level security, so a client role "
+        "holding it can empty every tenant's rows regardless of policy.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "REVOKE TRUNCATE, TRIGGER, REFERENCES\n"
+        "    ON ALL TABLES IN SCHEMA public",
+        "REVOKE TRIGGER, REFERENCES\n"
+        "    ON ALL TABLES IN SCHEMA public",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19b",
+        "tables created later regain TRUNCATE from the default privileges",
+        "Revoking TRUNCATE from today's tables is not enough; the standing "
+        "default grant must not hand it to the next migration's tables.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        "    REVOKE TRIGGER, REFERENCES ON TABLES\n",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19c",
+        "default-privilege revoke issued globally instead of for schema public",
+        "A global default-privilege REVOKE does not take back a per-schema "
+        "default GRANT, so tables created later in public regain TRUNCATE.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public\n"
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        "ALTER DEFAULT PRIVILEGES\n"
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19d",
+        "anon keeps TRUNCATE on existing tables",
+        "The unauthenticated client role must not hold a privilege RLS does "
+        "not govern; revoking from `authenticated` alone leaves anon able to "
+        "empty every tenant's rows.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "    ON ALL TABLES IN SCHEMA public\n"
+        "    FROM anon, authenticated;\n",
+        "    ON ALL TABLES IN SCHEMA public\n"
+        "    FROM authenticated;\n",
+        RLS_SUITE,
+        True,
+    ),
+    # =====================================================================
+    # M20 — WHERE-less writes on tables other than students
+    # =====================================================================
+    Mutation(
+        "M20",
+        "ai_recommendations_delete widened to any authenticated user",
+        "A WHERE-less DELETE never consults the SELECT policy, so the DELETE "
+        "policy's USING clause alone must stop another tenant, a suspended "
+        "tenant or a disabled account from removing a tenant's rows.",
+        f"{MIGRATIONS}/004_org_lifecycle_and_write_authority.sql",
+        "CREATE POLICY ai_recommendations_delete\n"
+        "ON public.ai_recommendations FOR DELETE TO authenticated\n"
+        "USING (public.aeos_is_org_admin(ai_recommendations.organization_id));",
+        "CREATE POLICY ai_recommendations_delete\n"
+        "ON public.ai_recommendations FOR DELETE TO authenticated\n"
+        "USING (true);",
+        RLS_SUITE,
+        True,
     ),
 ]
 
@@ -732,14 +892,14 @@ def _precheck(root, mutation, database_url):
                 for name in MIGRATION_FILES:
                     conn.execute((root / MIGRATIONS / name).read_text())
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
-            return False, f"migrations 001..004 failed to apply: {exc}"
+            return False, f"migrations 001..005 failed to apply: {exc}"
         finally:
             try:
                 with psycopg.connect(database_url, autocommit=True) as conn:
                     conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
             except Exception:  # noqa: BLE001 - cleanup only
                 pass
-        return True, "migrations 001..004 apply cleanly"
+        return True, "migrations 001..005 apply cleanly"
 
     return True, "textual substitution (no build step in this harness)"
 
