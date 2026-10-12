@@ -224,6 +224,7 @@ Environment: Python 3.11 with a fresh install of `backend/requirements-dev.txt` 
 | Hosted Supabase tenant gate | **BLOCKED (pre-existing)** | Apply 001–006 to an isolated hosted project and repeat the two-tenant attacks. Local PostgreSQL is not a substitute. |
 | Independent verification | Open | A fresh session verifies this exact head; this builder session cannot. |
 | Real student data | **BLOCKED** | Consent, data-processing agreement, retention policy for `ai_feedback_requests.response_text`, and the gates above. |
+| P-TER-01 reconciliation | Open | See [`docs/pilots/p-ter-01/`](pilots/p-ter-01/README.md): v0.3 source not located, owner decisions D1–D5, review of the unapproved attendance candidate, and the `0` / `IE` / abstention boundaries. |
 
 ## Out of scope by design
 
