@@ -130,12 +130,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.22.2'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Pin npm
+        run: npm install --global npm@10.9.7
 
       - name: Install pinned frontend dependencies
         working-directory: frontend
@@ -145,9 +148,17 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=low
 
+      - name: Audit production dependencies without exceptions
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=low
+
       - name: Verify frontend dependency tree
         working-directory: frontend
         run: npm ls --all
+
+      - name: Verify Next.js lint glob override
+        working-directory: frontend
+        run: node tests/lint-glob-override.test.mjs
 
       - name: Lint frontend
         working-directory: frontend
