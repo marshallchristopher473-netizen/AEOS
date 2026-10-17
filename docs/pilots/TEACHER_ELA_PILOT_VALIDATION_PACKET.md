@@ -4,7 +4,7 @@
 
 ## 1. Protocol/asset reconciliation gate
 
-No current P-TER-01 protocol or pilot asset was accessible in the supplied workspace on 2026-10-17. This packet does not recreate, infer, or replace those materials. A search of the AEOS GitHub repository on 2026-10-17 also found no P-TER-01 protocol, assignment prompt, ELA rubric, evaluator configuration, or teacher ELA review workflow/screens. Before approval, the founder records the authoritative source below and reconciles every blank/source-dependent item.
+No current P-TER-01 protocol or pilot asset was accessible in the supplied workspace on 2026-10-17. This packet does not recreate, infer, or replace those materials. On 2026-10-17 the AEOS repository's `main` branch contained no P-TER-01 protocol, assignment prompt, ELA rubric, evaluator configuration, or teacher ELA review workflow/screens. Related unmerged, unapproved work exists in open draft pull requests (#23 teacher assessment review workflow, #30 offline synthetic P-TER-01 review harness, #32 AI feedback drafting on synthetic ELA responses, #35 P-TER-01 reconciliation for #32); none of it is an approved source for this packet until the founder records it below. Before approval, the founder records the authoritative source below and reconciles every blank/source-dependent item.
 
 | Item | Authoritative source/version | Reconciled by/date | Result/notes |
 |---|---|---|---|
