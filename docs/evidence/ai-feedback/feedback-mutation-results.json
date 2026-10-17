@@ -1,0 +1,130 @@
+{
+ "label": "Local mutation run for the AI feedback slice",
+ "date_utc": "2026-10-11",
+ "base": "p0/security-release-candidate-20261010 @ 3816773 plus this change (uncommitted working tree at run time)",
+ "python": "3.11, backend/requirements-dev.txt",
+ "postgres": "16.15 local",
+ "killed": 17,
+ "total": 17,
+ "mutants": [
+  {
+   "mutant": "evidence verification disabled",
+   "exit": 1,
+   "summary": "6 failed, 113 passed in 2.37s",
+   "result": "KILLED",
+   "seconds": 4.0
+  },
+  {
+   "mutant": "prohibited-inference scan disabled",
+   "exit": 1,
+   "summary": "12 failed, 107 passed in 2.50s",
+   "result": "KILLED",
+   "seconds": 4.2
+  },
+  {
+   "mutant": "untrusted block escaping removed",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.34s",
+   "result": "KILLED",
+   "seconds": 4.0
+  },
+  {
+   "mutant": "criterion coverage check removed",
+   "exit": 1,
+   "summary": "3 failed, 116 passed in 2.47s",
+   "result": "KILLED",
+   "seconds": 4.0
+  },
+  {
+   "mutant": "org allowlist check removed",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.29s",
+   "result": "KILLED",
+   "seconds": 4.0
+  },
+  {
+   "mutant": "accept-text equality check removed",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.55s",
+   "result": "KILLED",
+   "seconds": 4.4
+  },
+  {
+   "mutant": "flag acknowledgement check removed",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.87s",
+   "result": "KILLED",
+   "seconds": 4.8
+  },
+  {
+   "mutant": "idempotent replay removed",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.63s",
+   "result": "KILLED",
+   "seconds": 4.6
+  },
+  {
+   "mutant": "budget outcome ignored",
+   "exit": 1,
+   "summary": "3 failed, 116 passed in 2.53s",
+   "result": "KILLED",
+   "seconds": 4.3
+  },
+  {
+   "mutant": "assessment not tenant-scoped",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.26s",
+   "result": "KILLED",
+   "seconds": 3.9
+  },
+  {
+   "mutant": "adapter base_url not pinned",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.33s",
+   "result": "KILLED",
+   "seconds": 3.9
+  },
+  {
+   "mutant": "adapter leaks provider message",
+   "exit": 1,
+   "summary": "1 failed, 118 passed in 2.56s",
+   "result": "KILLED",
+   "seconds": 4.3
+  },
+  {
+   "mutant": "drafts append-only trigger removed",
+   "exit": 1,
+   "summary": "3 failed, 30 passed in 2.02s",
+   "result": "KILLED",
+   "seconds": 3.5
+  },
+  {
+   "mutant": "drafts select policy permissive",
+   "exit": 1,
+   "summary": "1 failed, 32 passed in 1.96s",
+   "result": "KILLED",
+   "seconds": 3.6
+  },
+  {
+   "mutant": "reservation advisory lock removed",
+   "exit": 1,
+   "summary": "1 failed, 32 passed in 1.13s",
+   "result": "KILLED",
+   "seconds": 2.7
+  },
+  {
+   "mutant": "draft audit trigger removed",
+   "exit": 1,
+   "summary": "2 failed, 31 passed in 2.09s",
+   "result": "KILLED",
+   "seconds": 3.7
+  },
+  {
+   "mutant": "request integrity trigger removed",
+   "exit": 1,
+   "summary": "4 failed, 29 passed in 2.06s",
+   "result": "KILLED",
+   "seconds": 3.6
+  }
+ ]
+}
