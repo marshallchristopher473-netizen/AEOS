@@ -42,7 +42,12 @@ A blank cell means the value could not be verified. Nothing has been filled in b
 | Other Supabase project | n/a | n/a | `drcetslvctzkgaxvzerq` (`GradeFreed-AI`, INACTIVE) | `17.6.1.147` | Supabase API. No repository config points at it. |
 | Base44 checkpoint | Base44-hosted UI | `AEOS_API` integration **disabled** (reported) | Base44's own data store (reported) | | Reported by the owner as synthetic-demo evidence. Not inspected here. |
 
-Project names alone were not treated as a mapping. AEOS-MVP is linked to a runtime **only** through `.replit`. No repository file references `doblbkfogcykpfwkfycs` or `drcetslvctzkgaxvzerq`.
+Project names alone were not treated as a mapping. AEOS-MVP is linked to this repository in two observable places:
+
+1. `.replit` (`SUPABASE_URL`).
+2. The Supabase GitHub integration. Its `Supabase Preview` check on PR #37 points at `supabase.com/dashboard/project/hbcgsukmbgiytcznmmec/branches` (conclusion `skipped`, 2026-10-17).
+
+Neither link shows that a deployed backend uses this project. No repository file references `doblbkfogcykpfwkfycs` or `drcetslvctzkgaxvzerq`.
 
 ## 3. Database reconciliation: AEOS-MVP (`hbcgsukmbgiytcznmmec`)
 
@@ -93,6 +98,7 @@ Bridging Base44 users to AEOS users would need an explicit, designed identity li
 | E4 | Candidate is unmerged and contains a reconstructed module | Human review of `backend/app/models/ai_feedback.py` @ 7a72792, then a merge decision |
 | E5 | Postgres advisory not tied to a version | Advisory ID or text with its fixed version |
 | E6 | CI not confirmed on the exact candidate SHA | A green CI run on `7a72792` |
+| E7 | `frontend-validation` fails on `main`'s lockfile. `npm audit` reports `next` 16.0.0–16.3.7 (critical, GHSA-vcvr-r3jv-pc5j and others), plus `sharp` and `source-map-js` (high). Seen on PR #37, which touches no frontend files. On the same head, `backend-tests` and `rls-enforcement` passed. | A bounded dependency PR that moves `next` past 16.3.7 |
 
 ## 7. Source references
 
