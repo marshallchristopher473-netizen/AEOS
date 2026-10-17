@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AuthenticatedActor(BaseModel):
@@ -39,10 +39,17 @@ class AssessmentResultCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     assessment_id: str = Field(..., min_length=1)
-    score: Optional[float] = None
-    max_score: Optional[float] = None
+    score: Optional[float] = Field(default=None, ge=0, le=9999.99, allow_inf_nan=False)
+    max_score: Optional[float] = Field(default=None, ge=0.01, le=9999.99, allow_inf_nan=False)
     summary: Optional[str] = None
-    status: str = Field(default="draft", min_length=1)
+    status: Literal["draft", "submitted", "in_review", "complete"] = "draft"
+
+    @model_validator(mode="after")
+    def validate_score_range(self):
+        if self.score is not None and self.max_score is not None:
+            if self.score > self.max_score:
+                raise ValueError("Score must not exceed the maximum score")
+        return self
 
 
 class AssessmentResultResponse(BaseModel):

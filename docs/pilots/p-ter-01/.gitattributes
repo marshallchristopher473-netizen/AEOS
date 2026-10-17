@@ -1,0 +1,5 @@
+# Candidate files are bound by sha256 in manifest.json; never rewrite line endings.
+candidates/**/*.json -text
+SCORING_BOUNDARIES.md -text
+REVIEW_WORKSHEET.md -text
+manifest.json -text

@@ -31,6 +31,8 @@ Thumbs.db
 
 # AI / ML Files
 models/
+# Application source, not ML artifacts: re-included so schema modules are committed.
+!backend/app/models/
 embeddings/
 vector_cache/
 
