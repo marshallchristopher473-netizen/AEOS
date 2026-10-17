@@ -5,6 +5,10 @@
 
 Every query uses the server-derived organization. Identity, organization,
 student and authorship are never taken from the request body.
+
+A draft belongs to the teacher who requested it. Inside the organization only
+that teacher and org admins may read it, and only that teacher may decide it.
+Migration 007 enforces the same rule in the database.
 """
 
 import hashlib
@@ -61,6 +65,8 @@ INPUT_OVERHEAD_TOKENS = 1000
 
 REVIEWABLE_STATUSES = ("ready", "abstained")
 
+DRAFT_NOT_FOUND = "Draft not found"
+
 _MESSAGES = {
     "feature_disabled": "AI feedback drafting is not enabled.",
     "feature_misconfigured": "AI feedback drafting is not available right now.",
@@ -86,6 +92,7 @@ _MESSAGES = {
     "invalid_model_output": "The AI output failed safety validation and was discarded. Write feedback yourself or try again.",
     "draft_not_saved": "The draft could not be saved.",
     "draft_not_reviewable": "This draft has no reviewable output.",
+    "not_draft_owner": "Only the teacher who requested this draft can record a decision on it.",
     "accepted_text_mismatch": "Accepted text must match the draft exactly. Use 'revised' to save changes.",
     "accept_requires_ready_draft": "There is no AI draft text to accept. Revise with your own text or reject.",
     "revision_unchanged": "The revised text matches the draft. Use 'accepted' instead.",
@@ -165,6 +172,25 @@ class AiFeedbackService:
         if actor.organization_id not in self.settings.organization_allowlist:
             raise api_error(status.HTTP_403_FORBIDDEN, "organization_not_enabled")
 
+    # -- ownership -----------------------------------------------------------
+
+    @staticmethod
+    def _can_read(actor: AuthenticatedActor, request_row: Dict[str, Any]) -> bool:
+        return request_row["created_by"] == actor.user_id or actor.role == "admin"
+
+    def _load_readable(
+        self, draft_id: str, actor: AuthenticatedActor
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Return (draft, request) or 404. A draft the actor may not read is
+        reported exactly like one that does not exist."""
+        draft_row = get_tenant_scoped_row(self.client, DRAFTS, draft_id, actor.organization_id, DRAFT_NOT_FOUND)
+        request_row = get_tenant_scoped_row(
+            self.client, REQUESTS, draft_row["request_id"], actor.organization_id, DRAFT_NOT_FOUND
+        )
+        if not self._can_read(actor, request_row):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=DRAFT_NOT_FOUND)
+        return draft_row, request_row
+
     # -- reads ---------------------------------------------------------------
 
     def _decisions_for(self, organization_id: str, draft_id: str) -> List[Dict[str, Any]]:
@@ -216,10 +242,7 @@ class AiFeedbackService:
         )
 
     def get_draft(self, draft_id: str, actor: AuthenticatedActor) -> AiFeedbackDraftResponse:
-        draft_row = get_tenant_scoped_row(self.client, DRAFTS, draft_id, actor.organization_id, "Draft not found")
-        request_row = get_tenant_scoped_row(
-            self.client, REQUESTS, draft_row["request_id"], actor.organization_id, "Draft not found"
-        )
+        draft_row, request_row = self._load_readable(draft_id, actor)
         return self._to_response(request_row, draft_row, self._decisions_for(actor.organization_id, draft_id))
 
     def list_drafts(self, assessment_id: str, actor: AuthenticatedActor) -> List[AiFeedbackDraftResponse]:
@@ -229,7 +252,7 @@ class AiFeedbackService:
         requests_by_id = {
             row["id"]: row
             for row in list_tenant_scoped_rows(self.client, REQUESTS, actor.organization_id)
-            if row["assessment_id"] == assessment_id
+            if row["assessment_id"] == assessment_id and self._can_read(actor, row)
         }
         decisions: Dict[str, List[Dict[str, Any]]] = {}
         for index, row in enumerate(list_tenant_scoped_rows(self.client, DECISIONS, actor.organization_id)):
@@ -476,10 +499,10 @@ class AiFeedbackService:
         actor: AuthenticatedActor,
     ) -> Tuple[AiFeedbackDraftResponse, bool]:
         self.ensure_available(actor)
-        draft_row = get_tenant_scoped_row(self.client, DRAFTS, draft_id, actor.organization_id, "Draft not found")
-        request_row = get_tenant_scoped_row(
-            self.client, REQUESTS, draft_row["request_id"], actor.organization_id, "Draft not found"
-        )
+        draft_row, request_row = self._load_readable(draft_id, actor)
+        # An admin can read another teacher's draft but may not decide it.
+        if request_row["created_by"] != actor.user_id:
+            raise api_error(status.HTTP_403_FORBIDDEN, "not_draft_owner")
 
         payload_sha256 = canonical_sha256(
             {

@@ -28,7 +28,7 @@ proves nothing about the suite. Every mutation therefore goes through an
 explicit validity precheck before any test runs:
 
   * Python targets       -> byte-compile the tree and import `app.main`
-  * SQL targets          -> apply the shim + migrations 001..006 to a scratch
+  * SQL targets          -> apply the shim + migrations 001..007 to a scratch
                             database and require every statement to succeed
   * Frontend TS targets  -> textual substitution only (no build in this harness)
 
@@ -73,6 +73,7 @@ MIGRATION_FILES = (
     "004_org_lifecycle_and_write_authority.sql",
     "005_revoke_rls_blind_table_privileges.sql",
     "006_ai_feedback_drafts.sql",
+    "007_ai_feedback_draft_ownership.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement
@@ -98,6 +99,8 @@ APP_SUITE = (
     "tests/test_fk_relationship_rls.py",
 )
 FULL_SUITE = ("tests/",)
+AI_FEEDBACK_SUITE = ("tests/test_ai_feedback.py",)
+AI_FEEDBACK_RLS_SUITE = ("tests/test_ai_feedback_rls.py",)
 
 
 class Mutation:
@@ -113,7 +116,7 @@ class Mutation:
         needs_db,
         equivalent_because=None,
     ):
-        # Identifier from the M01..M20 mutation contract. Several
+        # Identifier from the M01..M21 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
         # distinct place (e.g. M18's separate JWT validation cases).
@@ -792,6 +795,101 @@ MUTATIONS = [
         RLS_SUITE,
         True,
     ),
+    # =====================================================================
+    # M21 — AI feedback drafts belong to the requesting teacher
+    # =====================================================================
+    Mutation(
+        "M21a",
+        "service lets any organization member read any feedback draft",
+        "Inside one organization only the requesting teacher and org admins "
+        "may read a draft and the student response it holds.",
+        "backend/app/services/ai_feedback/service.py",
+        '        return request_row["created_by"] == actor.user_id or actor.role == "admin"\n',
+        "        return True\n",
+        AI_FEEDBACK_SUITE,
+        False,
+    ),
+    Mutation(
+        "M21b",
+        "service lets an admin decide another teacher's draft",
+        "Only the teacher who requested a draft may accept, revise or reject "
+        "it; an admin reads for oversight but does not decide for the teacher.",
+        "backend/app/services/ai_feedback/service.py",
+        '        if request_row["created_by"] != actor.user_id:\n'
+        '            raise api_error(status.HTTP_403_FORBIDDEN, "not_draft_owner")\n',
+        "",
+        AI_FEEDBACK_SUITE,
+        False,
+    ),
+    Mutation(
+        "M21c",
+        "ownership read helper widened to any organization member",
+        "The database must not show a peer teacher or support staff another "
+        "teacher's requests, drafts or decisions through the data API.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "              AND public.aeos_is_current_actor_for_org(request.created_by, request.organization_id)\n",
+        "              AND public.aeos_has_org_access(request.organization_id)\n",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21d",
+        "ai_feedback_requests_select reverted to the 006 org-wide policy",
+        "A request row holds the student's response; a peer teacher must not "
+        "read it.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "USING (public.aeos_can_read_ai_feedback_request(ai_feedback_requests.id, "
+        "ai_feedback_requests.organization_id));",
+        "USING (public.aeos_has_org_access(ai_feedback_requests.organization_id));",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21e",
+        "ai_feedback_drafts_select reverted to the 006 org-wide policy",
+        "A peer teacher must not read another teacher's AI draft.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "USING (public.aeos_can_read_ai_feedback_request(ai_feedback_drafts.request_id, "
+        "ai_feedback_drafts.organization_id));",
+        "USING (public.aeos_has_org_access(ai_feedback_drafts.organization_id));",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21f",
+        "ai_feedback_decisions_select reverted to the 006 org-wide policy",
+        "A peer teacher must not read another teacher's decisions.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        # The whole USING clause: dropping only the helper call is an
+        # equivalent mutant, because the sub-select on ai_feedback_drafts is
+        # itself filtered by the drafts policy.
+        "USING (\n"
+        "    EXISTS (\n"
+        "        SELECT 1\n"
+        "        FROM public.ai_feedback_drafts AS draft\n"
+        "        WHERE draft.id = ai_feedback_decisions.draft_id\n"
+        "          AND draft.organization_id = ai_feedback_decisions.organization_id\n"
+        "          AND public.aeos_can_read_ai_feedback_request(draft.request_id, draft.organization_id)\n"
+        "    )\n"
+        ");",
+        "USING (public.aeos_has_org_access(ai_feedback_decisions.organization_id));",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21g",
+        "decision trigger accepts any active teacher or admin as the decider",
+        "The database refuses a decision recorded by anyone other than the "
+        "teacher who requested the draft, even from the service role.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "    IF NEW.decided_by IS DISTINCT FROM requester_id THEN\n"
+        "        RAISE EXCEPTION 'ai_feedback_decisions: only the teacher who requested the draft may decide it'\n"
+        "            USING ERRCODE = '23514';\n"
+        "    END IF;\n",
+        "",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
 ]
 
 
@@ -843,14 +941,14 @@ def _precheck(root, mutation, database_url):
                 for name in MIGRATION_FILES:
                     conn.execute((root / MIGRATIONS / name).read_text())
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
-            return False, f"migrations 001..006 failed to apply: {exc}"
+            return False, f"migrations 001..007 failed to apply: {exc}"
         finally:
             try:
                 with psycopg.connect(database_url, autocommit=True) as conn:
                     conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
             except Exception:  # noqa: BLE001 - cleanup only
                 pass
-        return True, "migrations 001..006 apply cleanly"
+        return True, "migrations 001..007 apply cleanly"
 
     return True, "textual substitution (no build step in this harness)"
 

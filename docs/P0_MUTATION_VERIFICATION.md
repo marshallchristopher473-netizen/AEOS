@@ -55,7 +55,7 @@ pip install -r requirements-dev.txt
 # 2. Unmodified baseline — must be green before anything else means anything
 python -m pytest tests/ -q
 
-# 3. Complete M01-M20 mutation contract
+# 3. Complete M01-M21 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
 ```
@@ -100,6 +100,20 @@ test: CI stays green while proving nothing.
 | M19a | Client roles hold no privilege RLS does not govern | 005 stops revoking TRUNCATE on existing tables | `TestPrivilegesRlsDoesNotGovern::test_client_roles_hold_no_rls_blind_privilege`; `test_cross_tenant_truncate_is_refused[*]` |
 | M19b | Tables created later do not regain TRUNCATE | 005 stops revoking TRUNCATE from the default privileges | `TestPrivilegesRlsDoesNotGovern::test_tables_created_later_do_not_inherit_rls_blind_privileges` |
 | M20 | WHERE-less writes cannot reach another tenant on any table | `ai_recommendations_delete` → `USING (true)` | `TestWherelessWritesAcrossEveryTable::test_whereless_delete_leaves_org_a_untouched[*-ai_recommendations]` |
+
+### M21 — AI feedback drafts belong to the requesting teacher
+
+Added with migration 007 ([repair record](DRAFT_OWNERSHIP_REPAIR_2026_10_17.md)). Inside one organization, only the requesting teacher and org admins read a draft, and only the requesting teacher decides it.
+
+| ID | Security boundary | Mutation | Primary killing test |
+| --- | --- | --- | --- |
+| M21a | Service reads limited to requester or admin | `_can_read` → `return True` | `test_ai_feedback.py::test_peer_teacher_cannot_read_list_or_decide_another_teachers_draft` |
+| M21b | Service decisions limited to the requester | `not_draft_owner` check removed | `test_ai_feedback.py::test_admin_can_read_but_not_decide_another_teachers_draft` |
+| M21c | Ownership read helper | requester check → `aeos_has_org_access` | `test_ai_feedback_rls.py::test_only_the_requester_and_org_admins_read_a_feedback_chain[*]` |
+| M21d | Peer cannot read another teacher's student response | `ai_feedback_requests_select` → 006 org-wide policy | `test_only_the_requester_and_org_admins_read_a_feedback_chain[ai_feedback_requests]` |
+| M21e | Peer cannot read another teacher's draft | `ai_feedback_drafts_select` → 006 org-wide policy | `test_only_the_requester_and_org_admins_read_a_feedback_chain[ai_feedback_drafts]` |
+| M21f | Peer cannot read another teacher's decisions | `ai_feedback_decisions_select` → 006 org-wide policy | `test_only_the_requester_and_org_admins_read_a_feedback_chain[ai_feedback_decisions]` |
+| M21g | Database refuses a decision by anyone but the requester | trigger's `decided_by = created_by` check removed | `test_ai_feedback_rls.py::test_only_the_requesting_teacher_can_decide_a_draft` |
 
 ### On M18e and M18f
 

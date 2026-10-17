@@ -322,7 +322,9 @@ def test_support_role_cannot_request_or_decide(harness, support_actor_a):
 
     assert post_draft(harness).status_code == 403
     assert post_decision(harness, draft["id"], decision="rejected").status_code == 403
-    assert harness["client"].get(f"/ai-feedback/drafts/{draft['id']}").status_code == 200
+    # Support staff did not request the draft and are not admins, so they
+    # cannot read it either (see the ownership tests below).
+    assert harness["client"].get(f"/ai-feedback/drafts/{draft['id']}").status_code == 404
     assert len(harness["provider"].calls) == 1
 
 
@@ -743,6 +745,107 @@ def test_foreign_draft_cannot_be_read_listed_or_decided(harness, fake_db):
     assert harness["client"].get(f"/ai-feedback/drafts?assessment_id={ASSESSMENT_A}").status_code == 404
     assert harness["client"].get(f"/ai-feedback/drafts?assessment_id={ASSESSMENT_B}").json() == []
     assert rows(harness, "ai_feedback_decisions") == []
+
+
+# ---------------------------------------------------------------------------
+# Draft ownership inside one organization. A draft holds a student response
+# and the requesting teacher's professional judgement, so a same-tenant peer
+# may not read it or decide it. An org admin may read it for oversight but may
+# not decide it for the teacher.
+# ---------------------------------------------------------------------------
+
+PEER_TEACHER_A = "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0"
+OTHER_ADMIN_A = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1"
+
+
+def peer_teacher_a():
+    return AuthenticatedActor(
+        user_id=PEER_TEACHER_A, organization_id=ORG_A, role="teacher", auth_user_id="auth-peer-a"
+    )
+
+
+def other_admin_a():
+    return AuthenticatedActor(
+        user_id=OTHER_ADMIN_A, organization_id=ORG_A, role="admin", auth_user_id="auth-admin-a"
+    )
+
+
+def test_peer_teacher_cannot_read_list_or_decide_another_teachers_draft(harness):
+    harness["provider"].completions = [good_output()]
+    draft = post_draft(harness).json()
+
+    harness["actor"] = peer_teacher_a()
+    read = harness["client"].get(f"/ai-feedback/drafts/{draft['id']}")
+    listed = harness["client"].get(f"/ai-feedback/drafts?assessment_id={ASSESSMENT_A}")
+    decisions = [
+        post_decision(harness, draft["id"], decision="accepted", approved_text=draft["draft_text"]),
+        post_decision(harness, draft["id"], decision="revised", approved_text="Peer-written synthetic text."),
+        post_decision(harness, draft["id"], decision="rejected"),
+    ]
+
+    # Indistinguishable from a draft that does not exist.
+    assert read.status_code == 404 and read.json() == {"detail": "Draft not found"}
+    assert listed.status_code == 200 and listed.json() == []
+    assert [r.status_code for r in decisions] == [404, 404, 404]
+    assert all(r.json() == {"detail": "Draft not found"} for r in decisions)
+    assert rows(harness, "ai_feedback_decisions") == []
+
+
+def test_peer_teacher_cannot_replay_the_owners_decision_key(harness):
+    harness["provider"].completions = [good_output()]
+    draft = post_draft(harness).json()
+    key = str(uuid.uuid4())
+    assert post_decision(harness, draft["id"], key=key, decision="rejected").status_code == 201
+
+    harness["actor"] = peer_teacher_a()
+    replay = post_decision(harness, draft["id"], key=key, decision="rejected")
+
+    assert replay.status_code == 404
+    assert len(rows(harness, "ai_feedback_decisions")) == 1
+
+
+def test_each_teacher_sees_only_their_own_drafts_and_admin_sees_all(harness):
+    harness["provider"].completions = [good_output(), good_output()]
+    owner = harness["actor"]
+    own = post_draft(harness).json()
+    harness["actor"] = peer_teacher_a()
+    peer = post_draft(harness).json()
+
+    def listed_ids(actor):
+        harness["actor"] = actor
+        response = harness["client"].get(f"/ai-feedback/drafts?assessment_id={ASSESSMENT_A}")
+        assert response.status_code == 200
+        return sorted(d["id"] for d in response.json())
+
+    assert peer["requested_by"] == PEER_TEACHER_A
+    assert listed_ids(peer_teacher_a()) == [peer["id"]]
+    assert listed_ids(owner) == [own["id"]]
+    assert listed_ids(other_admin_a()) == sorted([own["id"], peer["id"]])
+
+
+def test_admin_can_read_but_not_decide_another_teachers_draft(harness):
+    harness["provider"].completions = [good_output()]
+    draft = post_draft(harness).json()
+
+    harness["actor"] = other_admin_a()
+    read = harness["client"].get(f"/ai-feedback/drafts/{draft['id']}")
+    decided = post_decision(harness, draft["id"], decision="accepted", approved_text=draft["draft_text"])
+
+    assert read.status_code == 200 and read.json()["requested_by"] == USER_A
+    assert decided.status_code == 403
+    assert decided.json()["detail"]["code"] == "not_draft_owner"
+    assert rows(harness, "ai_feedback_decisions") == []
+
+
+def test_admin_decides_their_own_draft(harness):
+    harness["actor"] = other_admin_a()
+    harness["provider"].completions = [good_output()]
+    draft = post_draft(harness).json()
+
+    decided = post_decision(harness, draft["id"], decision="rejected")
+
+    assert decided.status_code == 201
+    assert decided.json()["current_decision"]["decided_by"] == OTHER_ADMIN_A
 
 
 def test_list_returns_drafts_for_the_assessment_only(harness):

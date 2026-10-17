@@ -84,6 +84,7 @@ MIGRATIONS = (
     "004_org_lifecycle_and_write_authority.sql",
     "005_revoke_rls_blind_table_privileges.sql",
     "006_ai_feedback_drafts.sql",
+    "007_ai_feedback_draft_ownership.sql",
 )
 
 pytestmark = pytest.mark.skipif(

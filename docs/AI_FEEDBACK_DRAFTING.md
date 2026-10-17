@@ -40,13 +40,14 @@ Nothing writes to `assessment_results`, intervention plans, a gradebook, an IEP,
 | `ai_feedback_drafts` | Once per request, after the call | Validated output or abstention, review flags, token usage and actual cost. Failures are recorded too (`rejected_output`, `provider_error`, `provider_refused`). |
 | `ai_feedback_decisions` | Only by an explicit teacher request | `accepted` / `revised` / `rejected`, approved text, flag acknowledgement, `teacher_confirmed` (CHECK = true) |
 
-Database guarantees (all executed against PostgreSQL 16 in tests): RLS enabled and forced with member-only SELECT and **no client write policy**; `UPDATE` refused for **every role** by trigger; audit rows written by `AFTER INSERT` triggers **in the same transaction** (a save fails if its audit row fails); integrity triggers keep requests/decisions inside one organization and restrict them to active teachers/admins; composite foreign keys stop a draft or decision pointing at another organization's row; `DELETE` is left to the service role for offboarding/retention only.
+Database guarantees (all executed against PostgreSQL 16 in tests): RLS enabled and forced, with SELECT limited to **the requesting teacher and org admins** (migration 007; 006 allowed every member) and **no client write policy**; a decision must be recorded by **the teacher who requested the draft** (007 trigger check); `UPDATE` refused for **every role** by trigger; audit rows written by `AFTER INSERT` triggers **in the same transaction** (a save fails if its audit row fails); integrity triggers keep requests/decisions inside one organization and restrict them to active teachers/admins; composite foreign keys stop a draft or decision pointing at another organization's row; `DELETE` is left to the service role for offboarding/retention only.
 
 ## Files
 
 | Path | Role |
 | --- | --- |
 | `backend/supabase/migrations/006_ai_feedback_drafts.sql` | Tables, RLS, append-only + audit + integrity triggers, `aeos_reserve_ai_feedback_request` |
+| `backend/supabase/migrations/007_ai_feedback_draft_ownership.sql` | Draft ownership: requester-or-admin SELECT policies, requester-only decisions ([repair record](DRAFT_OWNERSHIP_REPAIR_2026_10_17.md)) |
 | `backend/app/core/ai_feedback_settings.py` | Server-only configuration and feature flag; fails closed |
 | `backend/app/services/ai_feedback/rubrics.py`, `rubrics/RUB-CER3.v0.1.json` | Rubric registry; usable only when its content hash is pinned by an approver |
 | `backend/app/services/ai_feedback/prompt.py` | Server-owned system instructions, `PROMPT_VERSION`, untrusted-data block, injection heuristic |
@@ -81,6 +82,7 @@ Database guarantees (all executed against PostgreSQL 16 in tests): RLS enabled a
 | Refusal / truncation | `stop_reason` `refusal` → `provider_refused`; `max_tokens` → `rejected_output/truncated_output` | `test_refusal_and_truncation_are_not_shown_as_drafts[2]` |
 | Duplicate requests and saves | Required `Idempotency-Key` (UUID); same key + payload replays the stored outcome without calling the provider (even while it is down); different payload → 409; unique constraints in the DB | `test_duplicate_draft_request_replays_*`, `test_replay_returns_the_stored_draft_even_while_the_provider_is_down`, `test_duplicate_decision_save_is_bounded_to_one_row`, DB `test_duplicate_key_returns_the_original_request` |
 | Foreign IDs | Every lookup scoped by server-derived organization → 404; DB integrity triggers + composite FKs | `test_foreign_assessment_*`, `test_foreign_draft_cannot_be_read_listed_or_decided`, DB `test_requests_must_stay_inside_one_organization_*` |
+| Draft ownership inside one organization | Only the requesting teacher and org admins read a draft (others get the same 404 as a missing draft); only the requesting teacher decides it (admin → 403 `not_draft_owner`); same rule in RLS and the decision trigger (007) | `test_peer_teacher_cannot_read_list_or_decide_another_teachers_draft`, `test_admin_can_read_but_not_decide_another_teachers_draft`, `test_each_teacher_sees_only_their_own_drafts_and_admin_sees_all`, DB `test_only_the_requester_and_org_admins_read_a_feedback_chain[3]`, `test_only_the_requesting_teacher_can_decide_a_draft` + negative control; mutations M21a–g |
 | Unauthenticated access | Existing bearer dependency on all four routes | `test_every_business_route_requires_authentication` (+4 routes) |
 | Human approval required | Draft never creates a decision; decisions need `teacher_confirmed: true`, teacher/admin role, exact text for `accepted`, changed text for `revised`, flag acknowledgement when flagged; abstentions cannot be accepted | `test_draft_alone_never_creates_a_decision_*`, `test_decision_requires_an_explicit_well_formed_teacher_action[6]`, `test_accepting_altered_text_*`, `test_flagged_draft_requires_flag_acknowledgement_*`, `test_support_role_cannot_request_or_decide`, DB `test_decisions_require_reviewable_drafts_*` |
 | AI draft separate from teacher text | Draft row immutable; decision rows separate; DB refuses UPDATE for all roles | `test_teacher_accept_persists_separately_*`, DB `test_owner_cannot_rewrite_the_ai_draft_into_teacher_text` + negative control |
@@ -158,8 +160,8 @@ Idempotency-Key: 66666666-7777-4888-8999-000000000000
 | HTTP | `code` |
 | --- | --- |
 | 400 | `idempotency_key_required` |
-| 403 | `organization_not_enabled` (and the existing role 403 for support users) |
-| 404 | existing tenant "not found" for foreign or missing ids |
+| 403 | `organization_not_enabled`, `not_draft_owner` (an admin deciding another teacher's draft), and the existing role 403 for support users |
+| 404 | existing tenant "not found" for foreign or missing ids, and for a same-organization draft the actor did not request (unless they are an admin) |
 | 409 | `idempotency_key_reused`, `request_in_progress`, `decision_key_reused`, `draft_not_reviewable` |
 | 422 | `rubric_not_found`, `rubric_not_approved`, `accepted_text_mismatch`, `revision_unchanged`, `accept_requires_ready_draft`, `review_flags_not_acknowledged`, request validation |
 | 429 | `user_rate_limited`, `org_rate_limited`, `user_budget_exceeded`, `org_budget_exceeded` |

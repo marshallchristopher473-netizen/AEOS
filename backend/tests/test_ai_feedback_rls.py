@@ -1,12 +1,13 @@
-"""Executed proof for migration 006 against real PostgreSQL.
+"""Executed proof for migrations 006 and 007 against real PostgreSQL.
 
-Covers what the in-memory fake cannot: RLS on the new tables, the append-only
-trigger (with a negative control), audit rows written atomically with each
-save, cross-organization integrity triggers, and the reservation function's
-idempotency, limits and concurrency.
+Covers what the in-memory fake cannot: RLS on the new tables, including the
+007 draft-ownership rule (with a negative control), the append-only trigger
+(with a negative control), audit rows written atomically with each save,
+cross-organization and ownership integrity triggers, and the reservation
+function's idempotency, limits and concurrency.
 
 Synthetic rows only. Uses the session database and fixtures from
-test_rls_enforcement.py, which applies migrations 001-006. Every test either
+test_rls_enforcement.py, which applies migrations 001-007. Every test either
 rolls back or deletes what it committed.
 """
 
@@ -20,6 +21,7 @@ from tests.test_rls_enforcement import (  # noqa: F401 - fixtures are used by na
     ADMIN_A,
     ASSESSMENT_A,
     ASSESSMENT_B,
+    AUTH_PEER_A,
     DATABASE_URL,
     ORG_A,
     ORG_B,
@@ -30,6 +32,8 @@ from tests.test_rls_enforcement import (  # noqa: F401 - fixtures are used by na
     USER_B,
     admin_conn,
     as_org_a,
+    as_org_a_admin,
+    as_org_a_peer,
     as_org_a_support,
     as_org_b,
     migrated_database,
@@ -38,7 +42,7 @@ from tests.test_rls_enforcement import (  # noqa: F401 - fixtures are used by na
 
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,
-    reason="AEOS_TEST_DATABASE_URL is not set; migration 006 tests require PostgreSQL",
+    reason="AEOS_TEST_DATABASE_URL is not set; migration 006/007 tests require PostgreSQL",
 )
 
 SHA = "a" * 64
@@ -128,14 +132,14 @@ def service(migrated_database):
             conn.rollback()
 
 
-@pytest.fixture
-def committed_chain(admin_conn):
-    """One committed request -> draft -> decision in organization A, removed
-    afterwards (DELETE is allowed to the owner; only UPDATE is refused)."""
-    row, result = reserve(admin_conn)
+def _committed_chain(admin_conn, requester):
+    """One committed request -> draft -> decision in organization A by
+    `requester`, removed afterwards (DELETE is allowed to the owner; only
+    UPDATE is refused)."""
+    row, result = reserve(admin_conn, created_by=requester)
     assert result["outcome"] == "reserved"
     draft_id = insert_draft(admin_conn, row["id"])
-    decision_id = insert_decision(admin_conn, draft_id)
+    decision_id = insert_decision(admin_conn, draft_id, decided_by=requester)
     try:
         yield {"request_id": row["id"], "draft_id": draft_id, "decision_id": decision_id}
     finally:
@@ -145,25 +149,88 @@ def committed_chain(admin_conn):
         )
 
 
+@pytest.fixture
+def committed_chain(admin_conn):
+    yield from _committed_chain(admin_conn, USER_A)
+
+
+@pytest.fixture
+def peer_chain(admin_conn):
+    """The same chain requested and decided by the second teacher in org A."""
+    yield from _committed_chain(admin_conn, PEER_A)
+
+
 TABLES = ("ai_feedback_requests", "ai_feedback_drafts", "ai_feedback_decisions")
+CHAIN_KEY = {
+    "ai_feedback_requests": "request_id",
+    "ai_feedback_drafts": "draft_id",
+    "ai_feedback_decisions": "decision_id",
+}
 
 
 # ---------------------------------------------------------------------------
-# RLS: tenant reads, no client writes.
+# RLS: the requester and org admins read; no client writes.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("table", TABLES)
-def test_members_read_their_organization_and_other_tenants_see_nothing(
-    committed_chain, as_org_a, as_org_a_support, as_org_b, table
+def test_only_the_requester_and_org_admins_read_a_feedback_chain(
+    committed_chain, as_org_a, as_org_a_admin, as_org_a_peer, as_org_a_support, as_org_b, table
 ):
-    own = as_org_a.execute(f"SELECT count(*) FROM public.{table}").fetchone()[0]
-    support = as_org_a_support.execute(f"SELECT count(*) FROM public.{table}").fetchone()[0]
-    foreign = as_org_b.execute(f"SELECT count(*) FROM public.{table}").fetchone()[0]
-    for conn in (as_org_a, as_org_a_support, as_org_b):
+    readers = {
+        "requester": as_org_a,
+        "admin": as_org_a_admin,
+        "peer_teacher": as_org_a_peer,
+        "support": as_org_a_support,
+        "other_tenant": as_org_b,
+    }
+    counts = {}
+    for name, conn in readers.items():
+        counts[name] = conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()[0]
         conn.rollback()
-    assert own == 1 and support == 1
-    assert foreign == 0
+    assert counts == {"requester": 1, "admin": 1, "peer_teacher": 0, "support": 0, "other_tenant": 0}
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_ownership_follows_the_requester_not_a_fixed_user(
+    committed_chain, peer_chain, as_org_a, as_org_a_peer, as_org_a_admin, table
+):
+    """Positive control: the peer reads their own chain and only that one."""
+    visible = {}
+    for name, conn in (("requester", as_org_a), ("peer_teacher", as_org_a_peer), ("admin", as_org_a_admin)):
+        visible[name] = {str(r[0]) for r in conn.execute(f"SELECT id FROM public.{table}").fetchall()}
+        conn.rollback()
+    key = CHAIN_KEY[table]
+    assert visible["requester"] == {committed_chain[key]}
+    assert visible["peer_teacher"] == {peer_chain[key]}
+    assert visible["admin"] == {committed_chain[key], peer_chain[key]}
+
+
+def test_ownership_negative_control_peer_reads_the_draft_under_the_006_policy(
+    committed_chain, migrated_database
+):
+    """With 006's org-wide policy put back, the peer sees the draft, so the
+    denial above comes from the 007 policy and not from missing data."""
+    with psycopg.connect(migrated_database) as conn:
+        try:
+            conn.execute("SET lock_timeout = '10s'")
+            conn.execute("DROP POLICY ai_feedback_drafts_select ON public.ai_feedback_drafts")
+            conn.execute(
+                "CREATE POLICY ai_feedback_drafts_select ON public.ai_feedback_drafts "
+                "FOR SELECT TO authenticated "
+                "USING (public.aeos_has_org_access(ai_feedback_drafts.organization_id))"
+            )
+            conn.execute("SET LOCAL ROLE authenticated")
+            conn.execute(
+                "SELECT set_config('request.jwt.claims', %s, true)",
+                (json.dumps({"sub": AUTH_PEER_A, "role": "authenticated"}),),
+            )
+            leaked = conn.execute(
+                "SELECT count(*) FROM public.ai_feedback_drafts WHERE id = %s", (committed_chain["draft_id"],)
+            ).fetchone()[0]
+        finally:
+            conn.rollback()
+    assert leaked == 1, "under the org-wide policy the peer must see the draft, or the denial test proves nothing"
 
 
 def test_rls_negative_control_foreign_rows_leak_without_the_policy(committed_chain, admin_conn, as_org_b):
@@ -341,8 +408,25 @@ def test_decisions_require_reviewable_drafts_writers_and_explicit_confirmation(s
             case()
         service.execute("ROLLBACK TO SAVEPOINT probe")
 
-    insert_decision(service, abstained, decision="revised", text="Teacher's own text", decided_by=PEER_A)
-    insert_decision(service, ready, decision="rejected", text=None, decided_by=ADMIN_A)
+    insert_decision(service, abstained, decision="revised", text="Teacher's own text")
+    insert_decision(service, ready, decision="rejected", text=None)
+
+
+def test_only_the_requesting_teacher_can_decide_a_draft(service):
+    row, _ = reserve(service)  # requested by USER_A
+    draft = insert_draft(service, row["id"])
+
+    for other_writer in (PEER_A, ADMIN_A):
+        service.execute("SAVEPOINT probe")
+        with pytest.raises(psycopg.errors.CheckViolation, match="only the teacher who requested"):
+            insert_decision(service, draft, decision="rejected", text=None, decided_by=other_writer)
+        service.execute("ROLLBACK TO SAVEPOINT probe")
+
+    insert_decision(service, draft, decision="rejected", text=None)
+    peer_row, _ = reserve(service, created_by=PEER_A)
+    insert_decision(service, insert_draft(service, peer_row["id"]), decision="rejected", text=None, decided_by=PEER_A)
+    admin_row, _ = reserve(service, created_by=ADMIN_A)
+    insert_decision(service, insert_draft(service, admin_row["id"]), decision="rejected", text=None, decided_by=ADMIN_A)
 
 
 def test_failed_draft_cannot_carry_output_and_ready_draft_needs_output(service):
