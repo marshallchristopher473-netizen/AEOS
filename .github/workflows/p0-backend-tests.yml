@@ -215,10 +215,13 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@10.9.7
 
+      # @supabase/supabase-js 2.111 and its sub-packages declare node >=22.
+      # --engine-strict turns any installed package whose `engines` excludes
+      # this Node version into an install failure instead of a warning.
       - name: Install pinned frontend dependencies
         id: frontend-install
         working-directory: frontend
-        run: python ../.github/scripts/record-command.py npm-ci npm ci
+        run: python ../.github/scripts/record-command.py npm-ci npm ci --engine-strict
 
       - name: Audit frontend dependency vulnerabilities
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
