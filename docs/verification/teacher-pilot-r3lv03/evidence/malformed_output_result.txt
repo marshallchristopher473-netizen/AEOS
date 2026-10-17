@@ -1,0 +1,13 @@
+rubric RUB-CER3 0.1 criteria ['C1', 'C2', 'C3']
+empty                  rejected code=malformed_output
+prose_not_json         rejected code=malformed_output
+json_array             rejected code=malformed_output
+json_null              rejected code=malformed_output
+unknown_criterion      rejected code=schema_violation
+score_field_injected   rejected code=schema_violation
+huge_array             rejected code=schema_violation
+deep_nesting           UNHANDLED RecursionError
+nan_literal            rejected code=schema_violation
+trailing_garbage       rejected code=malformed_output
+utf8_bomb              rejected code=malformed_output
+unsafe_or_unhandled= 1
