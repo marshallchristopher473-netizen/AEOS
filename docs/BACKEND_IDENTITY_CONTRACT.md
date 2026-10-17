@@ -8,13 +8,17 @@ written from the code, not from intent. The endpoint table in §5 is checked
 against the running FastAPI app by `backend/tests/test_contract_document.py`;
 if a route or its access level changes without this file changing, CI fails.
 
+It describes `main`. Open PRs #22 and #33 change the token rules in §2 and §7;
+whichever merges second must update this file in the same PR, and the drift
+test fails by design until it does.
+
 ## 0. Evidence level — read this first
 
 | Claim | Level | Evidence |
 | --- | --- | --- |
 | Token verification, actor resolution, tenant scoping and RLS behave as described | **Internal test** | 170 backend tests and the M01–M18 mutation contract (`docs/P0_MUTATION_VERIFICATION.md`), run in CI against PostgreSQL 16 |
 | P0 security boundary is closed | **Not claimed** | Independent P0 verification has not signed off |
-| Works against a real Supabase project | **Not verified** | No project is provisioned; all Supabase values below are templates |
+| Works against a real Supabase project | **Not verified** | A Supabase project is linked to this repository through the Supabase GitHub integration (it posts a `Supabase Preview` check). Whether migrations 001–004 are applied and the API is configured against it is unverified |
 | A deployed API exists | **No** | There is no base URL. See §8 gate G1 |
 | Safe for real student data | **No** | Blocked by §8 gates. Use synthetic data only |
 
@@ -47,7 +51,7 @@ Source: `backend/app/core/auth.py`, `backend/app/core/config.py`.
 | Header `kid` | present, non-empty, matches a key in the JWKS | 401 (no fallback to another key) |
 | `iss` | exactly `SUPABASE_JWT_ISSUER` (default `${SUPABASE_URL}/auth/v1`) | 401 |
 | `aud` | must be present and include `SUPABASE_JWT_AUDIENCE` (default `authenticated`) | 401 — a *missing* `aud` is also rejected |
-| `exp` | in the future; no leeway | 401 |
+| `exp` | if present, in the future; no leeway. **A token with no `exp` is accepted** (Supabase always sets it; open PR #33 makes it required) | 401 |
 | `sub` | non-empty string (the Supabase `auth.users.id`) | 401 |
 | JWKS location | `SUPABASE_JWKS_URL` (default `${SUPABASE_URL}/auth/v1/jwks`) | 503 if unreachable or malformed |
 
@@ -140,7 +144,7 @@ disabled — do not point it at a guessed path.
 | 403 | Valid token but no single active AEOS user, organization suspended, or role not allowed |
 | 404 | Not found **or** belongs to another tenant (deliberately indistinguishable) |
 | 422 | Request body failed validation, including forbidden authority fields |
-| 500 | Server misconfigured (issuer/audience/JWKS URL not set) |
+| 500 | Server misconfigured (issuer/audience/JWKS URL not set). On `main`, also a token whose `kid` names a published key python-jose cannot load (fixed in open PRs #20/#22) |
 | 503 | JWKS endpoint unreachable or returned an invalid key set |
 
 ## 7. Revocation, replay and key rotation
@@ -152,18 +156,19 @@ disabled — do not point it at a guessed path.
 | Revoke an issued access token | **Not supported.** A token stays cryptographically valid until `exp`, even after Supabase sign-out. Exposure is bounded by the project's access-token lifetime. The two status switches above are the containment controls |
 | Replay / nonce | **None.** Standard bearer-token model; relies on TLS and short expiry |
 | Key rotation (new `kid`) | Supported: an unknown `kid` triggers one JWKS refetch |
-| Key revocation (removed `kid`) | **Gap.** The JWKS is cached in-process with no expiry. A key removed from the JWKS stays trusted until the API process restarts. Operational rule until fixed: **restart the API after revoking a Supabase signing key** |
+| Key revocation (removed `kid`) | **Gap on `main`.** The JWKS is cached in-process with no expiry. A key removed from the JWKS stays trusted until the API process restarts. Operational rule until fixed: **restart the API after revoking a Supabase signing key**. Open PR #33 refetches the key set after 600 s |
 
 ## 8. Gates before any browser client can call this API
 
-Ranked by what blocks first. None of these are closed.
+Ranked by what blocks first. None of these are closed on `main`. Where an
+open PR already proposes the fix, it is named so the work is not repeated.
 
 | # | Gate | Why it blocks | Smallest closing action |
 | --- | --- | --- | --- |
 | G1 | No deployment, no base URL | Nothing to call | Deploy the API to a staging host with synthetic data; record the URL here |
-| G2 | No Supabase project | No issuer, JWKS or users | Create a staging project; set the four `SUPABASE_*` values server-side only |
-| G3 | Signing-algorithm mismatch risk | The API accepts **RS256 only**. Supabase also supports Elliptic Curve (ES256) keys, and legacy projects use a shared HS256 secret that publishes no JWKS keys. Either one yields 401 on every request | Configure the project with an RSA signing key, **or** extend `auth.py` to ES256 with tests and a mutation-contract update |
-| G4 | JWKS path unverified | Supabase documents both `/auth/v1/jwks` and `/auth/v1/.well-known/jwks.json`; the default here has not been tested against a live project | `curl` the project's JWKS once; set `SUPABASE_JWKS_URL` explicitly to the path that returns keys |
+| G2 | Supabase project not verified for this API | The linked project's migrations, users and keys are unconfirmed | Confirm migrations 001–004 are applied; set the four `SUPABASE_*` values server-side only |
+| G3 | Signing-algorithm mismatch | The API accepts **RS256 only**. Supabase recommends Elliptic Curve (ES256) keys, and legacy projects use a shared HS256 secret that publishes no JWKS keys. Either one yields 401 on every request | **Fix proposed in open PR #22** (RS256 and ES256, symmetric keys refused), also composed into open PR #33 |
+| G4 | JWKS path unverified | Supabase documents `/auth/v1/.well-known/jwks.json`; this default (`/auth/v1/jwks`) has not been tested against a live project | **Fix proposed in open PR #22** (default moves to `.well-known/jwks.json`); still `curl` the live project once |
 | G5 | No CORS policy | The app adds no CORS middleware, so browsers block calls from any other origin (`*.base44.app`, a Vercel domain) | Add `CORSMiddleware` with an explicit origin allowlist from configuration — never `*` |
 | G6 | No audit writes | `audit_logs` exists with RLS, but no route writes to it. MVP acceptance criteria §2, §3, §7 require audit | Write an audit row on every create and every student read, in the same request |
 | G7 | No provisioning path | Users can only be added by direct SQL | Acceptable for a ≤3-teacher synthetic pilot; document the SQL runbook |
