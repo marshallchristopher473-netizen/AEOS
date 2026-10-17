@@ -4,7 +4,7 @@
 
 ## 1. Protocol/asset reconciliation gate
 
-No current P-TER-01 protocol or pilot asset was accessible in the supplied workspace on 2026-10-17. This packet does not recreate, infer, or replace those materials. Before approval, the founder records the authoritative source below and reconciles every blank/source-dependent item.
+No current P-TER-01 protocol or pilot asset was accessible in the supplied workspace on 2026-10-17. This packet does not recreate, infer, or replace those materials. A search of the AEOS GitHub repository on 2026-10-17 also found no P-TER-01 protocol, assignment prompt, ELA rubric, evaluator configuration, or teacher ELA review workflow/screens. Before approval, the founder records the authoritative source below and reconciles every blank/source-dependent item.
 
 | Item | Authoritative source/version | Reconciled by/date | Result/notes |
 |---|---|---|---|
@@ -39,10 +39,12 @@ Enroll **3–5 teachers**, only after founder and each teacher confirm participa
 | Teacher ID | Confirmed (Y/N) | Order | Matched set | Notes |
 |---|---:|---|---|---|
 | T01 |  | A → B | X → Y |  |
-| T02 |  | B → A | Y → X |  |
-| T03 |  | A → B | X → Y |  |
+| T02 |  | B → A | X → Y |  |
+| T03 |  | A → B | Y → X |  |
 | T04 |  | B → A | Y → X |  |
 | T05 |  | A → B | X → Y |  |
+
+Resulting set per condition: T01 A=X, T02 A=Y, T03 A=Y, T04 A=X, T05 A=X. T01–T04 form a complete 2×2 rotation so that order and response set are each balanced across conditions; T05 repeats T01. Do not pair the order and set columns in lockstep (A→B always with X→Y, B→A always with Y→X), because that assigns set X to the assisted task for every teacher and makes condition and response set inseparable.
 
 ### Materials to be approved
 
@@ -53,18 +55,18 @@ Enroll **3–5 teachers**, only after founder and each teacher confirm participa
 
 ### Synthetic response register (6–10 total)
 
-Create and freeze **six synthetic responses per teacher** (the smallest requested 6–10 workload) only after the assignment/rubric are approved. Each teacher reviews matched set X (three responses) in one task and set Y (three responses) in the other. The same six synthetic responses may be reused across teachers, but not across tasks for the same teacher. Sets X and Y should be matched for rubric dimension, intended score band, length, and seeded-error burden. Do not place student-like personal data in them. The four optional rows permit an approved expansion to 7–10 responses per teacher without changing the structure.
+Create and freeze **six synthetic responses per teacher** (the smallest requested 6–10 workload) only after the assignment/rubric are approved. Each teacher reviews matched set X (three responses) in one task and set Y (three responses) in the other. The same six synthetic responses may be reused across teachers, but not across tasks for the same teacher. Sets X and Y should be matched for rubric dimension, intended score band, length, and seeded-error burden. Do not place student-like personal data in them. The four optional rows are reserved for an approved expansion. Any expansion must keep X and Y the same size (8 or 10 total), changes the three-responses-per-task count below, and requires a versioned, re-approved packet before collection.
 
 | Synthetic ID | SHA-256 hash after freeze | Set | Intended rubric profile | Seeded error(s) / test condition | Comparator key version | Approved (Y/N) |
 |---|---|---|---|---|---|---:|
 | SYN-01 |  | X |  |  |  |  |
 | SYN-02 |  | X |  |  |  |  |
 | SYN-03 |  | X |  |  |  |  |
-| SYN-04 |  | X |  |  |  |  |
+| SYN-04 |  | Y |  |  |  |  |
 | SYN-05 |  | Y |  |  |  |  |
 | SYN-06 |  | Y |  |  |  |  |
-| SYN-07 (optional) |  | Y |  |  |  |  |
-| SYN-08 (optional) |  | Y |  |  |  |  |
+| SYN-07 (optional) |  |  |  |  |  |  |
+| SYN-08 (optional) |  |  |  |  |  |  |
 | SYN-09 (optional) |  |  |  |  |  |  |
 | SYN-10 (optional) |  |  |  |  |  |  |
 
