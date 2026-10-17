@@ -156,7 +156,7 @@ The `users.auth_user_id` ↔ Supabase JWT `sub` link is the only identity link. 
 | **Next.js `frontend/` → `/api` rewrite (`AEOS_API_URL`) → FastAPI candidate → Supabase (one project built from migrations 001–006)** | Code exists (`AiFeedbackPanel.tsx`, `lib/aiFeedback.ts`) | Same server-side flow the tests cover | Single issuer, service-role boundary as above | **Recommended** |
 | Base44 UI → `AEOS_API` | Integration disabled. No identity bridge. | Synthetic demo only | Would need a Base44↔Supabase identity design | Optional, later |
 
-**Smallest route:** use the existing Next.js pages. The pilot teacher signs in with Supabase Auth on the pilot project. The browser calls same-origin `/api/*`, which Next rewrites to the backend. Note: the frontend reads the token from `localStorage['aeos_access_token']` and has **no sign-in screen**. That is a launch gap for any non-developer user (G10).
+**Smallest route:** use the existing Next.js pages on the existing Vercel project `aeos` (root `frontend/`; production state unverified, see the environment map E1). Set its `AEOS_API_URL` to the deployed backend. The pilot teacher signs in with Supabase Auth on the pilot project. The browser calls same-origin `/api/*`, which Next rewrites to the backend. Note: the frontend reads the token from `localStorage['aeos_access_token']` and has **no sign-in screen**. That is a launch gap for any non-developer user (G10).
 
 ## 8. Next single bounded security repair
 

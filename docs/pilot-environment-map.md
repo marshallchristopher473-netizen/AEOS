@@ -4,7 +4,7 @@
 | --- | --- |
 | Inventory date | 2026-10-17 |
 | Method | Read-only. Git, GitHub, the Vercel API and the Supabase management API. No code, schema, configuration or deployment was changed. No secret values were read or printed. |
-| Verdict | **BLOCKED.** No deployed AEOS frontend or backend could be found. The only hosted database that names AEOS is paused, so it could not be inspected. |
+| Verdict | **BLOCKED.** A Vercel project `aeos` (root `frontend/`) exists, but its production build and environment variables are not readable with the available credentials. No deployed backend could be found. The only hosted database that names AEOS is paused, so it could not be inspected. |
 | Companion | [`pilot-backend-contract.md`](pilot-backend-contract.md) |
 
 A blank cell means the value could not be verified. Nothing has been filled in by inference.
@@ -34,7 +34,9 @@ A blank cell means the value could not be verified. Nothing has been filled in b
 | Local development | `frontend/` (Next.js `^16.3.6` at candidate), `next dev` | `uvicorn app.main:app` on port 8000 | Whatever `backend/.env` names. *(not in repo)* | n/a | `backend/.env.example`, `frontend/.env.example` |
 | Replit workspace | none configured | `.replit` runs `uvicorn app.main:app --port 8000` and maps it to port 80 | `hbcgsukmbgiytcznmmec` (AEOS-MVP). Only `SUPABASE_URL` is set in `.replit`. | `17.6.1.155` | `.replit` `[userenv.shared]` |
 | Replit published deployment | | | | | Not observed. No deployment artifact or URL found. |
-| Vercel production | **None for AEOS** | n/a | | | The team `christopher-marshall-s-projects` has one project, `neurolearning-os` (`prj_BHeDWrfnpdHanriHF7BzicI2AOpz`). Its latest production deployment is `ERROR`, `live: false`, and no git link to this repository was returned. It is **not** mapped to AEOS. |
+| Vercel production | Project `aeos` (`prj_YN58grCsUbX3NNvC0ySXlBAfpNqR`, team `team_3l5DZy3Rr91pttvZdWfgQ9KJ`), root directory `frontend`, Git-linked to this repository. Production deployment ID, SHA and URL: | Value of `AEOS_API_URL`: | Not configured in the frontend. Value: | The project's existence, root directory and Git link come from the `vercel[bot]` comment on PR #37 (2026-10-17). The Vercel connector returned `404` for `get_project` and `403` for `list_deployments` on this project, and `list_projects` did not return it. Production build and environment variables are therefore **unverified**. |
+| Vercel preview (this PR) | `aeos-git-claude-aeos-ela-924c3b-christopher-marshall-s-projects.vercel.app`, built from `claude/aeos-ela-pilot-verify-e4ittf` (docs-only). Status `Ready`. | | | | `vercel[bot]` comment on PR #37. The frontend code in this preview is `main`'s, not the candidate's. |
+| Vercel, other project | `neurolearning-os` (`prj_BHeDWrfnpdHanriHF7BzicI2AOpz`). Latest production deployment `ERROR`, `live: false`. | n/a | | | Vercel API. No git link to this repository was returned. **Not** mapped to AEOS. |
 | GitHub Actions CI | `npm` build and tests | pytest | Ephemeral `postgres:16` service container (not Supabase) | PG 16 | `.github/workflows/p0-backend-tests.yml` |
 | Disposable verification DB | n/a | n/a | `doblbkfogcykpfwkfycs` (`aeos-v05-verify-disposable`, ACTIVE_HEALTHY) | `17.6.1.166` | Supabase API. Read access failed with `28P01` password authentication. No repository config points at it. |
 | Other Supabase project | n/a | n/a | `drcetslvctzkgaxvzerq` (`GradeFreed-AI`, INACTIVE) | `17.6.1.147` | Supabase API. No repository config points at it. |
@@ -85,7 +87,7 @@ Bridging Base44 users to AEOS users would need an explicit, designed identity li
 
 | # | Gap | Missing artifact |
 | --- | --- | --- |
-| E1 | No deployed AEOS frontend | A Vercel (or other) project linked to `marshallchristopher473-netizen/AEOS` with root `frontend/`, or the owner naming an existing one |
+| E1 | Vercel project `aeos` exists, but its production deployment and its `AEOS_API_URL` are unverified | Production deployment ID and SHA, plus whether `AEOS_API_URL` is set (name only, no value). Needs Vercel access that can read `prj_YN58grCsUbX3NNvC0ySXlBAfpNqR`. |
 | E2 | No deployed AEOS backend | A deployment record (URL, platform, deployed SHA) for `backend/` |
 | E3 | Pilot database state is unknown and diverges from the repo | AEOS-MVP restored for read-only inspection, or a decision to use a fresh project built only from migrations 001–006 |
 | E4 | Candidate is unmerged and contains a reconstructed module | Human review of `backend/app/models/ai_feedback.py` @ 7a72792, then a merge decision |
@@ -100,4 +102,5 @@ Bridging Base44 users to AEOS users would need an explicit, designed identity li
 - `backend/supabase/migrations/001`–`006` @ 7a72792
 - `docs/pilots/p-ter-01/README.md` @ 7a72792
 - Supabase management API: `list_projects`, `get_project`, `get_advisors` (2026-10-17). Failed calls: `list_tables` and `list_migrations` on AEOS-MVP (timeout), and on the disposable project (`28P01`).
-- Vercel API: `list_teams`, `list_projects`, `get_project` (2026-10-17)
+- Vercel API: `list_teams`, `list_projects`, `get_project` (2026-10-17). `get_project` → `404` and `list_deployments` → `403` for `prj_YN58grCsUbX3NNvC0ySXlBAfpNqR`.
+- `vercel[bot]` comment on PR #37 (2026-10-17), which identifies project `aeos`, root `frontend` and the preview URL
