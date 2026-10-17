@@ -130,35 +130,69 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      # @supabase/supabase-js 2.111 and its sub-packages declare node >=22.
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # --engine-strict turns any installed package whose `engines` excludes
+      # this Node version into an install failure instead of a warning.
       - name: Install pinned frontend dependencies
+        id: frontend-install
         working-directory: frontend
-        run: npm ci
+        run: npm ci --engine-strict
 
-      - name: Audit frontend dependency vulnerabilities
+      # Full threshold, every dependency, no exceptions file. tee keeps a
+      # machine-readable inventory; bash pipefail keeps any finding at or above
+      # low severity a failing gate.
+      - name: Audit all frontend dependencies
+        shell: bash
         working-directory: frontend
-        run: npm audit --audit-level=low
+        run: npm audit --audit-level=low --json | tee npm-audit.json
 
+      - name: Audit production frontend dependencies
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Publish dependency audit for the checked-out tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dependency-audit-${{ github.sha }}
+          path: frontend/npm-audit.json
+          if-no-files-found: warn
+
+      # The remaining gates still run when an audit fails, so a new advisory
+      # does not hide a lint, type or build regression.
       - name: Verify frontend dependency tree
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npm ls --all
 
+      # package.json replaces the Next.js lint plugin's fast-glob with
+      # tinyglobby. These guards pin the conditions that make that safe.
+      - name: Verify Next.js lint glob override
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: node tests/lint-glob-override.test.mjs
+
       - name: Lint frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         env:
           CI: '1'
         run: npm run lint
 
       - name: Type-check frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npx tsc --noEmit
 
       - name: Build frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
         run: npm run build
