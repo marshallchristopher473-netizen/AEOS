@@ -4,6 +4,7 @@ from app.api.assessments import router as assessments_router
 from app.api.assessment_results import router as assessment_results_router
 from app.api.students import router as students_router
 from app.api.intervention_plans import router as intervention_plans_router
+from app.api.ai_feedback import router as ai_feedback_router
 
 app = FastAPI(
     title="AEOS Intervention Intelligence Platform API",
@@ -16,3 +17,4 @@ app.include_router(assessments_router)
 app.include_router(assessment_results_router)
 app.include_router(students_router)
 app.include_router(intervention_plans_router)
+app.include_router(ai_feedback_router)

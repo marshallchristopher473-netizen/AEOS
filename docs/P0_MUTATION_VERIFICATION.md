@@ -5,6 +5,10 @@ verified, what the verification covers, and what it deliberately does not
 cover. It is a method record, not a claim of certification. A separate
 reviewer must reproduce it independently before P0 can be closed.
 
+The independent reproduction against `main` @ `b9c68aa` — exact SHA,
+environment, results and accepted scope boundaries — is recorded in
+[`P0_VERIFICATION_RECORD.md`](P0_VERIFICATION_RECORD.md).
+
 ## Why mutation testing is the gate
 
 A green security suite proves nothing on its own. The specific failure this
@@ -33,7 +37,7 @@ Every mutant therefore passes a validity precheck before any test runs:
 | Target | Precheck |
 | --- | --- |
 | Python (`*.py`) | `compileall` the tree, then import `app.main` |
-| SQL migration (`*.sql`) | apply shim + migrations 001–004 to a scratch database; every statement must succeed |
+| SQL migration (`*.sql`) | apply shim + migrations 001–005 to a scratch database; every statement must succeed |
 | Frontend (`*.ts`) | textual substitution only; no build step in this harness |
 
 Each mutant is then run against the smallest relevant security subset **and**
@@ -51,7 +55,7 @@ pip install -r requirements-dev.txt
 # 2. Unmodified baseline — must be green before anything else means anything
 python -m pytest tests/ -q
 
-# 3. Complete M01-M18 mutation contract
+# 3. Complete M01-M20 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
 ```
@@ -64,7 +68,7 @@ artifact keyed to the exact commit SHA.
 than a silent skip, because a security test that skips quietly is worse than no
 test: CI stays green while proving nothing.
 
-## The M01–M18 contract
+## The M01–M20 contract
 
 | ID | Security boundary | Mutation | Primary killing test |
 | --- | --- | --- | --- |
@@ -92,6 +96,10 @@ test: CI stays green while proving nothing.
 | M18e | Missing `kid` rejected | fall back to the first published key | `test_auth.py::test_token_without_a_key_id_is_401` |
 | M18f | Unknown `kid` rejected | fall back to the first published key | `test_auth.py::test_unknown_key_id_is_401_even_though_a_usable_key_is_published` |
 | M18g | Malformed tokens fail closed | JWT error path returns a default subject | `test_auth.py::test_malformed_token_is_401` |
+| M18h | Unusable published keys fail closed as 401 | `JWKError` re-raised past the 401 handler (the pre-SEC-G1-06 behaviour) | `test_auth.py::test_published_key_python_jose_cannot_load_is_401_not_a_server_error` |
+| M19a | Client roles hold no privilege RLS does not govern | 005 stops revoking TRUNCATE on existing tables | `TestPrivilegesRlsDoesNotGovern::test_client_roles_hold_no_rls_blind_privilege`; `test_cross_tenant_truncate_is_refused[*]` |
+| M19b | Tables created later do not regain TRUNCATE | 005 stops revoking TRUNCATE from the default privileges | `TestPrivilegesRlsDoesNotGovern::test_tables_created_later_do_not_inherit_rls_blind_privileges` |
+| M20 | WHERE-less writes cannot reach another tenant on any table | `ai_recommendations_delete` → `USING (true)` | `TestWherelessWritesAcrossEveryTable::test_whereless_delete_leaves_org_a_untouched[*-ai_recommendations]` |
 
 ### On M18e and M18f
 
@@ -101,6 +109,27 @@ first published JWKS key, and both new tests sign with the **real** key so that
 a guessing implementation would genuinely accept the token.
 `test_unknown_signing_key_is_401` alone could not detect this: it publishes a
 JWKS with no usable key, so a guessing implementation still fails.
+
+### M18i–M18k — the published key pins the algorithm
+
+Supabase signs sessions with ES256 (ECC P-256, the algorithm it recommends) or
+RS256, and a JWKS can hold both during a rotation. `signing_algorithm()` maps
+each published key to exactly one algorithm: RSA → RS256, EC P-256 → ES256.
+Every other key is refused with 401, and a symmetric key is always refused.
+The key is then built for that one algorithm before any signature is checked.
+
+| ID | Security boundary | Mutation | Primary killing test |
+| --- | --- | --- | --- |
+| M18i | A published symmetric key never verifies a token | `oct` keys mapped to HS256 | `test_auth.py::test_symmetric_key_in_the_jwks_is_never_accepted` |
+| M18j | The token header cannot choose the algorithm | key built for, and decode allowed, the header's `alg` | `test_auth.py::test_algorithm_the_published_key_does_not_allow_is_401[rs512-signed-by-the-published-rsa-key]` |
+| M18k | The key that verifies is exactly the entry that was checked | raw JWKS entry handed to python-jose | `test_auth.py::test_published_key_this_backend_must_not_use_is_401_even_if_jose_accepts[ec-p256-entry-wrapping-nested-keys]` |
+
+All three killing tests use a token that verifies against a key the JWKS
+really contains, so a weakened implementation would genuinely accept it. The
+M18i token is correctly HMAC-signed with the published secret. The M18j token
+is signed by the real RSA private key, but with RS512 rather than the RS256 the
+key is published for. The M18k token is signed by a P-384 key nested inside a
+P-256 entry: python-jose treats any dict with a `keys` member as a key set.
 
 ## No mutant is excluded from the score
 
@@ -141,7 +170,9 @@ merely passing:
 
 - `test_rls_enforcement.py::TestNegativeControl` disables the specific RLS
   protection under test and asserts the same attack then succeeds — covering
-  SELECT, unfiltered scan, UPDATE, DELETE, INSERT and suspension denial. If
+  SELECT, unfiltered scan, UPDATE, DELETE, INSERT and suspension denial, and
+  it re-grants TRUNCATE to show the cross-tenant wipe that 005 prevents, and
+  switches RLS off per table to show the WHERE-less sweep sees every write. If
   those ever stop observing a breach, the module has become vacuous.
 - The mutation contract above, which breaks each control at source and records
   the assertion that fires.
@@ -163,3 +194,12 @@ merely passing:
   frontend would compile.
 - This verification measures whether the security suite can fail. It is not a
   penetration test, not a formal proof, and not a compliance certification.
+
+### On M20
+
+M20 exists to prove the WHERE-less sweep closes a real gap. With
+`ai_recommendations_delete` widened to `USING (true)`, every test that existed
+before the sweep still passes, because none issues a DELETE against
+`ai_recommendations`, and a DELETE carrying a `WHERE` clause would be masked by
+the SELECT policy anyway. Only
+`TestWherelessWritesAcrossEveryTable` fails, in all four attacker scenarios.

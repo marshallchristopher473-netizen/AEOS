@@ -2,15 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-
-type Assessment = {
-  id: string;
-  title: string;
-  assessment_type: string;
-  status: string;
-  student_id: string;
-  created_at?: string | null;
-};
+import { getAccessToken } from '@/lib/api';
+import { Assessment, listAssessments } from '@/lib/assessments';
 
 export default function AssessmentsPage() {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -18,35 +11,27 @@ export default function AssessmentsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadAssessments = async () => {
       try {
-        const token = localStorage.getItem('aeos_access_token');
+        const token = getAccessToken();
         if (!token) {
           setError('Please sign in to view assessments.');
           setLoading(false);
           return;
         }
 
-        const response = await fetch('http://127.0.0.1:8000/assessments', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-
-        const data = await response.json();
-        setAssessments(data);
+        const data = await listAssessments(controller.signal);
+        if (!controller.signal.aborted) setAssessments(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load assessments.');
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Unable to load assessments.');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     loadAssessments();
+    return () => controller.abort();
   }, []);
 
   return (
@@ -58,12 +43,12 @@ export default function AssessmentsPage() {
         </div>
       </div>
 
-      {error ? <div className="error">{error}</div> : null}
+      {error ? <div role="alert" className="error">{error}</div> : null}
 
       <div className="card">
         {loading ? (
           <p>Loading assessments…</p>
-        ) : assessments.length === 0 ? (
+        ) : error ? <p>Assessments could not be loaded.</p> : assessments.length === 0 ? (
           <div className="empty-state">No assessments found.</div>
         ) : (
           <table className="table">
@@ -84,7 +69,7 @@ export default function AssessmentsPage() {
                   <td>{assessment.status}</td>
                   <td>{assessment.student_id}</td>
                   <td>
-                    <Link href={`/assessments/${assessment.id}`} className="ghost-btn">View</Link>
+                    <Link href={`/assessments/${assessment.id}`} className="ghost-btn">Review</Link>
                   </td>
                 </tr>
               ))}

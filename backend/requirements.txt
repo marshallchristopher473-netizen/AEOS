@@ -5,3 +5,6 @@ python-dotenv==1.0.1
 httpx==0.27.2
 python-jose[cryptography]==3.3.0
 supabase==2.5.0
+# Server-side AI feedback provider adapter. Pinned to the newest release
+# older than two weeks at integration time (released 2026-09-22).
+anthropic==1.8.0
