@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { API_BASE_URL, getAccessToken } from '@/lib/api';
+
 type Student = {
   id: string;
   first_name: string;
@@ -26,14 +28,14 @@ export default function StudentDetailPage() {
   useEffect(() => {
     const loadStudent = async () => {
       try {
-        const token = localStorage.getItem('aeos_access_token');
+        const token = await getAccessToken();
         if (!token) {
           setError('Please sign in to view this student.');
           setLoading(false);
           return;
         }
 
-        const res = await fetch(`http://127.0.0.1:8000/students/${params.id}`, {
+        const res = await fetch(`${API_BASE_URL}/students/${params.id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

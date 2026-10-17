@@ -168,6 +168,15 @@ button, input, select {
   margin-bottom: 16px;
 }
 
+.auth-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  color: #475569;
+}
+
 .empty-state {
   color: #475569;
   padding: 24px 0;

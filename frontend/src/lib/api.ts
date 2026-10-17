@@ -1,13 +1,21 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+import { getSupabaseBrowserClient } from './supabase';
 
-function getAccessToken(): string | null {
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+// The access token of the current Supabase session, refreshed by supabase-js
+// when it is near expiry. The AEOS API verifies it independently, so nothing
+// here is trusted for authorization.
+export async function getAccessToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
 
-  return localStorage.getItem('aeos_access_token');
+  const { data, error } = await getSupabaseBrowserClient().auth.getSession();
+  if (error) return null;
+
+  return data.session?.access_token ?? null;
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAccessToken();
+  const token = await getAccessToken();
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

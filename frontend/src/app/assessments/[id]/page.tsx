@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { API_BASE_URL, getAccessToken } from '@/lib/api';
+
 type Assessment = {
   id: string;
   organization_id: string;
@@ -26,14 +28,14 @@ export default function AssessmentDetailPage() {
   useEffect(() => {
     const loadAssessment = async () => {
       try {
-        const token = localStorage.getItem('aeos_access_token');
+        const token = await getAccessToken();
         if (!token) {
           setError('Please sign in to view this assessment.');
           setLoading(false);
           return;
         }
 
-        const response = await fetch(`http://127.0.0.1:8000/assessments/${params.id}`, {
+        const response = await fetch(`${API_BASE_URL}/assessments/${params.id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

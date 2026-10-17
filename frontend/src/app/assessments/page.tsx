@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { API_BASE_URL, getAccessToken } from '@/lib/api';
+
 type Assessment = {
   id: string;
   title: string;
@@ -20,14 +22,14 @@ export default function AssessmentsPage() {
   useEffect(() => {
     const loadAssessments = async () => {
       try {
-        const token = localStorage.getItem('aeos_access_token');
+        const token = await getAccessToken();
         if (!token) {
           setError('Please sign in to view assessments.');
           setLoading(false);
           return;
         }
 
-        const response = await fetch('http://127.0.0.1:8000/assessments', {
+        const response = await fetch(`${API_BASE_URL}/assessments`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

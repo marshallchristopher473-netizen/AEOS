@@ -29,3 +29,28 @@ SUPABASE_JWT_ISSUER = get_env(
 )
 SUPABASE_JWT_AUDIENCE = get_env("SUPABASE_JWT_AUDIENCE", "authenticated")
 AI_PROVIDER = get_env("AI_PROVIDER", "placeholder")
+
+
+def parse_cors_allowed_origins(raw: str) -> list[str]:
+    """Parse a comma-separated list of exact browser origins.
+
+    Fails closed: an empty value allows no cross-origin browser access. A
+    wildcard, a path, or a non-http(s) scheme is a configuration error rather
+    than something to silently widen or repair, because every allowed origin
+    can make authenticated calls with a teacher's bearer token.
+    """
+    origins: list[str] = []
+    for entry in raw.split(","):
+        origin = entry.strip()
+        if not origin:
+            continue
+        if "*" in origin:
+            raise ValueError("CORS_ALLOWED_ORIGINS must list exact origins, not wildcards")
+        scheme, sep, host = origin.partition("://")
+        if scheme not in ("http", "https") or not sep or not host or "/" in host:
+            raise ValueError(f"CORS_ALLOWED_ORIGINS entry is not a bare origin: {origin!r}")
+        origins.append(origin)
+    return origins
+
+
+CORS_ALLOWED_ORIGINS = parse_cors_allowed_origins(get_env("CORS_ALLOWED_ORIGINS"))
