@@ -60,6 +60,7 @@ Database guarantees (all executed against PostgreSQL 16 in tests): RLS enabled a
 | `backend/tests/test_ai_feedback*.py`, `frontend/tests/ai-feedback-api.test.mjs` | Tests (deterministic fixtures, labeled) |
 | `backend/tests/ai_feedback_fixture_server.py` | Loopback-only browser fixture with a deterministic provider |
 | `backend/tests/ai_feedback_provider_smoke.py` | Manual genuine-provider smoke check (spends money; never in CI) |
+| `backend/tests/ai_feedback_quality_eval.py` | Manual teacher-free quality check: every fixture response, repeated runs, profile checks, consistency and a review sheet for an expert (spends money; never in CI) |
 | `docs/evidence/ai-feedback/` | Mutation and browser evidence from this change |
 
 ## Safety controls and where each is tested
@@ -219,6 +220,7 @@ Environment: Python 3.11 with a fresh install of `backend/requirements-dev.txt` 
 | --- | --- | --- |
 | Teacher approval of the rubric | **BLOCKED** | A teacher reviews RUB-CER3 v0.1 (or a replacement), then the approver pins its hash in `AEOS_AI_FEEDBACK_APPROVED_RUBRICS`. Until then the server refuses every request. |
 | Genuine provider smoke check | **BLOCKED** | Run `python -m tests.ai_feedback_provider_smoke` with a server-side key, a confirmed model ID and current prices; record the JSON output. |
+| Teacher-free quality check | **BLOCKED (not run)** | Run `python -m tests.ai_feedback_quality_eval --runs 3` with the same settings as the smoke check plus `AEOS_AI_FEEDBACK_EVAL=1`. It checks each synthetic profile (strong: feedback on every criterion with verified quotes; insufficient: abstains; embedded instruction: not obeyed and flagged) and that repeated runs agree, then writes `review-sheet.md` for an expert to rate. A pass is an internal test result, not teacher evidence. |
 | Feedback quality evaluation | **NOT STARTED** | Hypothesis, baseline (teacher-written feedback), labeled synthetic set incl. the PR #30 hidden key, thresholds for evidence-span validity, criterion alignment, abstention appropriateness, prohibited-inference false-positive and false-negative rates, and teacher accept/revise/reject rates. No accuracy claim before this passes. |
 | Prohibited-language filter calibration | Open | The regex filter is conservative and will reject some acceptable drafts (e.g. feedback using "grade level"); measure the false-rejection rate on the evaluation set. |
 | Dependency audit | **BLOCKED (pre-existing)** | Candidate-level Next.js/sharp remediation in its own reviewed change. |
