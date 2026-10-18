@@ -1,0 +1,849 @@
+{
+  "repository_root": "<clean detached worktree at 54a04773fd8aa73547f49d125bf3b6b0ec08caf2>",
+  "database_configured": true,
+  "python": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0]",
+  "totals": {
+    "killed": 30,
+    "survived": 0,
+    "equivalent": 0,
+    "invalid": 0,
+    "not_executed": 0,
+    "score_numerator": 30,
+    "score_denominator": 30
+  },
+  "mutations": [
+    {
+      "contract": "M01",
+      "name": "authentication dependency replaced by a constant subject",
+      "boundary": "Every business route must require a verified bearer token; the identity chain must begin at get_current_user and nowhere else.",
+      "path": "backend/app/core/dependencies.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "16 failed, 92 passed, 2 warnings in 1.87s",
+      "killed_by": [
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/students-payload0]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/assessments-payload1]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/intervention-plans-payload2]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/assessment-results-payload3]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/students-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/students/33333333-3333-4333-8333-333333333333-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/students-payload2]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessments-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessments/55555555-5555-4555-8555-555555555555-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/assessments-payload5]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/intervention-plans-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/intervention-plans/77777777-7777-4777-8777-777777777777-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/intervention-plans-payload8]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessment-results-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessment-results/12121212-1212-4212-8212-121212121212-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/assessment-results-payload11]"
+      ],
+      "full_suite_summary": "16 failed, 154 passed, 2 warnings in 3.19s",
+      "seconds": 8.0,
+      "errors": [],
+      "full_suite_failed_count": 16
+    },
+    {
+      "contract": "M02",
+      "name": "JWT verification bypassed: claims read without decoding",
+      "boundary": "Claims may only be trusted after signature, expiry, issuer and audience verification against the published JWKS.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "3 failed, 105 passed, 2 warnings in 1.89s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides1]",
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides2]",
+        "FAILED tests/test_auth.py::test_forged_signature_is_401 - Failed: DID NOT RAI..."
+      ],
+      "full_suite_summary": "3 failed, 167 passed, 2 warnings in 3.24s",
+      "seconds": 8.2,
+      "errors": [],
+      "full_suite_failed_count": 3
+    },
+    {
+      "contract": "M03",
+      "name": "client-provided user_id claim overrides the resolved actor identity",
+      "boundary": "Actor identity is the database user row selected by the verified `sub`; no other token field may name the actor.",
+      "path": "backend/app/core/dependencies.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "1 failed, 107 passed, 2 warnings in 1.82s",
+      "killed_by": [
+        "FAILED tests/test_dependencies.py::test_client_supplied_user_id_claim_cannot_replace_the_resolved_actor"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.25s",
+      "seconds": 8.1,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M04",
+      "name": "client-provided organization_id claim overrides tenant authority",
+      "boundary": "Tenant authority is derived server-side from the user row; a token claim must never select the organization.",
+      "path": "backend/app/core/dependencies.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "2 failed, 106 passed, 2 warnings in 1.92s",
+      "killed_by": [
+        "FAILED tests/test_dependencies.py::test_db_user_is_resolved_by_verified_subject_not_email_or_jwt_authority_fields",
+        "FAILED tests/test_dependencies.py::test_client_supplied_organization_id_claim_cannot_grant_another_tenant"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.02s",
+      "seconds": 7.9,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M05",
+      "name": "students_select becomes globally permissive: USING (true)",
+      "boundary": "A member of one organization must not SELECT another organization's student rows.",
+      "path": "backend/supabase/migrations/002_tenant_rls.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "5 failed, 57 passed, 2 warnings in 1.44s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_foreign_tenant_row_is_invisible[students-0bbb0000-0000-4000-8000-00000000000a]",
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_unfiltered_scan_returns_only_own_tenant[students]",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_cannot_read",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_active_organization_still_works",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_disabled_member_cannot_read"
+      ],
+      "full_suite_summary": "5 failed, 165 passed, 2 warnings in 3.12s",
+      "seconds": 7.0,
+      "errors": [],
+      "full_suite_failed_count": 5
+    },
+    {
+      "contract": "M06",
+      "name": "assessments_select becomes globally permissive: USING (true)",
+      "boundary": "A member of one organization must not SELECT another organization's assessment rows.",
+      "path": "backend/supabase/migrations/002_tenant_rls.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "2 failed, 60 passed, 2 warnings in 1.41s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_foreign_tenant_row_is_invisible[assessments-0bbb0000-0000-4000-8000-00000000000c]",
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_unfiltered_scan_returns_only_own_tenant[assessments]"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.24s",
+      "seconds": 7.0,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M07",
+      "name": "intervention_plans_select becomes globally permissive: USING (true)",
+      "boundary": "A member of one organization must not SELECT another organization's intervention plans.",
+      "path": "backend/supabase/migrations/002_tenant_rls.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "2 failed, 60 passed, 2 warnings in 1.37s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_foreign_tenant_row_is_invisible[intervention_plans-0bbb0000-0000-4000-8000-00000000000e]",
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_unfiltered_scan_returns_only_own_tenant[intervention_plans]"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.19s",
+      "seconds": 6.9,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M08",
+      "name": "assessment_results_select becomes globally permissive: USING (true)",
+      "boundary": "A member of one organization must not SELECT another organization's assessment results.",
+      "path": "backend/supabase/migrations/003_fk_relationship_hardening.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "2 failed, 60 passed, 2 warnings in 1.42s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_foreign_tenant_row_is_invisible[assessment_results-0bbb0000-0000-4000-8000-000000000018]",
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantSelectDenial::test_unfiltered_scan_returns_only_own_tenant[assessment_results]"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.53s",
+      "seconds": 7.3,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M09",
+      "name": "aeos_has_org_access stops requiring an ACTIVE organization",
+      "boundary": "Suspending an organization must immediately remove read access through RLS.",
+      "path": "backend/supabase/migrations/004_org_lifecycle_and_write_authority.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "1 failed, 61 passed, 2 warnings in 1.53s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_cannot_read"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.40s",
+      "seconds": 7.3,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M09",
+      "name": "aeos_can_write_org stops requiring an ACTIVE organization",
+      "boundary": "Suspending an organization must immediately remove write authority through RLS.",
+      "path": "backend/supabase/migrations/004_org_lifecycle_and_write_authority.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "1 failed, 61 passed, 2 warnings in 1.51s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_cannot_update_without_a_where_clause"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.26s",
+      "seconds": 7.2,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M09",
+      "name": "aeos_is_org_admin stops requiring an ACTIVE organization",
+      "boundary": "Suspending an organization must immediately remove admin authority through RLS.",
+      "path": "backend/supabase/migrations/004_org_lifecycle_and_write_authority.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "7 failed, 55 passed, 2 warnings in 1.49s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_cannot_delete_without_a_where_clause",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_admin_cannot_insert_school",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_active_organization_still_works",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_teacher_may_update_peers_student",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_teacher_may_not_delete_peers_student",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_admin_may_delete_same_tenant_student",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_ownership_columns_remain_immutable_on_peer_update"
+      ],
+      "full_suite_summary": "7 failed, 163 passed, 2 warnings in 3.40s",
+      "seconds": 7.3,
+      "errors": [],
+      "full_suite_failed_count": 7
+    },
+    {
+      "contract": "M09",
+      "name": "actor resolution stops requiring an ACTIVE organization",
+      "boundary": "Suspending an organization must immediately remove access on the FastAPI request path, which uses the RLS-bypassing service role.",
+      "path": "backend/app/core/dependencies.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "2 failed, 106 passed, 2 warnings in 2.06s",
+      "killed_by": [
+        "FAILED tests/test_dependencies.py::test_db_user_is_resolved_by_verified_subject_not_email_or_jwt_authority_fields",
+        "FAILED tests/test_dependencies.py::test_suspended_organization_is_forbidden"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.43s",
+      "seconds": 8.6,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M10",
+      "name": "aeos_has_org_access stops requiring an ACTIVE membership",
+      "boundary": "Deactivating a membership must immediately remove access through RLS.",
+      "path": "backend/supabase/migrations/004_org_lifecycle_and_write_authority.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "1 failed, 61 passed, 2 warnings in 1.56s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_disabled_member_cannot_read"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.53s",
+      "seconds": 7.5,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M10",
+      "name": "actor resolution accepts inactive users",
+      "boundary": "A disabled user must not resolve to an actor on the FastAPI request path.",
+      "path": "backend/app/core/dependencies.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "6 failed, 102 passed, 2 warnings in 2.05s",
+      "killed_by": [
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/students-payload0]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/assessments-payload1]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/intervention-plans-payload2]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/assessment-results-payload3]",
+        "FAILED tests/test_dependencies.py::test_db_user_is_resolved_by_verified_subject_not_email_or_jwt_authority_fields",
+        "FAILED tests/test_dependencies.py::test_disabled_user_is_forbidden - Failed: ..."
+      ],
+      "full_suite_summary": "6 failed, 164 passed, 2 warnings in 3.44s",
+      "seconds": 8.6,
+      "errors": [],
+      "full_suite_failed_count": 6
+    },
+    {
+      "contract": "M11",
+      "name": "students_delete widened from admin back to any teacher",
+      "boundary": "DELETE of a student is reserved to organization admins.",
+      "path": "backend/supabase/migrations/004_org_lifecycle_and_write_authority.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "4 failed, 58 passed, 2 warnings in 1.53s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_teacher_may_not_delete_peers_student",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_teacher_may_not_delete_own_student",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_admin_may_delete_same_tenant_student",
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_ownership_columns_remain_immutable_on_peer_update"
+      ],
+      "full_suite_summary": "4 failed, 166 passed, 2 warnings in 3.45s",
+      "seconds": 7.5,
+      "errors": [],
+      "full_suite_failed_count": 4
+    },
+    {
+      "contract": "M12",
+      "name": "students_insert drops the created_by actor binding",
+      "boundary": "An inserted row must record the acting user; created_by may not name another user.",
+      "path": "backend/supabase/migrations/003_fk_relationship_hardening.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "3 failed, 59 passed, 2 warnings in 1.62s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantInsertDenial::test_insert_claiming_foreign_creator_is_rejected",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_suspended_organization_cannot_delete_without_a_where_clause",
+        "FAILED tests/test_rls_enforcement.py::TestOrganizationLifecycle::test_active_organization_still_works"
+      ],
+      "full_suite_summary": "4 failed, 166 passed, 2 warnings in 3.68s",
+      "seconds": 7.8,
+      "errors": [],
+      "full_suite_failed_count": 4
+    },
+    {
+      "contract": "M13",
+      "name": "assessments_insert FK tenant check collapsed to a tautology",
+      "boundary": "An assessment may only reference a student in the same organization.",
+      "path": "backend/supabase/migrations/003_fk_relationship_hardening.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "1 failed, 61 passed, 2 warnings in 1.72s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestCrossTenantInsertDenial::test_assessment_cannot_reference_foreign_tenant_student"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.33s",
+      "seconds": 7.7,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M14",
+      "name": "ownership columns become mutable (identity trigger neutered)",
+      "boundary": "organization_id and created_by may never be changed by an UPDATE.",
+      "path": "backend/supabase/migrations/003_fk_relationship_hardening.sql",
+      "suite": [
+        "tests/test_rls_enforcement.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "migrations 001..004 apply cleanly",
+      "subset_summary": "1 failed, 61 passed, 2 warnings in 1.64s",
+      "killed_by": [
+        "FAILED tests/test_rls_enforcement.py::TestPeerAccessSemantics::test_ownership_columns_remain_immutable_on_peer_update"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.21s",
+      "seconds": 7.3,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M15",
+      "name": "list endpoint drops its tenant filter",
+      "boundary": "Every service-role query must carry the server-derived organization_id; list endpoints must not return other tenants' rows.",
+      "path": "backend/app/services/tenant_scope.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "4 failed, 104 passed, 2 warnings in 1.79s",
+      "killed_by": [
+        "FAILED tests/test_students.py::test_student_collection_is_tenant_scoped - Ass...",
+        "FAILED tests/test_assessments.py::test_assessment_collection_is_tenant_scoped",
+        "FAILED tests/test_assessment_results.py::test_assessment_result_collection_is_tenant_scoped",
+        "FAILED tests/test_intervention_plans.py::test_intervention_collection_is_tenant_scoped"
+      ],
+      "full_suite_summary": "4 failed, 166 passed, 2 warnings in 3.37s",
+      "seconds": 8.2,
+      "errors": [],
+      "full_suite_failed_count": 4
+    },
+    {
+      "contract": "M15",
+      "name": "get-by-id endpoint drops its tenant filter",
+      "boundary": "Every service-role query must carry the server-derived organization_id; fetch-by-id must not expose another tenant's row.",
+      "path": "backend/app/services/tenant_scope.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "9 failed, 99 passed, 2 warnings in 1.88s",
+      "killed_by": [
+        "FAILED tests/test_students.py::test_same_tenant_student_object_is_returned - ...",
+        "FAILED tests/test_students.py::test_cross_tenant_student_object_is_indistinguishable_from_missing",
+        "FAILED tests/test_students.py::test_student_create_rejects_cross_tenant_school_id",
+        "FAILED tests/test_assessments.py::test_cross_tenant_assessment_object_is_404",
+        "FAILED tests/test_assessments.py::test_assessment_create_rejects_cross_tenant_student_id",
+        "FAILED tests/test_assessment_results.py::test_cross_tenant_assessment_result_object_is_404",
+        "FAILED tests/test_assessment_results.py::test_assessment_result_create_rejects_cross_tenant_assessment_id",
+        "FAILED tests/test_intervention_plans.py::test_cross_tenant_intervention_object_is_404",
+        "FAILED tests/test_intervention_plans.py::test_intervention_create_rejects_cross_tenant_student_id"
+      ],
+      "full_suite_summary": "9 failed, 161 passed, 2 warnings in 3.51s",
+      "seconds": 8.4,
+      "errors": [],
+      "full_suite_failed_count": 9
+    },
+    {
+      "contract": "M16",
+      "name": "browser falls back to the service-role key when no user token is present",
+      "boundary": "The service-role credential bypasses RLS and must never be reachable from an ordinary (browser) request; only a user bearer token may authorize one.",
+      "path": "frontend/src/lib/api.ts",
+      "suite": [
+        "tests/test_security_artifacts.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "textual substitution (no build step in this harness)",
+      "subset_summary": "1 failed, 4 passed, 2 warnings in 0.05s",
+      "killed_by": [
+        "FAILED tests/test_security_artifacts.py::test_service_role_key_is_not_referenced_by_frontend_source"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.39s",
+      "seconds": 5.6,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M17",
+      "name": "missing credentials fall through to a default authenticated subject",
+      "boundary": "Absent or non-bearer credentials must fail closed with 401, never resolve to a default identity.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "13 failed, 95 passed, 2 warnings in 1.97s",
+      "killed_by": [
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/students-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/students/33333333-3333-4333-8333-333333333333-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/students-payload2]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessments-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessments/55555555-5555-4555-8555-555555555555-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/assessments-payload5]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/intervention-plans-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/intervention-plans/77777777-7777-4777-8777-777777777777-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/intervention-plans-payload8]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessment-results-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[get-/assessment-results/12121212-1212-4212-8212-121212121212-None]",
+        "FAILED tests/test_route_authentication.py::test_every_business_route_requires_authentication[post-/assessment-results-payload11]",
+        "FAILED tests/test_auth.py::test_missing_credentials_are_401 - Failed: DID NOT..."
+      ],
+      "full_suite_summary": "13 failed, 157 passed, 2 warnings in 3.15s",
+      "seconds": 8.2,
+      "errors": [],
+      "full_suite_failed_count": 13
+    },
+    {
+      "contract": "M17",
+      "name": "role authorization always allows",
+      "boundary": "Role authorization must deny by default; an actor outside the allow list may not perform a privileged write.",
+      "path": "backend/app/core/dependencies.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "9 failed, 99 passed, 2 warnings in 1.93s",
+      "killed_by": [
+        "FAILED tests/test_authorization.py::test_support_role_is_forbidden_from_privileged_writes[post-/students-payload0]",
+        "FAILED tests/test_authorization.py::test_support_role_is_forbidden_from_privileged_writes[post-/assessments-payload1]",
+        "FAILED tests/test_authorization.py::test_support_role_is_forbidden_from_privileged_writes[post-/intervention-plans-payload2]",
+        "FAILED tests/test_authorization.py::test_support_role_is_forbidden_from_privileged_writes[post-/assessment-results-payload3]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/students-payload0]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/assessments-payload1]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/intervention-plans-payload2]",
+        "FAILED tests/test_authorization.py::test_active_support_membership_resolved_from_db_is_forbidden[post-/assessment-results-payload3]",
+        "FAILED tests/test_authorization.py::test_require_role_rejects_role_outside_allow_list"
+      ],
+      "full_suite_summary": "9 failed, 161 passed, 2 warnings in 3.33s",
+      "seconds": 8.3,
+      "errors": [],
+      "full_suite_failed_count": 9
+    },
+    {
+      "contract": "M18a",
+      "name": "expired tokens accepted (verify_exp disabled)",
+      "boundary": "An expired token must be rejected.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "1 failed, 107 passed, 2 warnings in 1.65s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides2]"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.44s",
+      "seconds": 8.2,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M18b",
+      "name": "wrong issuer accepted (verify_iss disabled)",
+      "boundary": "A token issued by anyone other than the configured Supabase issuer must be rejected.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "1 failed, 107 passed, 2 warnings in 1.95s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides1]"
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.41s",
+      "seconds": 8.4,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M18c",
+      "name": "audience validation removed (wrong or absent audience accepted)",
+      "boundary": "A token minted for another audience, or carrying no audience claim at all, must be rejected.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "3 failed, 105 passed, 2 warnings in 1.94s",
+      "killed_by": [
+        "FAILED tests/test_dependencies.py::test_missing_audience_is_rejected_before_any_actor_or_tenant_query",
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides0]",
+        "FAILED tests/test_auth.py::test_token_with_no_audience_claim_is_401 - Failed:..."
+      ],
+      "full_suite_summary": "3 failed, 167 passed, 2 warnings in 3.11s",
+      "seconds": 8.0,
+      "errors": [],
+      "full_suite_failed_count": 3
+    },
+    {
+      "contract": "M18d",
+      "name": "invalid signature accepted (verify_signature disabled)",
+      "boundary": "A token not signed by a published Supabase key must be rejected.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "1 failed, 107 passed, 2 warnings in 2.02s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_forged_signature_is_401 - Failed: DID NOT RAI..."
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.21s",
+      "seconds": 8.2,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M18e",
+      "name": "missing key ID falls back to the first published key",
+      "boundary": "A token whose header carries no `kid` must be rejected; the verification key may not be guessed.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "1 failed, 107 passed, 2 warnings in 2.06s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_token_without_a_key_id_is_401 - Failed: DID N..."
+      ],
+      "full_suite_summary": "1 failed, 169 passed, 2 warnings in 3.35s",
+      "seconds": 8.5,
+      "errors": [],
+      "full_suite_failed_count": 1
+    },
+    {
+      "contract": "M18f",
+      "name": "unknown key ID falls back to the first published key",
+      "boundary": "A token whose `kid` matches no published key must be rejected; otherwise key rotation and revocation are meaningless.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "2 failed, 106 passed, 2 warnings in 1.82s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_unknown_signing_key_is_401 - jose.exceptions....",
+        "FAILED tests/test_auth.py::test_unknown_key_id_is_401_even_though_a_usable_key_is_published"
+      ],
+      "full_suite_summary": "2 failed, 168 passed, 2 warnings in 3.24s",
+      "seconds": 8.0,
+      "errors": [],
+      "full_suite_failed_count": 2
+    },
+    {
+      "contract": "M18g",
+      "name": "malformed tokens fall through to a default authenticated subject",
+      "boundary": "Any JWT parse or validation error must fail closed with 401; the error path may not return an identity.",
+      "path": "backend/app/core/auth.py",
+      "suite": [
+        "tests/test_students.py",
+        "tests/test_assessments.py",
+        "tests/test_assessment_results.py",
+        "tests/test_intervention_plans.py",
+        "tests/test_authorization.py",
+        "tests/test_dependencies.py",
+        "tests/test_route_authentication.py",
+        "tests/test_auth.py",
+        "tests/test_security_artifacts.py",
+        "tests/test_fk_relationship_rls.py"
+      ],
+      "equivalent_because": null,
+      "result": "KILLED",
+      "precheck": "compiles; app imports with 17 routes",
+      "subset_summary": "5 failed, 103 passed, 2 warnings in 1.69s",
+      "killed_by": [
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides0]",
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides1]",
+        "FAILED tests/test_auth.py::test_invalid_required_claims_are_401[claim_overrides2]",
+        "FAILED tests/test_auth.py::test_forged_signature_is_401 - Failed: DID NOT RAI...",
+        "FAILED tests/test_auth.py::test_malformed_token_is_401 - Failed: DID NOT RAIS..."
+      ],
+      "full_suite_summary": "5 failed, 165 passed, 2 warnings in 3.17s",
+      "seconds": 7.7,
+      "errors": [],
+      "full_suite_failed_count": 5
+    }
+  ]
+}

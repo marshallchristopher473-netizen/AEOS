@@ -1,0 +1,228 @@
+[
+  {
+    "label": "npm-ci",
+    "command": [
+      "npm",
+      "ci"
+    ],
+    "exit": 1,
+    "seconds": 1.427,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "npm-tree",
+    "command": [
+      "npm",
+      "ls",
+      "--all"
+    ],
+    "exit": 1,
+    "seconds": 0.295,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "audit-full",
+    "command": [
+      "npm",
+      "audit",
+      "--audit-level=low",
+      "--json"
+    ],
+    "exit": 1,
+    "seconds": 0.394,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "audit-production",
+    "command": [
+      "npm",
+      "audit",
+      "--omit=dev",
+      "--audit-level=low",
+      "--json"
+    ],
+    "exit": 1,
+    "seconds": 0.349,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "lint",
+    "command": [
+      "npm",
+      "run",
+      "lint"
+    ],
+    "exit": 127,
+    "seconds": 0.126,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "typecheck",
+    "command": [
+      "npx",
+      "--offline",
+      "--no-install",
+      "tsc",
+      "--noEmit"
+    ],
+    "exit": 1,
+    "seconds": 0.27,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "build",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "exit": 127,
+    "seconds": 0.117,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "backend-required",
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/",
+      "-v",
+      "-rs"
+    ],
+    "exit": 1,
+    "seconds": 0.016,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "rls-required",
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_rls_enforcement.py",
+      "-v",
+      "-rs"
+    ],
+    "exit": 1,
+    "seconds": 0.016,
+    "status": "BLOCKED",
+    "reason": "Required Node 22 toolchain, locked dependencies, registry network and/or PostgreSQL 16 unavailable; these are not valid release gate results."
+  },
+  {
+    "label": "compile",
+    "command": [
+      "python",
+      "-m",
+      "compileall",
+      "-q",
+      "backend/app",
+      "backend/tests",
+      ".github/scripts/record-command.py"
+    ],
+    "cwd": "/workspace/aeos-rc",
+    "started_utc": "2026-10-10T01:23:59.029349+00:00",
+    "seconds": 0.266,
+    "exit": 0
+  },
+  {
+    "label": "request-contract",
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "frontend/tests/assessment-api.test.mjs"
+    ],
+    "cwd": "/workspace/aeos-rc",
+    "started_utc": "2026-10-10T01:23:59.346589+00:00",
+    "seconds": 0.49,
+    "exit": 0
+  },
+  {
+    "label": "harness-unit",
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "backend/tests",
+      "-p",
+      "test_security_mutation_harness.py",
+      "-v"
+    ],
+    "cwd": "/workspace/aeos-rc",
+    "started_utc": "2026-10-10T01:23:41.820365+00:00",
+    "seconds": 0.185,
+    "exit": 0
+  },
+  {
+    "label": "mutation-anchors",
+    "command": [
+      "python",
+      ".github/scripts/check-mutation-anchors.py"
+    ],
+    "cwd": "/workspace/aeos-rc",
+    "started_utc": "2026-10-10T01:25:27.849964+00:00",
+    "seconds": 0.069,
+    "exit": 0
+  },
+  {
+    "label": "mutation-contract",
+    "command": [
+      "python",
+      "backend/tests/security_mutations.py",
+      "--json",
+      "/workspace/aeos-evidence/local/mutation-matrix.json"
+    ],
+    "cwd": "/workspace/aeos-rc",
+    "started_utc": "2026-10-10T01:23:42.052180+00:00",
+    "seconds": 11.295,
+    "exit": 1
+  },
+  {
+    "label": "lint-glob-guards",
+    "command": [
+      "node",
+      "tests/lint-glob-override.test.mjs"
+    ],
+    "cwd": "/workspace/aeos-rc/frontend",
+    "started_utc": "2026-10-10T01:24:00.063040+00:00",
+    "seconds": 0.106,
+    "exit": 1
+  },
+  {
+    "label": "backend-import",
+    "command": [
+      "python",
+      "-c",
+      "from app.main import app; print(\"backend OK\")"
+    ],
+    "cwd": "/workspace/aeos-rc/backend",
+    "started_utc": "2026-10-10T01:24:20.602363+00:00",
+    "seconds": 0.924,
+    "exit": 1
+  },
+  {
+    "label": "backend-install",
+    "command": [
+      "/workspace/aeos-evidence/backend-venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "-r",
+      "backend/requirements-dev.txt"
+    ],
+    "cwd": "/workspace/aeos-rc",
+    "started_utc": "2026-10-10T01:22:58.068908+00:00",
+    "seconds": 0.339,
+    "exit": 1
+  }
+]

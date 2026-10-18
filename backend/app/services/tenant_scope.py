@@ -7,6 +7,7 @@ separately by the versioned RLS migration.
 """
 
 from typing import Any, Dict, List
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 
@@ -71,7 +72,7 @@ def insert_tenant_scoped_row(
 
     response = (
         client.table(table)
-        .insert({**payload, "organization_id": organization_id})
+        .insert({"id": str(uuid4()), **payload, "organization_id": organization_id})
         .execute()
     )
     if not response.data:
