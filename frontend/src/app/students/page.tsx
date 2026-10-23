@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
+import { apiFetch } from '@/lib/api';
+
 type Student = {
   id: string;
   first_name: string;
@@ -22,24 +24,7 @@ export default function StudentsPage() {
   useEffect(() => {
     const loadStudents = async () => {
       try {
-        const token = localStorage.getItem('aeos_access_token');
-        if (!token) {
-          setError('Please sign in to view students.');
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(`http://127.0.0.1:8000/students?search=${encodeURIComponent(search)}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error(await res.text());
-        }
-
-        const data = await res.json();
+        const data = await apiFetch<Student[]>(`/students?search=${encodeURIComponent(search)}`);
         setStudents(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load students.');

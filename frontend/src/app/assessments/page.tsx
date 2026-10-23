@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { apiFetch } from '@/lib/api';
+
 type Assessment = {
   id: string;
   title: string;
@@ -20,25 +22,7 @@ export default function AssessmentsPage() {
   useEffect(() => {
     const loadAssessments = async () => {
       try {
-        const token = localStorage.getItem('aeos_access_token');
-        if (!token) {
-          setError('Please sign in to view assessments.');
-          setLoading(false);
-          return;
-        }
-
-        const response = await fetch('http://127.0.0.1:8000/assessments', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-
-        const data = await response.json();
-        setAssessments(data);
+        setAssessments(await apiFetch<Assessment[]>('/assessments'));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load assessments.');
       } finally {

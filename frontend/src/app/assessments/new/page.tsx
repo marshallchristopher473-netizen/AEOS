@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
+import { apiFetch } from '@/lib/api';
+
 export default function NewAssessmentPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,23 +26,10 @@ export default function NewAssessmentPage() {
     };
 
     try {
-      const token = localStorage.getItem('aeos_access_token');
-      if (!token) {
-        throw new Error('Please sign in before creating an assessment.');
-      }
-
-      const response = await fetch('http://127.0.0.1:8000/assessments', {
+      await apiFetch('/assessments', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
 
       router.push('/assessments');
     } catch (err) {

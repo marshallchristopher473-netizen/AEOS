@@ -29,3 +29,13 @@ SUPABASE_JWT_ISSUER = get_env(
 )
 SUPABASE_JWT_AUDIENCE = get_env("SUPABASE_JWT_AUDIENCE", "authenticated")
 AI_PROVIDER = get_env("AI_PROVIDER", "placeholder")
+
+# Browser origins allowed to call the API (comma-separated). Must be explicit:
+# a wildcard would let any website make requests with a user's token.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in get_env("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
+if "*" in CORS_ALLOWED_ORIGINS:
+    raise ValueError("CORS_ALLOWED_ORIGINS must list explicit origins, not '*'")
