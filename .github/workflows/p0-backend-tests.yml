@@ -15,12 +15,25 @@ jobs:
   # cross-tenant denial through the database. Every other RLS test in this repo
   # asserts against migration *text* and cannot detect a policy that fails to
   # apply or fails to deny.
+  #
+  # Runs on 16 and on 17. Hosted Supabase runs 17, which added the MAINTAIN
+  # privilege; a 16-only job cannot see it, and the M19e/M19f mutants can only
+  # be killed on 17. AEOS_EXPECT_PG_MAJOR makes the tests and the mutation
+  # suite fail if the service is not the engine this leg names.
   rls-enforcement:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '17']
+
+    env:
+      AEOS_EXPECT_PG_MAJOR: ${{ matrix.postgres }}
+
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -56,7 +69,7 @@ jobs:
       # The complete, unfiltered tests/ directory against the same database.
       # The backend-tests job below has no database, so the RLS module skips
       # there; this is the only run of every test together with live RLS.
-      - name: Run the complete backend suite against PostgreSQL 16
+      - name: Run the complete backend suite against PostgreSQL ${{ matrix.postgres }}
         working-directory: backend
         env:
           AEOS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
@@ -86,7 +99,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-junit-${{ github.sha }}
+          name: backend-junit-pg${{ matrix.postgres }}-${{ github.sha }}
           path: backend-junit.xml
           if-no-files-found: warn
 
@@ -95,13 +108,15 @@ jobs:
       # NAME intact while removing its effect — e.g. students_select becoming
       # USING (true) — which every string- and regex-based test would accept.
       #
-      # Covers the full M01-M20 contract: authentication, JWT validation
-      # (including key-type pinning, expiry presence and key-set freshness),
-      # actor and organization authority, RLS tenant isolation, lifecycle,
-      # write authority, service-role exposure and RLS-blind table privileges.
+      # Covers the full M01-M22 contract: authentication, JWT validation
+      # (including key-type pinning, expiry presence, key-set freshness and
+      # the forced-refresh bound), actor and organization authority, RLS tenant
+      # isolation, lifecycle, write authority, service-role exposure, RLS-blind
+      # table privileges (MAINTAIN on 17) and anon EXECUTE on the helpers.
       # Each mutant is byte-compiled (or its migrations applied) before any test
       # runs, so a mutant that does not build is reported INVALID rather than
-      # counted as killed.
+      # counted as killed. On 16 the MAINTAIN mutants are reported NOT
+      # APPLICABLE; the 17 leg must kill them.
       - name: Prove the security suite can actually fail
         working-directory: backend
         env:
@@ -117,7 +132,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mutation-matrix-${{ github.sha }}
+          name: mutation-matrix-pg${{ matrix.postgres }}-${{ github.sha }}
           path: mutation-matrix.json
           if-no-files-found: warn
 

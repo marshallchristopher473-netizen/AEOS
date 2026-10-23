@@ -83,7 +83,14 @@ MIGRATIONS = (
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
     "005_revoke_rls_blind_table_privileges.sql",
+    # 006 and 007 are taken by the AI-feedback migrations on the integration
+    # branch, so this security migration is numbered 008 to stay unique.
+    "008_revoke_maintain_and_anon_function_execute.sql",
 )
+
+# Set in CI to the PostgreSQL major version the job's service runs, so a job
+# meant to exercise PostgreSQL 17 cannot pass while quietly running 16.
+EXPECTED_SERVER_MAJOR = os.environ.get("AEOS_EXPECT_PG_MAJOR")
 
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,
@@ -1025,6 +1032,26 @@ RLS_BLIND_PRIVILEGES = ("TRUNCATE", "TRIGGER", "REFERENCES")
 CLIENT_ROLES = ("anon", "authenticated")
 DML_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
 
+# PostgreSQL 17 added MAINTAIN, which hosted Supabase runs: VACUUM, ANALYZE,
+# CLUSTER, REINDEX, REFRESH MATERIALIZED VIEW and LOCK TABLE on the whole
+# table. Like TRUNCATE it sits outside every policy, and Supabase's
+# `GRANT ALL` includes it. PostgreSQL 16 has no such privilege, so it can only
+# be checked, and only needs to be, on 17 or later.
+MAINTAIN_MIN_SERVER_VERSION = 170000
+
+
+def _server_version_num(conn):
+    return int(conn.execute("SHOW server_version_num").fetchone()[0])
+
+
+@pytest.fixture(scope="session")
+def rls_blind_privileges(migrated_database):
+    """RLS_BLIND_PRIVILEGES, plus MAINTAIN on an engine that has it."""
+    with psycopg.connect(migrated_database) as conn:
+        if _server_version_num(conn) >= MAINTAIN_MIN_SERVER_VERSION:
+            return (*RLS_BLIND_PRIVILEGES, "MAINTAIN")
+    return RLS_BLIND_PRIVILEGES
+
 
 class TestPrivilegesRlsDoesNotGovern:
     """Pin the table privileges that sit outside every RLS policy.
@@ -1049,11 +1076,13 @@ class TestPrivilegesRlsDoesNotGovern:
         )
 
     @pytest.mark.parametrize("role", CLIENT_ROLES)
-    def test_client_roles_hold_no_rls_blind_privilege(self, admin_conn, role):
+    def test_client_roles_hold_no_rls_blind_privilege(
+        self, admin_conn, role, rls_blind_privileges
+    ):
         held = [
             f"{table}:{privilege}"
             for table in PUBLIC_TABLES
-            for privilege in RLS_BLIND_PRIVILEGES
+            for privilege in rls_blind_privileges
             if admin_conn.execute(
                 "SELECT has_table_privilege(%s, %s, %s)",
                 (role, f"public.{table}", privilege),
@@ -1097,10 +1126,10 @@ class TestPrivilegesRlsDoesNotGovern:
         assert after == before, f"{table} lost rows to a refused TRUNCATE"
 
     def test_tables_created_later_do_not_inherit_rls_blind_privileges(
-        self, migrated_database
+        self, migrated_database, rls_blind_privileges
     ):
-        """005 must also change the default privileges; otherwise the next
-        migration's table silently regains TRUNCATE."""
+        """005 and 008 must also change the default privileges; otherwise the
+        next migration's table silently regains TRUNCATE or MAINTAIN."""
         with psycopg.connect(migrated_database) as conn:
             try:
                 conn.execute("CREATE TABLE public.aeos_privilege_probe (id int)")
@@ -1110,7 +1139,7 @@ class TestPrivilegesRlsDoesNotGovern:
                         "'authenticated', 'public.aeos_privilege_probe', %s)",
                         (privilege,),
                     ).fetchone()[0]
-                    for privilege in (*RLS_BLIND_PRIVILEGES, "SELECT")
+                    for privilege in (*rls_blind_privileges, "SELECT")
                 }
             finally:
                 conn.rollback()
@@ -1119,7 +1148,7 @@ class TestPrivilegesRlsDoesNotGovern:
             "default privileges no longer grant DML, so this probe no longer "
             "models Supabase"
         )
-        assert not any(held[p] for p in RLS_BLIND_PRIVILEGES), (
+        assert not any(held[p] for p in rls_blind_privileges), (
             f"a newly created table grants RLS-blind privileges: {held}"
         )
 
@@ -1232,7 +1261,7 @@ class TestTruncateCascadeAndFutureTables:
         )
 
     def test_tables_created_by_every_authorized_creator_withhold_rls_blind_privileges(
-        self, privileged_session, admin_conn
+        self, privileged_session, admin_conn, rls_blind_privileges
     ):
         """For each role that can create a table in `public` (a superuser, or a
         holder of CREATE on the schema), create one and read what the client
@@ -1245,7 +1274,7 @@ class TestTruncateCascadeAndFutureTables:
                 privileged_session.execute(f'CREATE TABLE public."{probe}" (id int)')
                 privileged_session.execute("RESET ROLE")
                 for role in CLIENT_ROLES:
-                    for privilege in (*RLS_BLIND_PRIVILEGES, "SELECT"):
+                    for privilege in (*rls_blind_privileges, "SELECT"):
                         found[(creator, role, privilege)] = privileged_session.execute(
                             "SELECT has_table_privilege(%s, %s, %s)",
                             (role, f'public."{probe}"', privilege),
@@ -1255,18 +1284,20 @@ class TestTruncateCascadeAndFutureTables:
 
         assert found, "no creator was probed"
         leaked = sorted(
-            key for key, held in found.items() if held and key[2] in RLS_BLIND_PRIVILEGES
+            key for key, held in found.items() if held and key[2] in rls_blind_privileges
         )
         assert leaked == [], f"new tables grant RLS-blind privileges: {leaked}"
         # Guard against a probe that passes because nothing is granted at all:
         # the migrating role's new tables still give `authenticated` SELECT.
         assert found[("postgres", "authenticated", "SELECT")]
 
-    def test_no_default_privilege_entry_grants_rls_blind_privileges(self, admin_conn):
+    def test_no_default_privilege_entry_grants_rls_blind_privileges(
+        self, admin_conn, rls_blind_privileges
+    ):
         """Every default-privilege entry for tables, for any role, global or for
-        schema `public`, withholds TRUNCATE, TRIGGER and REFERENCES from the
-        client roles. A global entry matters on its own: a per-schema REVOKE
-        cannot take back what a global default grants."""
+        schema `public`, withholds TRUNCATE, TRIGGER, REFERENCES and, on 17,
+        MAINTAIN from the client roles. A global entry matters on its own: a
+        per-schema REVOKE cannot take back what a global default grants."""
         rows = admin_conn.execute(
             """
             SELECT d.defaclrole::regrole::text,
@@ -1284,7 +1315,7 @@ class TestTruncateCascadeAndFutureTables:
         assert rows, "no default privileges exist, so this check models nothing"
         leaked = sorted(
             row for row in rows
-            if row[2] in CLIENT_ROLES and row[3] in RLS_BLIND_PRIVILEGES
+            if row[2] in CLIENT_ROLES and row[3] in rls_blind_privileges
         )
         assert leaked == [], f"default privileges grant RLS-blind privileges: {leaked}"
 
@@ -1299,6 +1330,200 @@ class TestTruncateCascadeAndFutureTables:
                 "ORDER BY rolname"
             ).fetchall()
         ]
+
+
+# ---------------------------------------------------------------------------
+# MAINTAIN on PostgreSQL 17 (F4), and helpers `anon` can call (F1).
+# ---------------------------------------------------------------------------
+
+
+def _reindex_attempt(conn, role, auth_user_id, table, grant_maintain=False):
+    """Attempt `REINDEX TABLE public.<table>` as a client role.
+
+    REINDEX needs MAINTAIN on PostgreSQL 17 (ownership before that) and holds
+    an exclusive lock on every tenant's rows while it rebuilds. One
+    transaction, always rolled back. `grant_maintain` restores the privilege
+    inside it, for the negative control. Returns True when refused.
+    """
+    try:
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        if grant_maintain:
+            conn.execute(f"GRANT MAINTAIN ON public.{table} TO {role}")
+        conn.execute("SAVEPOINT reindex_attempt")
+        _act_as_client_role(conn, role, auth_user_id)
+        try:
+            conn.execute(f"REINDEX TABLE public.{table}")
+        except psycopg.errors.InsufficientPrivilege:
+            conn.execute("ROLLBACK TO SAVEPOINT reindex_attempt")
+            return True
+        return False
+    finally:
+        conn.rollback()
+
+
+class TestMaintainPrivilege:
+    """On PostgreSQL 17, Supabase's `GRANT ALL` hands both client roles
+    MAINTAIN. RLS does not govern it: with it, any tenant's teacher can
+    REINDEX or CLUSTER, and so exclusively lock and rewrite, every tenant's
+    table. Migration 008 revokes it on 17; 16 has no such privilege. The
+    privilege-table checks above cover MAINTAIN through `rls_blind_privileges`;
+    these tests pin the engine and the behaviour.
+
+    Residual, by design: LOCK TABLE stays possible for any role holding UPDATE
+    or DELETE on a table, on 16 and 17 alike, and the policies need those
+    grants. Only a direct database session as a client role can issue it;
+    PostgREST has no LOCK operation.
+    """
+
+    def test_engine_matches_what_the_privilege_checks_assume(
+        self, admin_conn, rls_blind_privileges
+    ):
+        """MAINTAIN is checked exactly when the engine has it, so a 17 run
+        cannot quietly check less, and a 16 run omits it only because the
+        engine rejects it."""
+        version = _server_version_num(admin_conn)
+        if EXPECTED_SERVER_MAJOR:
+            assert version // 10000 == int(EXPECTED_SERVER_MAJOR), (
+                f"CI asked for PostgreSQL {EXPECTED_SERVER_MAJOR}; the server is {version}"
+            )
+        probe = "SELECT has_table_privilege('anon', 'public.students', 'MAINTAIN')"
+        if version >= MAINTAIN_MIN_SERVER_VERSION:
+            assert "MAINTAIN" in rls_blind_privileges
+            admin_conn.execute(probe)
+        else:
+            assert "MAINTAIN" not in rls_blind_privileges
+            with pytest.raises(psycopg.errors.InvalidParameterValue):
+                admin_conn.execute(probe)
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "role,auth_user_id",
+        [pytest.param(role, sub, id=role) for role, sub in TRUNCATE_ACTORS],
+    )
+    def test_client_roles_cannot_reindex_any_table(
+        self, privileged_session, table, role, auth_user_id
+    ):
+        assert _reindex_attempt(privileged_session, role, auth_user_id, table), (
+            f"{role} was allowed REINDEX TABLE public.{table}"
+        )
+
+
+# The SECURITY DEFINER helpers the policies call, with arguments for a direct
+# call. They run as their owner, which bypasses RLS, so who may call them
+# directly matters.
+SECURITY_DEFINER_HELPERS = {
+    "public.aeos_can_write_org(uuid)": (ORG_A,),
+    "public.aeos_current_user_ids()": (),
+    "public.aeos_has_org_access(uuid)": (ORG_A,),
+    "public.aeos_is_current_actor_for_org(uuid, uuid)": (USER_A, ORG_A),
+    "public.aeos_is_org_admin(uuid)": (ORG_A,),
+}
+
+
+class TestHelperFunctionExecution:
+    """Hosted Supabase grants EXECUTE on new functions in `public` to `anon`
+    directly, and the migrations' `REVOKE ALL ... FROM PUBLIC` does not remove
+    a direct grant. PostgREST serves every such function at
+    `/rest/v1/rpc/<name>`, so with only the anon key a caller could invoke the
+    SECURITY DEFINER helpers, which read membership with RLS bypassed. Every
+    policy is written `TO authenticated`, so `anon` needs none of them.
+    Migration 008 revokes the grant for existing functions and for functions
+    created later.
+    """
+
+    def test_every_security_definer_function_is_listed(self, admin_conn):
+        (names,) = admin_conn.execute(
+            "SELECT array_agg(format('%I.%I(%s)', n.nspname, p.proname, "
+            "oidvectortypes(p.proargtypes)) ORDER BY p.proname) "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'public' AND p.prosecdef"
+        ).fetchone()
+        assert sorted(names) == sorted(SECURITY_DEFINER_HELPERS), (
+            "SECURITY DEFINER functions changed; update SECURITY_DEFINER_HELPERS "
+            f"so the execution checks cover them: {names}"
+        )
+
+    def test_anon_cannot_call_any_security_definer_helper(self, privileged_session):
+        """Each call runs as PostgREST runs an anon RPC: role `anon`, no subject."""
+        called = []
+        try:
+            for signature, args in SECURITY_DEFINER_HELPERS.items():
+                name = signature.split("(")[0]
+                placeholders = ", ".join(["%s::uuid"] * len(args))
+                privileged_session.execute("SAVEPOINT rpc_attempt")
+                _act_as_client_role(privileged_session, "anon", None)
+                try:
+                    privileged_session.execute(f"SELECT {name}({placeholders})", args)
+                    called.append(signature)
+                except psycopg.errors.InsufficientPrivilege:
+                    pass
+                # Undoes the statement and the SET LOCAL ROLE together.
+                privileged_session.execute("ROLLBACK TO SAVEPOINT rpc_attempt")
+        finally:
+            privileged_session.rollback()
+        assert called == [], f"anon can execute SECURITY DEFINER helpers: {called}"
+
+    def test_authenticated_keeps_execute_on_every_helper(self, admin_conn):
+        """Guard against over-revoking: every policy calls these as
+        `authenticated`, and would error without EXECUTE."""
+        missing = [
+            signature
+            for signature in SECURITY_DEFINER_HELPERS
+            if not admin_conn.execute(
+                "SELECT has_function_privilege('authenticated', %s, 'EXECUTE')",
+                (signature,),
+            ).fetchone()[0]
+        ]
+        assert missing == [], f"authenticated lost EXECUTE on: {missing}"
+
+    def test_helpers_created_later_are_not_executable_by_anon(self, privileged_session):
+        """A future helper granted the way 002-004 grant theirs (REVOKE ALL
+        FROM PUBLIC, GRANT EXECUTE TO authenticated) must not stay callable by
+        `anon` through the standing default grant."""
+        try:
+            privileged_session.execute(
+                "CREATE FUNCTION public.aeos_execute_probe() RETURNS boolean "
+                "LANGUAGE sql SECURITY DEFINER SET search_path = public "
+                "AS 'SELECT true'"
+            )
+            privileged_session.execute(
+                "REVOKE ALL ON FUNCTION public.aeos_execute_probe() FROM PUBLIC"
+            )
+            privileged_session.execute(
+                "GRANT EXECUTE ON FUNCTION public.aeos_execute_probe() TO authenticated"
+            )
+            held = {
+                role: privileged_session.execute(
+                    "SELECT has_function_privilege(%s, 'public.aeos_execute_probe()', 'EXECUTE')",
+                    (role,),
+                ).fetchone()[0]
+                for role in CLIENT_ROLES
+            }
+        finally:
+            privileged_session.rollback()
+        assert held["authenticated"], "the probe no longer models how helpers are granted"
+        assert not held["anon"], "a newly created helper is executable by anon"
+
+    def test_no_default_privilege_entry_grants_anon_execute(self, admin_conn):
+        """Global or for schema `public`, no default-privilege entry for
+        functions may grant `anon` EXECUTE."""
+        rows = admin_conn.execute(
+            """
+            SELECT d.defaclrole::regrole::text,
+                   d.defaclnamespace,
+                   grantee.rolname,
+                   acl.privilege_type
+            FROM pg_default_acl d
+            CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+            JOIN pg_roles grantee ON grantee.oid = acl.grantee
+            WHERE d.defaclobjtype = 'f'
+              AND (d.defaclnamespace = 0
+                   OR d.defaclnamespace = 'public'::regnamespace)
+            """
+        ).fetchall()
+        assert rows, "no function default privileges exist, so this check models nothing"
+        leaked = sorted(row for row in rows if row[2] == "anon")
+        assert leaked == [], f"default privileges grant anon EXECUTE: {leaked}"
 
 
 # ---------------------------------------------------------------------------
@@ -1668,3 +1893,23 @@ class TestNegativeControl:
         assert after == {table: 0 for table in PUBLIC_TABLES}, (
             f"negative control failed: rows survived a permitted CASCADE: {after}"
         )
+
+    @pytest.mark.parametrize(
+        "role,auth_user_id",
+        [pytest.param(role, sub, id=role) for role, sub in TRUNCATE_ACTORS],
+    )
+    def test_reindex_is_observable_with_maintain_restored(
+        self, privileged_session, role, auth_user_id
+    ):
+        """With MAINTAIN granted back, the same REINDEX succeeds, so the
+        refusal above comes from the missing privilege. PostgreSQL 16 has no
+        MAINTAIN to grant back; there the control shows the engine rejects
+        it, which is why 008 revokes it only on 17 and later."""
+        if _server_version_num(privileged_session) < MAINTAIN_MIN_SERVER_VERSION:
+            with pytest.raises(psycopg.errors.SyntaxError):
+                privileged_session.execute(f"GRANT MAINTAIN ON public.students TO {role}")
+            return
+        refused = _reindex_attempt(
+            privileged_session, role, auth_user_id, "students", grant_maintain=True
+        )
+        assert not refused, "negative control failed: REINDEX refused with MAINTAIN restored"

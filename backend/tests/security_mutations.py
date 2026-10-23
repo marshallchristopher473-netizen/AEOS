@@ -28,8 +28,9 @@ proves nothing about the suite. Every mutation therefore goes through an
 explicit validity precheck before any test runs:
 
   * Python targets       -> byte-compile the tree and import `app.main`
-  * SQL targets          -> apply the shim + migrations 001..005 to a scratch
-                            database and require every statement to succeed
+  * SQL targets          -> apply the shim + every migration in MIGRATION_FILES
+                            to a scratch database and require every statement
+                            to succeed
   * Frontend TS targets  -> textual substitution only (no build in this harness)
 
 RUNNING
@@ -72,6 +73,7 @@ MIGRATION_FILES = (
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
     "005_revoke_rls_blind_table_privileges.sql",
+    "008_revoke_maintain_and_anon_function_execute.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement
@@ -111,8 +113,9 @@ class Mutation:
         suite,
         needs_db,
         equivalent_because=None,
+        min_server_version=None,
     ):
-        # Identifier from the M01..M20 mutation contract. Several
+        # Identifier from the M01..M22 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
         # distinct place (e.g. M18's separate JWT validation cases).
@@ -130,6 +133,11 @@ class Mutation:
         # Set this ONLY with recorded evidence that the removed condition is
         # genuinely unreachable, and state the evidence in the string.
         self.equivalent_because = equivalent_because
+        # `server_version_num` the control exists from, for a privilege an
+        # older engine does not have (MAINTAIN is 17+). On an older engine the
+        # mutant is reported NOT APPLICABLE, neither scored nor a failure; the
+        # CI job on the newer engine must kill it.
+        self.min_server_version = min_server_version
 
     @property
     def kind(self):
@@ -768,6 +776,36 @@ MUTATIONS = [
         APP_SUITE,
         False,
     ),
+    Mutation(
+        "M18n",
+        "failed refresh falls back to the expired key set",
+        "When a due key-set refresh fails, verification must fail closed "
+        "rather than keep trusting keys whose freshness can no longer be shown.",
+        "backend/app/core/auth.py",
+        "        except (httpx.HTTPError, ValueError, TypeError) as exc:\n"
+        "            raise HTTPException(\n"
+        "                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,\n",
+        "        except (httpx.HTTPError, ValueError, TypeError) as exc:\n"
+        "            if _jwks is not None:\n"
+        "                return _jwks\n"
+        "            raise HTTPException(\n"
+        "                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,\n",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18o",
+        "every unknown key ID forces a key-set fetch",
+        "An invented `kid` is read before any signature check, so it may force "
+        "at most one refresh per interval; otherwise anonymous requests drive "
+        "unbounded traffic to the key endpoint and real users get 503.",
+        "backend/app/core/auth.py",
+        "    if force_refresh and _jwks is not None and not expired and not _claim_forced_refresh():\n"
+        "        force_refresh = False\n",
+        "",
+        APP_SUITE,
+        False,
+    ),
     # =====================================================================
     # M19 — table privileges that RLS does not govern
     # =====================================================================
@@ -822,6 +860,32 @@ MUTATIONS = [
         RLS_SUITE,
         True,
     ),
+    Mutation(
+        "M19e",
+        "client roles keep MAINTAIN on existing tables (PostgreSQL 17)",
+        "MAINTAIN is not subject to row-level security; a client role holding "
+        "it can REINDEX or CLUSTER, and so exclusively lock and rewrite, every "
+        "tenant's table.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "        EXECUTE 'REVOKE MAINTAIN ON ALL TABLES IN SCHEMA public FROM anon, authenticated';\n",
+        "",
+        RLS_SUITE,
+        True,
+        min_server_version=170000,
+    ),
+    Mutation(
+        "M19f",
+        "tables created later regain MAINTAIN from the default privileges",
+        "Revoking MAINTAIN from today's tables is not enough; the standing "
+        "default grant must not hand it to the next migration's tables.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public '\n"
+        "                'REVOKE MAINTAIN ON TABLES FROM anon, authenticated';\n",
+        "",
+        RLS_SUITE,
+        True,
+        min_server_version=170000,
+    ),
     # =====================================================================
     # M20 — WHERE-less writes on tables other than students
     # =====================================================================
@@ -838,6 +902,36 @@ MUTATIONS = [
         "CREATE POLICY ai_recommendations_delete\n"
         "ON public.ai_recommendations FOR DELETE TO authenticated\n"
         "USING (true);",
+        RLS_SUITE,
+        True,
+    ),
+    # =====================================================================
+    # M22 — SECURITY DEFINER helpers callable without signing in
+    # (M21 is used by the AI-feedback mutations on the integration branch)
+    # =====================================================================
+    Mutation(
+        "M22a",
+        "anon keeps EXECUTE on the SECURITY DEFINER helpers",
+        "The helpers read membership with RLS bypassed; PostgREST serves them "
+        "at /rest/v1/rpc/<name>, so the anon key alone must not run them.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "REVOKE EXECUTE\n"
+        "    ON ALL FUNCTIONS IN SCHEMA public\n"
+        "    FROM anon;\n",
+        "",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M22b",
+        "helpers created later are executable by anon",
+        "Revoking EXECUTE from today's helpers is not enough; the standing "
+        "default grant must not hand it to the next migration's helpers.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public\n"
+        "    REVOKE EXECUTE ON FUNCTIONS\n"
+        "    FROM anon;\n",
+        "",
         RLS_SUITE,
         True,
     ),
@@ -892,14 +986,14 @@ def _precheck(root, mutation, database_url):
                 for name in MIGRATION_FILES:
                     conn.execute((root / MIGRATIONS / name).read_text())
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
-            return False, f"migrations 001..005 failed to apply: {exc}"
+            return False, f"migrations {', '.join(MIGRATION_FILES)} failed to apply: {exc}"
         finally:
             try:
                 with psycopg.connect(database_url, autocommit=True) as conn:
                     conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
             except Exception:  # noqa: BLE001 - cleanup only
                 pass
-        return True, "migrations 001..005 apply cleanly"
+        return True, f"all {len(MIGRATION_FILES)} migrations apply cleanly"
 
     return True, "textual substitution (no build step in this harness)"
 
@@ -927,6 +1021,13 @@ def _run_suite(root, suite, database_url):
     return completed.returncode, summary, failed, errored
 
 
+def _server_version_num(database_url):
+    import psycopg
+
+    with psycopg.connect(database_url) as conn:
+        return int(conn.execute("SHOW server_version_num").fetchone()[0])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", dest="json_path", default=None,
@@ -934,11 +1035,21 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     database_url = os.environ.get("AEOS_TEST_DATABASE_URL")
+    server_version = _server_version_num(database_url) if database_url else None
     print("AEOS security mutation suite")
     print(f"repository: {REPO_ROOT}")
     print(f"database  : {'configured' if database_url else 'NOT CONFIGURED'}")
+    if server_version is not None:
+        print(f"server    : server_version_num {server_version}")
     print(f"mutations : {len(MUTATIONS)}")
     print()
+
+    # A job meant to kill the PostgreSQL 17 mutants must not pass while quietly
+    # running 16, where they would all be reported NOT APPLICABLE.
+    expected_major = os.environ.get("AEOS_EXPECT_PG_MAJOR")
+    if expected_major and (server_version is None or server_version // 10000 != int(expected_major)):
+        print(f"AEOS_EXPECT_PG_MAJOR={expected_major} but the server is {server_version}")
+        return 1
 
     records = []
 
@@ -963,6 +1074,16 @@ def main(argv=None):
             record["precheck"] = "skipped: no database configured"
             records.append(record)
             print(f"[NOT RUN ] {mutation.contract} {mutation.name}")
+            continue
+
+        if mutation.min_server_version and server_version < mutation.min_server_version:
+            record["result"] = "NOT APPLICABLE"
+            record["precheck"] = (
+                f"needs server_version_num >= {mutation.min_server_version}; "
+                f"this server is {server_version}"
+            )
+            records.append(record)
+            print(f"[N/A     ] {mutation.contract} {mutation.name} -> {record['precheck']}")
             continue
 
         started = time.time()
@@ -1053,6 +1174,7 @@ def main(argv=None):
     equivalent = [r for r in records if r["result"] == "EQUIVALENT"]
     invalid = [r for r in records if r["result"] == "INVALID MUTATION"]
     not_executed = [r for r in records if r["result"] == "NOT EXECUTED"]
+    not_applicable = [r for r in records if r["result"] == "NOT APPLICABLE"]
 
     denominator = len(killed) + len(survived)
     score = (len(killed) / denominator * 100) if denominator else 0.0
@@ -1071,6 +1193,7 @@ def main(argv=None):
     print(f"equivalent       : {len(equivalent)}")
     print(f"invalid          : {len(invalid)}")
     print(f"not executed     : {len(not_executed)}")
+    print(f"not applicable   : {len(not_applicable)} (engine predates the control)")
     print(f"mutation score   : {len(killed)}/{denominator} = {score:.1f}%")
 
     if equivalent:
@@ -1114,6 +1237,7 @@ def main(argv=None):
         payload = {
             "repository_root": str(REPO_ROOT),
             "database_configured": bool(database_url),
+            "server_version_num": server_version,
             "python": sys.version,
             "totals": {
                 "killed": len(killed),
@@ -1121,6 +1245,7 @@ def main(argv=None):
                 "equivalent": len(equivalent),
                 "invalid": len(invalid),
                 "not_executed": len(not_executed),
+                "not_applicable": len(not_applicable),
                 "score_numerator": len(killed),
                 "score_denominator": denominator,
             },

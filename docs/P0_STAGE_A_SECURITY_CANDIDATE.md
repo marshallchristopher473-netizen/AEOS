@@ -44,7 +44,12 @@ V04 finding against the control manifest below.
 | Cached key set expires; revoked keys stop verifying; failed refresh fails closed | **new here** | `app/core/auth.py` | `test_revoked_signing_key_is_refused_once_the_cached_key_set_expires`, `test_expired_key_set_is_not_used_when_its_refresh_fails`, `test_cached_key_set_is_reused_within_its_max_age` | M18m |
 | Complete `tests/` runs against PostgreSQL 16 with zero skips | **new here** | `.github/workflows/p0-backend-tests.yml` | CI step "Require zero failed, errored or skipped tests" | — |
 | Frontend dependencies audit clean at `low`, full and production, no exceptions | #23 `9545537`, #24 `f211c96`, #25 `6453ae1`; refreshed here | `frontend/package.json`, `package-lock.json`, workflow | CI audit steps | — |
-| Lint-plugin glob override stays safe | #24 `f211c96` | `frontend/tests/lint-glob-override.test.mjs`, workflow | 3 guards: resolution/API, `rootDir` unset, rule still fires | — |
+| Lint-plugin glob override stays safe | #24 `f211c96`; every-file check from #34 `976a1ad` | `frontend/tests/lint-glob-override.test.mjs`, workflow | 3 guards: resolution/API, `rootDir` unset for every linted file, rule still fires | — |
+| Client roles hold no MAINTAIN on PostgreSQL 17, now or on tables created later (F4) | **Prompt 01 repair** | `008_revoke_maintain_and_anon_function_execute.sql`, `test_rls_enforcement.py` | `rls_blind_privileges` checks above on 17, `TestMaintainPrivilege::*`, `test_reindex_is_observable_with_maintain_restored[*]` | M19e, M19f (17 only) |
+| `anon` cannot execute the SECURITY DEFINER helpers, now or helpers created later (F1) | **Prompt 01 repair** | `008_…sql`, `tests/sql/supabase_shim.sql` (hosted function defaults), `test_rls_enforcement.py` | `TestHelperFunctionExecution::*` | M22a, M22b |
+| An unknown `kid` forces at most one key-set fetch per interval; rotation still works (F2) | **Prompt 01 repair** | `app/core/auth.py` (`_claim_forced_refresh`) | `test_unknown_key_ids_force_at_most_one_refresh_per_interval`, `test_key_rotated_in_since_the_last_fetch_verifies_on_first_use`, `test_rotated_in_key_verifies_once_a_spent_refresh_interval_passes` | M18o |
+| A failed key-set refresh never falls back to the expired set | #33 `0c93b79` (mutant only; the test was already here) | `tests/security_mutations.py` | `test_expired_key_set_is_not_used_when_its_refresh_fails` | M18n |
+| RLS suite and mutation contract run on PostgreSQL 16 **and** 17, each leg pinned to its engine | **Prompt 01 repair** | workflow matrix, `AEOS_EXPECT_PG_MAJOR` | `test_engine_matches_what_the_privilege_checks_assume`; the mutation suite's engine check | — |
 
 Every control from main (M01–M18g) is retained unchanged.
 
@@ -165,6 +170,48 @@ Hosted Supabase may have creators beyond `postgres` (for example
 `supabase_admin`) whose defaults the migrating role cannot alter. That has not
 been observed here and cannot be fixed from a migration run as `postgres`.
 
+## Prompt 01 repair — F1, F2, F4 and current advisories
+
+The independent verification of #27 (`docs/P0_PR27_INDEPENDENT_VERIFICATION.md`
+on PR #29) left three code findings open, and two dependency advisories were
+published after it. Each was reproduced on this tree before its repair.
+
+| Finding | Reproduced before | After |
+| --- | --- | --- |
+| **F4** MAINTAIN (PostgreSQL 17) | On 17.6 with 001–005: `anon` and `authenticated` held MAINTAIN on 11/11 tables; organization B's teacher could `REINDEX` and `CLUSTER` `students`. The suite passed on 17 anyway, because nothing checked the privilege. | 008 revokes it from both roles and from the migrating role's default privileges. Every RLS-blind privilege check now includes MAINTAIN on 17; `REINDEX` is refused for both roles on all 11 tables; the negative control re-grants it and sees `REINDEX` succeed. |
+| **F1** `anon` EXECUTE on helpers | Invisible to the suite: the shim did not model hosted Supabase's function defaults. With them modelled, `anon` held EXECUTE on 5/5 helpers on 16 and 17, matching the hosted inventory. | 008 revokes EXECUTE on functions in `public` from `anon`, and from the default privileges. `anon` cannot call any helper; `authenticated` keeps all five. |
+| **F2** unknown-`kid` refresh | 50 tokens with invented `kid`s caused 51 key-set fetches. | At most one forced fetch per `JWKS_FORCED_REFRESH_INTERVAL_SECONDS` (30 s), and only while the cached set is fresh. A key rotated in since the last fetch still verifies on first use; when the interval's refresh is already spent, it verifies once the interval passes. A failed refresh still fails closed with 503. |
+| `next` ≤ 16.4.0 | `npm audit` failed: GHSA-2464-fhr4-w9xw and GHSA-673q-mjm6-r5xr (critical, unauthenticated RCE), GHSA-p3m5-59mp-jv5r (high). | `next` 16.4.2. |
+| `zod` < 4.6.6 (dev) | `npm audit --audit-level=low` failed: GHSA-mrhx-c7xc-m3w5 (high), via `eslint-config-next → eslint-plugin-react-hooks`. | `zod` 4.6.7, inside that plugin's declared `^4.0.0`; lockfile only, no override. |
+
+**Migration 008, numbering and upgrade.** 006 and 007 are taken by the
+AI-feedback migrations on the integration branch, so this one is 008. Its
+effect does not depend on order: the `REVOKE ... ON ALL` statements cover what
+exists when it runs, and the default-privilege changes cover what the
+migrating role creates afterwards. It applies cleanly on top of 001–005 on 16
+and 17 and is safe to run twice. The MAINTAIN statements run only when
+`server_version_num >= 170000`, because 16 rejects the privilege name. A
+`REVOKE ... ON ALL FUNCTIONS` fails outright if `public` holds a function the
+migrating role has no privilege on at all; the hosted inventory found only the
+seven AEOS functions there, but apply 008 to the disposable project before
+anything else.
+
+**Residual, by design: LOCK TABLE.** UPDATE or DELETE also permit
+`LOCK TABLE ... IN ACCESS EXCLUSIVE MODE`, on 16 and 17 alike, and the
+policies need those grants. Revoking MAINTAIN therefore does not stop LOCK
+TABLE, which was reproduced as still allowed after the repair. Only a direct
+database session as a client role can issue it; PostgREST has no LOCK
+operation. The behavioural F4 test uses REINDEX for this reason.
+
+**F3, owner decision, not repaired.** On hosted Supabase, `supabase_admin`'s
+default privileges grant `D x t` (and, on 17, `m`) to the client roles on
+tables it creates in `public`, and a migration run as `postgres` cannot alter
+another role's defaults. AEOS migrations run as `postgres`, so the current
+workflow does not trigger it. The owner must choose, in writing: accept and
+document it, or add an enforceable check (an event trigger or a CI query that
+rejects `public` tables not owned by `postgres`). This candidate does not
+accept the risk on the owner's behalf.
+
 ## Dependency inventory and dispositions
 
 ### Frontend (`npm audit`, Node 22.22.0, npm 10.9.4)
@@ -175,6 +222,8 @@ been observed here and cannot be fixed from a migration run as `postgres`.
 | `sharp` 0.35.4 | GHSA-wq5f-xc86-pv6w (`<0.35.5`) | `next` optional dependency, production | **Fixed**: `0.35.5`, inside `next`'s `^0.35.4`, via `npm audit fix --package-lock-only` (no `--force`). |
 | `braces` chain | GHSA-vfj7-8cjw-p6xm | dev, lint plugin | **Removed** by #24's scoped `fast-glob → tinyglobby@0.2.17` override, retained. |
 | `source-map-js` | GHSA-68fv-2mgg-jv7q | `next → postcss` | **Fixed** by #25 (`1.2.2`), retained. |
+| `next` 16.3.8 | GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr (critical), GHSA-p3m5-59mp-jv5r (high) (range 16.0.0–16.4.0) | direct, production | **Fixed** in the Prompt 01 repair: lock `16.4.2`, manifest floor `^16.4.2`. Lockfile changes confined to `next`, `@next/env` and `@next/swc-*`. |
+| `zod` 4.5.4 | GHSA-mrhx-c7xc-m3w5 (high, `<4.6.6`) | dev, `eslint-config-next → eslint-plugin-react-hooks` | **Fixed** in the Prompt 01 repair: `4.6.7` inside the plugin's `^3.25.0 \|\| ^4.0.0`, lockfile only. |
 
 After the change both `npm audit --audit-level=low` and
 `npm audit --omit=dev --audit-level=low` report 0 vulnerabilities. Lockfile
@@ -216,7 +265,8 @@ behaviour-neutral. Anyone setting `rootDir` must remove the override first.
 ## Validation commands
 
 ```bash
-# backend (Python 3.11, fresh venv, disposable PostgreSQL 16)
+# backend (Python 3.11, fresh venv, disposable PostgreSQL 16 and again 17;
+# set AEOS_EXPECT_PG_MAJOR to the engine's major version)
 pip install -r backend/requirements-dev.txt
 python -m compileall -q backend/app backend/tests
 (cd backend && python -c "from app.main import app; print('backend OK')")
@@ -239,6 +289,8 @@ cd frontend && npm ci && npm audit --audit-level=low && npm audit --omit=dev --a
 | Live Supabase RLS / cross-tenant attacks | BLOCKED | An isolated non-production Supabase project with synthetic tenants |
 | Hosted asymmetric-key login | BLOCKED | Same project, signing with ES256 or RS256 |
 | Default-privilege check on the hosted project | BLOCKED | Run the query above on that project |
+| Migration 008 applied to the hosted engine | BLOCKED | Apply to the disposable project; confirm MAINTAIN and `anon` EXECUTE are gone and `authenticated` keeps the helpers |
+| F3: `supabase_admin` default privileges | **OWNER DECISION** | Accept and document, or add an enforceable ownership check |
 | starlette advisories | OPEN | Separate, bounded `fastapi`/`pydantic` upgrade candidate |
 | Vercel preview status | Pre-existing, not this candidate | Project setting (Root Directory = `frontend`), owner's call |
 
@@ -254,5 +306,11 @@ This candidate is unmerged. If it is merged and must be reverted:
   public TO anon, authenticated;` plus the matching `ALTER DEFAULT PRIVILEGES`).
   Doing so re-opens the cross-tenant TRUNCATE wipe; do not do it on a database
   holding real data.
+- **Migration 008** is privilege-only and forward-only too. To undo it, a new
+  forward migration re-grants `MAINTAIN` (17 only) to `anon, authenticated` and
+  `EXECUTE` on the five `aeos_*` helpers to `anon`, with the matching
+  `ALTER DEFAULT PRIVILEGES`. That re-opens F4 and F1.
+- **Key-set refresh bound:** reverting `app/core/auth.py` restores one fetch
+  per unknown `kid`.
 - **Frontend dependencies:** restore the previous `package.json` and
   `package-lock.json` and run `npm ci`. That re-introduces the advisories above.

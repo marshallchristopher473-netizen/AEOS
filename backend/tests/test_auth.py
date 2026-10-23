@@ -685,6 +685,7 @@ def live_jwks(monkeypatch):
     monkeypatch.setattr(auth, "SUPABASE_JWT_AUDIENCE", AUDIENCE)
     monkeypatch.setattr(auth, "_jwks", None)
     monkeypatch.setattr(auth, "_jwks_fetched_at", 0.0)
+    monkeypatch.setattr(auth, "_jwks_forced_refresh_at", float("-inf"))
     return state
 
 
@@ -760,3 +761,76 @@ async def test_expired_key_set_is_not_used_when_its_refresh_fails(
     with pytest.raises(HTTPException) as exc_info:
         await verify(token)
     assert exc_info.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Unknown key IDs: a refresh for key rotation, not one per anonymous request.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_unknown_key_ids_force_at_most_one_refresh_per_interval(
+    live_jwks, signing_material
+):
+    """A `kid` costs nothing to invent and reaches the refresh before any
+    signature check, so each one must not cost an outbound fetch. Otherwise an
+    anonymous caller drives unbounded traffic to the key endpoint, and once it
+    rate-limits us, legitimate users get 503."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    assert (await verify(make_token(private_pem)))["sub"] == "auth-user-a"
+    assert live_jwks["fetches"] == 1
+
+    for attempt in range(50):
+        await assert_rejected(
+            make_token(private_pem, headers={"kid": f"invented-{attempt}", "alg": "RS256"})
+        )
+
+    # 1: the first verification. 2: the single refresh the interval allows.
+    assert live_jwks["fetches"] == 2
+
+
+@pytest.mark.asyncio
+async def test_key_rotated_in_since_the_last_fetch_verifies_on_first_use(
+    live_jwks, signing_material
+):
+    """Positive control for the bound: an unknown `kid` still triggers a
+    refresh, so a key the issuer has just published verifies at once."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    await verify(make_token(private_pem))
+
+    rotated_in = {**public_jwk, "kid": "rotated-in-kid"}
+    live_jwks["body"] = {"keys": [public_jwk, rotated_in]}
+    token = make_token(private_pem, headers={"kid": "rotated-in-kid", "alg": "RS256"})
+
+    assert (await verify(token))["sub"] == "auth-user-a"
+    assert live_jwks["fetches"] == 2
+
+
+@pytest.mark.asyncio
+async def test_rotated_in_key_verifies_once_a_spent_refresh_interval_passes(
+    monkeypatch, live_jwks, signing_material
+):
+    """The bound's cost is a bounded delay, never a lockout: when an invented
+    `kid` has just spent the interval's refresh, a newly published key is
+    refused until the interval passes and verifies after it."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    await verify(make_token(private_pem))
+    await assert_rejected(make_token(private_pem, headers={"kid": "invented", "alg": "RS256"}))
+    assert live_jwks["fetches"] == 2
+
+    rotated_in = {**public_jwk, "kid": "rotated-in-kid"}
+    live_jwks["body"] = {"keys": [public_jwk, rotated_in]}
+    token = make_token(private_pem, headers={"kid": "rotated-in-kid", "alg": "RS256"})
+    await assert_rejected(token)
+    assert live_jwks["fetches"] == 2
+
+    monkeypatch.setattr(
+        auth,
+        "_jwks_forced_refresh_at",
+        time.monotonic() - auth.JWKS_FORCED_REFRESH_INTERVAL_SECONDS - 1,
+    )
+    assert (await verify(token))["sub"] == "auth-user-a"
+    assert live_jwks["fetches"] == 3

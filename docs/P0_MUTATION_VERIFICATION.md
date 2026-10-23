@@ -42,8 +42,9 @@ against the complete suite, so an interaction failure cannot hide.
 ## Running the verification
 
 ```bash
-# 1. Disposable PostgreSQL 16, never a production database
+# 1. Disposable PostgreSQL 16 or 17, never a production database
 export AEOS_TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres
+export AEOS_EXPECT_PG_MAJOR=17   # optional locally; fails the run on a mismatch
 
 cd backend
 pip install -r requirements-dev.txt
@@ -51,20 +52,26 @@ pip install -r requirements-dev.txt
 # 2. Unmodified baseline — must be green before anything else means anything
 python -m pytest tests/ -q
 
-# 3. Complete M01-M20 mutation contract
+# 3. Complete M01-M22 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
 ```
 
-Both run in CI (`.github/workflows/p0-backend-tests.yml`) against a
-PostgreSQL 16 service container, and the matrix is uploaded as a build
-artifact keyed to the exact commit SHA.
+Both run in CI (`.github/workflows/p0-backend-tests.yml`) once against a
+PostgreSQL 16 service container and once against PostgreSQL 17, the engine
+hosted Supabase runs. Each matrix is uploaded as a build artifact keyed to the
+engine and the exact commit SHA.
+
+M19e and M19f remove the MAINTAIN revoke, a privilege PostgreSQL 16 does not
+have. On 16 they are reported `NOT APPLICABLE`: neither scored nor a failure.
+The 17 leg must kill them, and `AEOS_EXPECT_PG_MAJOR` makes that leg fail if
+its service is not actually 17.
 
 `AEOS_REQUIRE_RLS_TESTS=1` turns a missing database into a hard failure rather
 than a silent skip, because a security test that skips quietly is worse than no
 test: CI stays green while proving nothing.
 
-## The M01–M20 contract
+## The M01–M22 contract
 
 | ID | Security boundary | Mutation | Primary killing test |
 | --- | --- | --- | --- |
@@ -100,6 +107,15 @@ test: CI stays green while proving nothing.
 | M19c | Tables created later do not regain TRUNCATE (scope) | 005's default-privilege REVOKE issued globally instead of `IN SCHEMA public` | `TestTruncateCascadeAndFutureTables::test_no_default_privilege_entry_grants_rls_blind_privileges`; `test_tables_created_by_every_authorized_creator_withhold_rls_blind_privileges` |
 | M19d | `anon` holds no privilege RLS does not govern | 005 revokes from `authenticated` only | `TestTruncateCascadeAndFutureTables::test_truncate_cascade_is_refused_and_every_row_survives[anon-*]`; `test_client_roles_hold_no_rls_blind_privilege[anon]` |
 | M20 | WHERE-less writes cannot reach another tenant on any table | `ai_recommendations_delete` → `USING (true)` | `TestWherelessWritesAcrossEveryTable::test_whereless_delete_leaves_org_a_untouched[*-ai_recommendations]` |
+| M18n | A failed key-set refresh fails closed | the expired set is returned when its refresh fails | `test_auth.py::test_expired_key_set_is_not_used_when_its_refresh_fails` |
+| M18o | An unknown `kid` forces at most one key-set fetch per interval | the forced-refresh bound is removed | `test_auth.py::test_unknown_key_ids_force_at_most_one_refresh_per_interval`; `test_rotated_in_key_verifies_once_a_spent_refresh_interval_passes` |
+| M19e | Client roles hold no MAINTAIN (PostgreSQL 17) | 008 stops revoking MAINTAIN on existing tables | `TestMaintainPrivilege::test_client_roles_cannot_reindex_any_table[*]`; `test_client_roles_hold_no_rls_blind_privilege[*]` |
+| M19f | Tables created later do not regain MAINTAIN | 008 stops revoking MAINTAIN from the default privileges | `test_tables_created_later_do_not_inherit_rls_blind_privileges`; `test_no_default_privilege_entry_grants_rls_blind_privileges` |
+| M22a | `anon` cannot execute the SECURITY DEFINER helpers | 008 stops revoking EXECUTE from `anon` | `TestHelperFunctionExecution::test_anon_cannot_call_any_security_definer_helper` |
+| M22b | Helpers created later are not executable by `anon` | 008 stops revoking EXECUTE from `anon` in the default privileges | `TestHelperFunctionExecution::test_helpers_created_later_are_not_executable_by_anon`; `test_no_default_privilege_entry_grants_anon_execute` |
+
+M21 is not used here: the AI-feedback mutations on the integration branch
+already hold that identifier.
 
 ### On M18e and M18f
 
