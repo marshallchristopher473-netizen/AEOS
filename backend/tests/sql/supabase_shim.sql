@@ -91,7 +91,17 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
--- Applied again after the AEOS migrations run (see conftest) so that tables
--- created by 001/003 are covered.
+-- Covers every table the AEOS migrations create, at creation time, as
+-- Supabase's standing grant does. Migration 005 later narrows it.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT ALL ON TABLES TO anon, authenticated, service_role;
+
+-- Hosted Supabase grants functions and sequences the same way. For functions
+-- that is a DIRECT grant of EXECUTE to `anon`, which the migrations'
+-- `REVOKE ALL ... FROM PUBLIC` does not remove. Without it here, `anon` could
+-- never execute an `aeos_*` helper in this database, so no test could notice
+-- that it can on Supabase. Migration 008 narrows it.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;

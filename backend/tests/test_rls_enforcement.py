@@ -82,7 +82,15 @@ MIGRATIONS = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_revoke_rls_blind_table_privileges.sql",
+    # 006 and 007 are taken by the AI-feedback migrations on the integration
+    # branch, so this security migration is numbered 008 to stay unique.
+    "008_revoke_maintain_and_anon_function_execute.sql",
 )
+
+# Set in CI to the PostgreSQL major version the job's service runs, so a job
+# meant to exercise PostgreSQL 17 cannot pass while quietly running 16.
+EXPECTED_SERVER_MAJOR = os.environ.get("AEOS_EXPECT_PG_MAJOR")
 
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,
@@ -196,14 +204,14 @@ def migrated_database():
                 assert path.exists(), f"missing migration: {path}"
                 conn.execute(path.read_text())
 
-            # Mirror Supabase's standing grants for tables created by the
-            # migrations. Without this, cross-tenant access would fail as a
-            # GRANT error rather than an RLS denial and the tests below would
-            # pass for the wrong reason.
-            conn.execute(
-                "GRANT ALL ON ALL TABLES IN SCHEMA public "
-                "TO anon, authenticated, service_role"
-            )
+            # Table privileges come from the shim's ALTER DEFAULT PRIVILEGES,
+            # applied as each migration creates its tables — which is exactly
+            # when Supabase grants them. There is deliberately no blanket
+            # `GRANT ALL ON ALL TABLES` here any more: run once after all the
+            # migrations, it re-granted whatever a migration had revoked
+            # (005), so the suite tested a privilege state production never
+            # has. `test_authenticated_keeps_every_dml_grant_rls_governs`
+            # proves the DML grants the RLS tests rely on are still present.
             conn.execute(
                 "GRANT ALL ON ALL SEQUENCES IN SCHEMA public "
                 "TO anon, authenticated, service_role"
@@ -281,6 +289,14 @@ def as_org_a_support(migrated_database):
     """A support-role member of organization A (read-only by policy)."""
     with psycopg.connect(migrated_database) as conn:
         _become(conn, AUTH_SUPPORT_A)
+        yield conn
+
+
+@pytest.fixture
+def as_org_b(migrated_database):
+    """An authenticated teacher in organization B, attacking organization A."""
+    with psycopg.connect(migrated_database) as conn:
+        _become(conn, AUTH_B)
         yield conn
 
 
@@ -987,6 +1003,697 @@ class TestPeerAccessSemantics:
 
 
 # ---------------------------------------------------------------------------
+# Privileges RLS does not govern: TRUNCATE, TRIGGER, REFERENCES.
+# ---------------------------------------------------------------------------
+
+
+# Every table the migrations create in `public`. Kept explicit so a missing
+# table is a visible failure rather than a silently shorter loop.
+PUBLIC_TABLES = (
+    "ai_recommendations",
+    "assessment_results",
+    "assessments",
+    "audit_logs",
+    "intervention_actions",
+    "intervention_plans",
+    "organizations",
+    "progress_events",
+    "schools",
+    "students",
+    "users",
+)
+
+# Table privileges that row-level security does not govern. RLS applies to
+# SELECT, INSERT, UPDATE and DELETE only. TRUNCATE empties a table for every
+# tenant at once; TRIGGER lets the holder attach triggers to every tenant's
+# writes; REFERENCES lets the holder build constraints over the table. The
+# application and PostgREST need none of them, so no client role may hold them.
+RLS_BLIND_PRIVILEGES = ("TRUNCATE", "TRIGGER", "REFERENCES")
+CLIENT_ROLES = ("anon", "authenticated")
+DML_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
+
+# PostgreSQL 17 added MAINTAIN, which hosted Supabase runs: VACUUM, ANALYZE,
+# CLUSTER, REINDEX, REFRESH MATERIALIZED VIEW and LOCK TABLE on the whole
+# table. Like TRUNCATE it sits outside every policy, and Supabase's
+# `GRANT ALL` includes it. PostgreSQL 16 has no such privilege, so it can only
+# be checked, and only needs to be, on 17 or later.
+MAINTAIN_MIN_SERVER_VERSION = 170000
+
+
+def _server_version_num(conn):
+    return int(conn.execute("SHOW server_version_num").fetchone()[0])
+
+
+@pytest.fixture(scope="session")
+def rls_blind_privileges(migrated_database):
+    """RLS_BLIND_PRIVILEGES, plus MAINTAIN on an engine that has it."""
+    with psycopg.connect(migrated_database) as conn:
+        if _server_version_num(conn) >= MAINTAIN_MIN_SERVER_VERSION:
+            return (*RLS_BLIND_PRIVILEGES, "MAINTAIN")
+    return RLS_BLIND_PRIVILEGES
+
+
+class TestPrivilegesRlsDoesNotGovern:
+    """Pin the table privileges that sit outside every RLS policy.
+
+    Supabase's standing grant, `GRANT ALL ... TO anon, authenticated`, which
+    the shim mirrors, includes TRUNCATE. PostgreSQL does not apply row-level
+    security to TRUNCATE, so while that grant stands, any authenticated
+    member of any organization can empty every organization's rows in one
+    statement, whatever the policies say. Migration 005 revokes it, for
+    existing tables and, through the default privileges, for tables created
+    later.
+    """
+
+    def test_every_public_table_is_covered(self, admin_conn):
+        (names,) = admin_conn.execute(
+            "SELECT array_agg(tablename::text ORDER BY tablename) "
+            "FROM pg_tables WHERE schemaname = 'public'"
+        ).fetchone()
+        assert tuple(names) == PUBLIC_TABLES, (
+            "public tables changed; update PUBLIC_TABLES so the privilege "
+            f"checks below cover them: {names}"
+        )
+
+    @pytest.mark.parametrize("role", CLIENT_ROLES)
+    def test_client_roles_hold_no_rls_blind_privilege(
+        self, admin_conn, role, rls_blind_privileges
+    ):
+        held = [
+            f"{table}:{privilege}"
+            for table in PUBLIC_TABLES
+            for privilege in rls_blind_privileges
+            if admin_conn.execute(
+                "SELECT has_table_privilege(%s, %s, %s)",
+                (role, f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        assert held == [], f"{role} holds privileges RLS does not govern: {held}"
+
+    def test_authenticated_keeps_every_dml_grant_rls_governs(self, admin_conn):
+        """Guard against over-revoking: if a DML grant went missing, the RLS
+        denial tests would pass on a permission error instead of a policy."""
+        missing = [
+            f"{table}:{privilege}"
+            for table in PUBLIC_TABLES
+            for privilege in DML_PRIVILEGES
+            if not admin_conn.execute(
+                "SELECT has_table_privilege('authenticated', %s, %s)",
+                (f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        assert missing == [], f"authenticated lost DML grants: {missing}"
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    def test_cross_tenant_truncate_is_refused(self, as_org_b, admin_conn, table):
+        """Organization B's teacher tries to empty the table, and with it
+        organization A's rows. The privilege check runs before any foreign-key
+        check, so a refusal here is specifically InsufficientPrivilege."""
+        (before,) = admin_conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()
+
+        as_org_b.execute("SET LOCAL lock_timeout = '10s'")
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                as_org_b.execute(f"TRUNCATE public.{table}")
+        finally:
+            # A connection fixture commits when its block exits normally, so a
+            # TRUNCATE that wrongly succeeds must be undone here, before the
+            # failure propagates, or it wipes the seed data every later test
+            # depends on.
+            as_org_b.rollback()
+
+        (after,) = admin_conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()
+        assert after == before, f"{table} lost rows to a refused TRUNCATE"
+
+    def test_tables_created_later_do_not_inherit_rls_blind_privileges(
+        self, migrated_database, rls_blind_privileges
+    ):
+        """005 and 008 must also change the default privileges; otherwise the
+        next migration's table silently regains TRUNCATE or MAINTAIN."""
+        with psycopg.connect(migrated_database) as conn:
+            try:
+                conn.execute("CREATE TABLE public.aeos_privilege_probe (id int)")
+                held = {
+                    privilege: conn.execute(
+                        "SELECT has_table_privilege("
+                        "'authenticated', 'public.aeos_privilege_probe', %s)",
+                        (privilege,),
+                    ).fetchone()[0]
+                    for privilege in (*rls_blind_privileges, "SELECT")
+                }
+            finally:
+                conn.rollback()
+
+        assert held["SELECT"], (
+            "default privileges no longer grant DML, so this probe no longer "
+            "models Supabase"
+        )
+        assert not any(held[p] for p in rls_blind_privileges), (
+            f"a newly created table grants RLS-blind privileges: {held}"
+        )
+
+
+def _row_counts(conn):
+    """Rows in every public table, across all tenants."""
+    return {
+        table: conn.execute(f"SELECT count(*) FROM public.{table}").fetchone()[0]
+        for table in PUBLIC_TABLES
+    }
+
+
+def _act_as_client_role(conn, role, auth_user_id):
+    """Inside the current transaction, drop to a client role.
+
+    `anon` carries no subject, exactly as PostgREST presents an unauthenticated
+    request; `authenticated` carries the given verified subject.
+    """
+    conn.execute(f"SET LOCAL ROLE {role}")
+    claims = (
+        f'{{"sub": "{auth_user_id}", "role": "authenticated"}}'
+        if role == "authenticated"
+        else '{"role": "anon"}'
+    )
+    conn.execute("SELECT set_config('request.jwt.claims', %s, true)", (claims,))
+    (who,) = conn.execute("SELECT current_user").fetchone()
+    assert who == role, f"the statement must run as {role}, not {who}"
+
+
+# (client role, subject). `authenticated` is organization B's teacher, so a
+# successful TRUNCATE would be a cross-tenant wipe of organization A.
+TRUNCATE_ACTORS = (("anon", None), ("authenticated", AUTH_B))
+
+
+def _truncate_cascade_attempt(conn, role, auth_user_id, table, grant_truncate=False):
+    """Attempt `TRUNCATE public.<table> CASCADE` as a client role and measure.
+
+    One transaction, always rolled back, so the shared seed never changes even
+    when the TRUNCATE wrongly succeeds. Every public table is given rows first,
+    then counted before and after the attempt from the privileged role, which
+    sees the transaction's own uncommitted state. `grant_truncate` restores the
+    privilege inside the transaction, for the negative control.
+
+    Returns (refused, counts before, counts after).
+    """
+    try:
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        conn.execute(WHERELESS_EXTRA_SEED_SQL)
+        if grant_truncate:
+            conn.execute(f"GRANT TRUNCATE ON ALL TABLES IN SCHEMA public TO {role}")
+        before = _row_counts(conn)
+        empty = [table_name for table_name, rows in before.items() if rows == 0]
+        assert empty == [], f"tables without rows would prove nothing: {empty}"
+
+        conn.execute("SAVEPOINT truncate_attempt")
+        _act_as_client_role(conn, role, auth_user_id)
+        try:
+            conn.execute(f"TRUNCATE public.{table} CASCADE")
+        except psycopg.errors.InsufficientPrivilege:
+            refused = True
+            # Undoes the failed statement and the SET LOCAL ROLE together.
+            conn.execute("ROLLBACK TO SAVEPOINT truncate_attempt")
+        else:
+            refused = False
+            conn.execute("RESET ROLE")
+        (who,) = conn.execute("SELECT current_user").fetchone()
+        assert who != role, "counting must not run as the client role"
+        return refused, before, _row_counts(conn)
+    finally:
+        conn.rollback()
+
+
+class TestTruncateCascadeAndFutureTables:
+    """`TRUNCATE ... CASCADE` from either client role, and the privileges a
+    table created later by any authorized creator would hand out.
+
+    `TestPrivilegesRlsDoesNotGovern` pins plain TRUNCATE for `authenticated`
+    and new tables created by the migrating role through its schema-level
+    default. CASCADE extends a TRUNCATE to every referencing table, so here
+    every client role issues the exact CASCADE form against every table and
+    every row of every table must survive. The default-privilege checks cover
+    every role able to create in `public` and both scopes of default
+    privileges, global and per-schema, because a per-schema REVOKE cannot
+    remove a privilege a global default grants.
+    """
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "role,auth_user_id",
+        [pytest.param(role, sub, id=role) for role, sub in TRUNCATE_ACTORS],
+    )
+    def test_truncate_cascade_is_refused_and_every_row_survives(
+        self, privileged_session, table, role, auth_user_id
+    ):
+        refused, before, after = _truncate_cascade_attempt(
+            privileged_session, role, auth_user_id, table
+        )
+        assert refused, f"{role} was allowed TRUNCATE public.{table} CASCADE"
+        assert after == before, (
+            f"rows changed after {role} attempted TRUNCATE {table} CASCADE: "
+            f"{before} -> {after}"
+        )
+
+    def test_every_authorized_creator_is_probed(self, admin_conn):
+        """The creator list below must not be vacuous: the migrating role is in it."""
+        creators = self._creators(admin_conn)
+        assert "postgres" in creators, creators
+        assert not set(creators) & set(CLIENT_ROLES), (
+            f"a client role may create tables in public: {creators}"
+        )
+
+    def test_tables_created_by_every_authorized_creator_withhold_rls_blind_privileges(
+        self, privileged_session, admin_conn, rls_blind_privileges
+    ):
+        """For each role that can create a table in `public` (a superuser, or a
+        holder of CREATE on the schema), create one and read what the client
+        roles receive. Rolled back, so nothing persists."""
+        found = {}
+        try:
+            for creator in self._creators(admin_conn):
+                probe = f"aeos_creator_probe_{creator}"
+                privileged_session.execute(f'SET LOCAL ROLE "{creator}"')
+                privileged_session.execute(f'CREATE TABLE public."{probe}" (id int)')
+                privileged_session.execute("RESET ROLE")
+                for role in CLIENT_ROLES:
+                    for privilege in (*rls_blind_privileges, "SELECT"):
+                        found[(creator, role, privilege)] = privileged_session.execute(
+                            "SELECT has_table_privilege(%s, %s, %s)",
+                            (role, f'public."{probe}"', privilege),
+                        ).fetchone()[0]
+        finally:
+            privileged_session.rollback()
+
+        assert found, "no creator was probed"
+        leaked = sorted(
+            key for key, held in found.items() if held and key[2] in rls_blind_privileges
+        )
+        assert leaked == [], f"new tables grant RLS-blind privileges: {leaked}"
+        # Guard against a probe that passes because nothing is granted at all:
+        # the migrating role's new tables still give `authenticated` SELECT.
+        assert found[("postgres", "authenticated", "SELECT")]
+
+    def test_no_default_privilege_entry_grants_rls_blind_privileges(
+        self, admin_conn, rls_blind_privileges
+    ):
+        """Every default-privilege entry for tables, for any role, global or for
+        schema `public`, withholds TRUNCATE, TRIGGER, REFERENCES and, on 17,
+        MAINTAIN from the client roles. A global entry matters on its own: a
+        per-schema REVOKE cannot take back what a global default grants."""
+        rows = admin_conn.execute(
+            """
+            SELECT d.defaclrole::regrole::text,
+                   COALESCE(d.defaclnamespace::regnamespace::text, '<global>'),
+                   grantee.rolname,
+                   acl.privilege_type
+            FROM pg_default_acl d
+            CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+            JOIN pg_roles grantee ON grantee.oid = acl.grantee
+            WHERE d.defaclobjtype = 'r'
+              AND (d.defaclnamespace = 0
+                   OR d.defaclnamespace = 'public'::regnamespace)
+            """
+        ).fetchall()
+        assert rows, "no default privileges exist, so this check models nothing"
+        leaked = sorted(
+            row for row in rows
+            if row[2] in CLIENT_ROLES and row[3] in rls_blind_privileges
+        )
+        assert leaked == [], f"default privileges grant RLS-blind privileges: {leaked}"
+
+    @staticmethod
+    def _creators(admin_conn):
+        return [
+            name
+            for (name,) in admin_conn.execute(
+                "SELECT rolname FROM pg_roles "
+                "WHERE rolname !~ '^pg_' "
+                "AND (rolsuper OR has_schema_privilege(oid, 'public', 'CREATE')) "
+                "ORDER BY rolname"
+            ).fetchall()
+        ]
+
+
+# ---------------------------------------------------------------------------
+# MAINTAIN on PostgreSQL 17 (F4), and helpers `anon` can call (F1).
+# ---------------------------------------------------------------------------
+
+
+def _reindex_attempt(conn, role, auth_user_id, table, grant_maintain=False):
+    """Attempt `REINDEX TABLE public.<table>` as a client role.
+
+    REINDEX needs MAINTAIN on PostgreSQL 17 (ownership before that) and holds
+    an exclusive lock on every tenant's rows while it rebuilds. One
+    transaction, always rolled back. `grant_maintain` restores the privilege
+    inside it, for the negative control. Returns True when refused.
+    """
+    try:
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        if grant_maintain:
+            conn.execute(f"GRANT MAINTAIN ON public.{table} TO {role}")
+        conn.execute("SAVEPOINT reindex_attempt")
+        _act_as_client_role(conn, role, auth_user_id)
+        try:
+            conn.execute(f"REINDEX TABLE public.{table}")
+        except psycopg.errors.InsufficientPrivilege:
+            conn.execute("ROLLBACK TO SAVEPOINT reindex_attempt")
+            return True
+        return False
+    finally:
+        conn.rollback()
+
+
+class TestMaintainPrivilege:
+    """On PostgreSQL 17, Supabase's `GRANT ALL` hands both client roles
+    MAINTAIN. RLS does not govern it: with it, any tenant's teacher can
+    REINDEX or CLUSTER, and so exclusively lock and rewrite, every tenant's
+    table. Migration 008 revokes it on 17; 16 has no such privilege. The
+    privilege-table checks above cover MAINTAIN through `rls_blind_privileges`;
+    these tests pin the engine and the behaviour.
+
+    Residual, by design: LOCK TABLE stays possible for any role holding UPDATE
+    or DELETE on a table, on 16 and 17 alike, and the policies need those
+    grants. Only a direct database session as a client role can issue it;
+    PostgREST has no LOCK operation.
+    """
+
+    def test_engine_matches_what_the_privilege_checks_assume(
+        self, admin_conn, rls_blind_privileges
+    ):
+        """MAINTAIN is checked exactly when the engine has it, so a 17 run
+        cannot quietly check less, and a 16 run omits it only because the
+        engine rejects it."""
+        version = _server_version_num(admin_conn)
+        if EXPECTED_SERVER_MAJOR:
+            assert version // 10000 == int(EXPECTED_SERVER_MAJOR), (
+                f"CI asked for PostgreSQL {EXPECTED_SERVER_MAJOR}; the server is {version}"
+            )
+        probe = "SELECT has_table_privilege('anon', 'public.students', 'MAINTAIN')"
+        if version >= MAINTAIN_MIN_SERVER_VERSION:
+            assert "MAINTAIN" in rls_blind_privileges
+            admin_conn.execute(probe)
+        else:
+            assert "MAINTAIN" not in rls_blind_privileges
+            with pytest.raises(psycopg.errors.InvalidParameterValue):
+                admin_conn.execute(probe)
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "role,auth_user_id",
+        [pytest.param(role, sub, id=role) for role, sub in TRUNCATE_ACTORS],
+    )
+    def test_client_roles_cannot_reindex_any_table(
+        self, privileged_session, table, role, auth_user_id
+    ):
+        assert _reindex_attempt(privileged_session, role, auth_user_id, table), (
+            f"{role} was allowed REINDEX TABLE public.{table}"
+        )
+
+
+# The SECURITY DEFINER helpers the policies call, with arguments for a direct
+# call. They run as their owner, which bypasses RLS, so who may call them
+# directly matters.
+SECURITY_DEFINER_HELPERS = {
+    "public.aeos_can_write_org(uuid)": (ORG_A,),
+    "public.aeos_current_user_ids()": (),
+    "public.aeos_has_org_access(uuid)": (ORG_A,),
+    "public.aeos_is_current_actor_for_org(uuid, uuid)": (USER_A, ORG_A),
+    "public.aeos_is_org_admin(uuid)": (ORG_A,),
+}
+
+
+class TestHelperFunctionExecution:
+    """Hosted Supabase grants EXECUTE on new functions in `public` to `anon`
+    directly, and the migrations' `REVOKE ALL ... FROM PUBLIC` does not remove
+    a direct grant. PostgREST serves every such function at
+    `/rest/v1/rpc/<name>`, so with only the anon key a caller could invoke the
+    SECURITY DEFINER helpers, which read membership with RLS bypassed. Every
+    policy is written `TO authenticated`, so `anon` needs none of them.
+    Migration 008 revokes the grant for existing functions and for functions
+    created later.
+    """
+
+    def test_every_security_definer_function_is_listed(self, admin_conn):
+        (names,) = admin_conn.execute(
+            "SELECT array_agg(format('%I.%I(%s)', n.nspname, p.proname, "
+            "oidvectortypes(p.proargtypes)) ORDER BY p.proname) "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'public' AND p.prosecdef"
+        ).fetchone()
+        assert sorted(names) == sorted(SECURITY_DEFINER_HELPERS), (
+            "SECURITY DEFINER functions changed; update SECURITY_DEFINER_HELPERS "
+            f"so the execution checks cover them: {names}"
+        )
+
+    def test_anon_cannot_call_any_security_definer_helper(self, privileged_session):
+        """Each call runs as PostgREST runs an anon RPC: role `anon`, no subject."""
+        called = []
+        try:
+            for signature, args in SECURITY_DEFINER_HELPERS.items():
+                name = signature.split("(")[0]
+                placeholders = ", ".join(["%s::uuid"] * len(args))
+                privileged_session.execute("SAVEPOINT rpc_attempt")
+                _act_as_client_role(privileged_session, "anon", None)
+                try:
+                    privileged_session.execute(f"SELECT {name}({placeholders})", args)
+                    called.append(signature)
+                except psycopg.errors.InsufficientPrivilege:
+                    pass
+                # Undoes the statement and the SET LOCAL ROLE together.
+                privileged_session.execute("ROLLBACK TO SAVEPOINT rpc_attempt")
+        finally:
+            privileged_session.rollback()
+        assert called == [], f"anon can execute SECURITY DEFINER helpers: {called}"
+
+    def test_authenticated_keeps_execute_on_every_helper(self, admin_conn):
+        """Guard against over-revoking: every policy calls these as
+        `authenticated`, and would error without EXECUTE."""
+        missing = [
+            signature
+            for signature in SECURITY_DEFINER_HELPERS
+            if not admin_conn.execute(
+                "SELECT has_function_privilege('authenticated', %s, 'EXECUTE')",
+                (signature,),
+            ).fetchone()[0]
+        ]
+        assert missing == [], f"authenticated lost EXECUTE on: {missing}"
+
+    def test_helpers_created_later_are_not_executable_by_anon(self, privileged_session):
+        """A future helper granted the way 002-004 grant theirs (REVOKE ALL
+        FROM PUBLIC, GRANT EXECUTE TO authenticated) must not stay callable by
+        `anon` through the standing default grant."""
+        try:
+            privileged_session.execute(
+                "CREATE FUNCTION public.aeos_execute_probe() RETURNS boolean "
+                "LANGUAGE sql SECURITY DEFINER SET search_path = public "
+                "AS 'SELECT true'"
+            )
+            privileged_session.execute(
+                "REVOKE ALL ON FUNCTION public.aeos_execute_probe() FROM PUBLIC"
+            )
+            privileged_session.execute(
+                "GRANT EXECUTE ON FUNCTION public.aeos_execute_probe() TO authenticated"
+            )
+            held = {
+                role: privileged_session.execute(
+                    "SELECT has_function_privilege(%s, 'public.aeos_execute_probe()', 'EXECUTE')",
+                    (role,),
+                ).fetchone()[0]
+                for role in CLIENT_ROLES
+            }
+        finally:
+            privileged_session.rollback()
+        assert held["authenticated"], "the probe no longer models how helpers are granted"
+        assert not held["anon"], "a newly created helper is executable by anon"
+
+    def test_no_default_privilege_entry_grants_anon_execute(self, admin_conn):
+        """Global or for schema `public`, no default-privilege entry for
+        functions may grant `anon` EXECUTE."""
+        rows = admin_conn.execute(
+            """
+            SELECT d.defaclrole::regrole::text,
+                   d.defaclnamespace,
+                   grantee.rolname,
+                   acl.privilege_type
+            FROM pg_default_acl d
+            CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+            JOIN pg_roles grantee ON grantee.oid = acl.grantee
+            WHERE d.defaclobjtype = 'f'
+              AND (d.defaclnamespace = 0
+                   OR d.defaclnamespace = 'public'::regnamespace)
+            """
+        ).fetchall()
+        assert rows, "no function default privileges exist, so this check models nothing"
+        leaked = sorted(row for row in rows if row[2] == "anon")
+        assert leaked == [], f"default privileges grant anon EXECUTE: {leaked}"
+
+
+# ---------------------------------------------------------------------------
+# WHERE-less UPDATE and DELETE on every table (SEC-G1-04).
+# A statement with no WHERE and no RETURNING never consults the SELECT policy,
+# so the UPDATE or DELETE policy's USING clause is the only control left. The
+# M09 tests pin that shape for `students`; these pin it for every table.
+# ---------------------------------------------------------------------------
+
+
+# A text column per table, set to a constant so the SET clause reads no
+# existing value (reading one would make PostgreSQL apply the SELECT policy).
+WHERELESS_PROBE_COLUMN = {
+    "ai_recommendations": "recommendation_text",
+    "assessment_results": "summary",
+    "assessments": "title",
+    "audit_logs": "action",
+    "intervention_actions": "description",
+    "intervention_plans": "title",
+    "organizations": "name",
+    "progress_events": "event_message",
+    "schools": "name",
+    "students": "first_name",
+    "users": "full_name",
+}
+WHERELESS_MARKER = "WHERELESS-PROBE"
+
+# SEED_SQL leaves these four tables without synthetic rows. A probe against a
+# table where organization A owns nothing would prove nothing, so each probe
+# adds one row per organization inside its own transaction.
+RECOMMENDATION_A = "0aaa0000-0000-4000-8000-0000000000a1"
+RECOMMENDATION_B = "0bbb0000-0000-4000-8000-0000000000b1"
+ACTION_A = "0aaa0000-0000-4000-8000-0000000000a2"
+ACTION_B = "0bbb0000-0000-4000-8000-0000000000b2"
+AUDIT_A = "0aaa0000-0000-4000-8000-0000000000a3"
+AUDIT_B = "0bbb0000-0000-4000-8000-0000000000b3"
+EVENT_A = "0aaa0000-0000-4000-8000-0000000000a4"
+EVENT_B = "0bbb0000-0000-4000-8000-0000000000b4"
+WHERELESS_EXTRA_SEED_SQL = f"""
+INSERT INTO public.ai_recommendations
+    (id, organization_id, assessment_id, created_by, model_name, recommendation_text) VALUES
+    ('{RECOMMENDATION_A}', '{ORG_A}', '{ASSESSMENT_A}', '{USER_A}', 'synthetic', 'Org A recommendation'),
+    ('{RECOMMENDATION_B}', '{ORG_B}', '{ASSESSMENT_B}', '{USER_B}', 'synthetic', 'Org B recommendation');
+INSERT INTO public.intervention_actions
+    (id, intervention_plan_id, action_type, description) VALUES
+    ('{ACTION_A}', '{PLAN_A}', 'synthetic', 'Org A action'),
+    ('{ACTION_B}', '{PLAN_B}', 'synthetic', 'Org B action');
+INSERT INTO public.audit_logs
+    (id, organization_id, entity_type, entity_id, action, performed_by) VALUES
+    ('{AUDIT_A}', '{ORG_A}', 'student', '{STUDENT_A}', 'create', '{USER_A}'),
+    ('{AUDIT_B}', '{ORG_B}', 'student', '{STUDENT_B}', 'create', '{USER_B}');
+INSERT INTO public.progress_events
+    (id, organization_id, student_id, actor_id, event_type, event_message) VALUES
+    ('{EVENT_A}', '{ORG_A}', '{STUDENT_A}', '{USER_A}', 'student_created', 'Org A event'),
+    ('{EVENT_B}', '{ORG_B}', '{STUDENT_B}', '{USER_B}', 'student_created', 'Org B event');
+"""
+
+SUSPEND_ORG_A = f"UPDATE public.organizations SET status = 'suspended' WHERE id = '{ORG_A}'"
+DISABLE_ADMIN_A = f"UPDATE public.users SET status = 'disabled' WHERE id = '{ADMIN_A}'"
+
+# (id, acting subject, setup applied first). Every scenario must leave
+# organization A's rows untouched.
+WHERELESS_SCENARIOS = (
+    ("suspended-org-admin", AUTH_ADMIN_A, SUSPEND_ORG_A),
+    ("suspended-org-teacher", AUTH_A, SUSPEND_ORG_A),
+    ("disabled-admin-account", AUTH_ADMIN_A, DISABLE_ADMIN_A),
+    ("other-org-teacher", AUTH_B, None),
+)
+
+
+def _org_a_rows(table):
+    if table == "organizations":
+        return f"id = '{ORG_A}'"
+    if table == "intervention_actions":
+        return f"intervention_plan_id = '{PLAN_A}'"
+    return f"organization_id = '{ORG_A}'"
+
+
+@pytest.fixture
+def privileged_session(migrated_database):
+    """A superuser session for probes that must never commit."""
+    with psycopg.connect(migrated_database) as conn:
+        try:
+            yield conn
+        finally:
+            conn.rollback()
+
+
+def _whereless_write(conn, table, operation, actor_auth, setup_sql=None, disable_rls=False):
+    """Run one WHERE-less write as `actor_auth` and measure organization A.
+
+    Everything happens in one transaction that is always rolled back, so the
+    shared seed data never changes, even when the write wrongly succeeds. The
+    session drops to `authenticated` with `SET LOCAL ROLE` for the write alone,
+    then returns to its privileged role with `RESET ROLE`, which can see the
+    transaction's own uncommitted changes.
+
+    Returns (org A rows before, org A rows after, org A rows carrying the marker).
+    """
+    column = WHERELESS_PROBE_COLUMN[table]
+    org_a = _org_a_rows(table)
+    try:
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        conn.execute(WHERELESS_EXTRA_SEED_SQL)
+        if setup_sql:
+            conn.execute(setup_sql)
+        if disable_rls:
+            conn.execute(f"ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY")
+        (before,) = conn.execute(f"SELECT count(*) FROM public.{table} WHERE {org_a}").fetchone()
+        assert before > 0, f"organization A owns no {table} rows; the probe would prove nothing"
+
+        conn.execute("SET LOCAL ROLE authenticated")
+        conn.execute(
+            "SELECT set_config('request.jwt.claims', %s, true)",
+            (f'{{"sub": "{actor_auth}", "role": "authenticated"}}',),
+        )
+        (who,) = conn.execute("SELECT current_user").fetchone()
+        assert who == "authenticated", "the write must run as a client role"
+        if operation == "UPDATE":
+            # Deliberately no WHERE and no RETURNING.
+            conn.execute(f"UPDATE public.{table} SET {column} = %s", (WHERELESS_MARKER,))
+        else:
+            conn.execute(f"DELETE FROM public.{table}")
+        conn.execute("RESET ROLE")
+
+        (after,) = conn.execute(f"SELECT count(*) FROM public.{table} WHERE {org_a}").fetchone()
+        (marked,) = conn.execute(
+            f"SELECT count(*) FROM public.{table} WHERE {org_a} AND {column} = %s",
+            (WHERELESS_MARKER,),
+        ).fetchone()
+        return before, after, marked
+    finally:
+        conn.rollback()
+
+
+class TestWherelessWritesAcrossEveryTable:
+    """No actor outside organization A's active membership can change or
+    remove organization A's rows with a WHERE-less statement, on any table."""
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "actor_auth,setup_sql",
+        [pytest.param(auth, setup, id=name) for name, auth, setup in WHERELESS_SCENARIOS],
+    )
+    def test_whereless_update_leaves_org_a_untouched(
+        self, privileged_session, table, actor_auth, setup_sql
+    ):
+        before, after, marked = _whereless_write(
+            privileged_session, table, "UPDATE", actor_auth, setup_sql
+        )
+        assert marked == 0, f"a WHERE-less UPDATE rewrote {marked} of org A's {table} rows"
+        assert after == before
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    @pytest.mark.parametrize(
+        "actor_auth,setup_sql",
+        [pytest.param(auth, setup, id=name) for name, auth, setup in WHERELESS_SCENARIOS],
+    )
+    def test_whereless_delete_leaves_org_a_untouched(
+        self, privileged_session, table, actor_auth, setup_sql
+    ):
+        before, after, _ = _whereless_write(
+            privileged_session, table, "DELETE", actor_auth, setup_sql
+        )
+        assert after == before, (
+            f"a WHERE-less DELETE removed {before - after} of org A's {table} rows"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Negative control.
 # ---------------------------------------------------------------------------
 
@@ -1091,3 +1798,118 @@ class TestNegativeControl:
         assert affected == 1, (
             "negative control failed: INSERT into org B was still blocked with RLS disabled"
         )
+
+    def test_truncate_breach_is_observable_with_the_privilege_restored(
+        self, admin_conn, as_org_b
+    ):
+        """Negative control for the TRUNCATE denial: grant the privilege back
+        and the same cross-tenant attack empties organization A's rows.
+
+        TRUNCATE holds ACCESS EXCLUSIVE until the attacker's transaction ends,
+        so the privileged connection cannot look until then. The attacker's
+        own transaction therefore drops to the session's privileged role with
+        `RESET ROLE` to inspect, and the rollback that follows restores both
+        the table and the `authenticated` identity.
+        """
+        as_org_b.rollback()
+        admin_conn.execute("GRANT TRUNCATE ON public.assessment_results TO authenticated")
+        try:
+            as_org_b.execute("SET LOCAL lock_timeout = '10s'")
+            (who,) = as_org_b.execute("SELECT current_user").fetchone()
+            assert who == "authenticated", "attack must run as a client role"
+            as_org_b.execute("TRUNCATE public.assessment_results")
+            as_org_b.execute("RESET ROLE")
+            (org_a_left,) = as_org_b.execute(
+                "SELECT count(*) FROM public.assessment_results "
+                "WHERE organization_id = %s",
+                (ORG_A,),
+            ).fetchone()
+        finally:
+            as_org_b.rollback()
+            admin_conn.execute(
+                "REVOKE TRUNCATE ON public.assessment_results FROM authenticated"
+            )
+
+        assert org_a_left == 0, (
+            "negative control failed: TRUNCATE with the privilege restored did "
+            "not empty organization A's rows, so the denial test proves nothing"
+        )
+        (restored,) = admin_conn.execute(
+            "SELECT count(*) FROM public.assessment_results WHERE organization_id = %s",
+            (ORG_A,),
+        ).fetchone()
+        assert restored == 1, "rollback did not restore organization A's row"
+
+    @pytest.mark.parametrize("table", PUBLIC_TABLES)
+    def test_whereless_update_breach_is_observable_without_rls(
+        self, privileged_session, table
+    ):
+        """With RLS off on the table, the suspended admin's WHERE-less UPDATE
+        must rewrite every one of organization A's rows."""
+        before, _, marked = _whereless_write(
+            privileged_session, table, "UPDATE", AUTH_ADMIN_A, SUSPEND_ORG_A,
+            disable_rls=True,
+        )
+        assert marked == before, (
+            f"negative control failed: only {marked} of {before} org A {table} "
+            "rows changed with RLS disabled, so the sweep proves nothing"
+        )
+
+    # `organizations` and `users` are excluded: every tenant table references
+    # them, several with ON DELETE RESTRICT, so a WHERE-less DELETE fails on a
+    # foreign key before RLS could be observed. Their DELETE denial is still
+    # asserted above, and their UPDATE negative control shows the probe sees
+    # them.
+    @pytest.mark.parametrize(
+        "table", [t for t in PUBLIC_TABLES if t not in ("organizations", "users")]
+    )
+    def test_whereless_delete_breach_is_observable_without_rls(
+        self, privileged_session, table
+    ):
+        before, after, _ = _whereless_write(
+            privileged_session, table, "DELETE", AUTH_ADMIN_A, SUSPEND_ORG_A,
+            disable_rls=True,
+        )
+        assert after == 0, (
+            f"negative control failed: {after} of {before} org A {table} rows "
+            "survived a WHERE-less DELETE with RLS disabled"
+        )
+
+    @pytest.mark.parametrize(
+        "role,auth_user_id",
+        [pytest.param(role, sub, id=role) for role, sub in TRUNCATE_ACTORS],
+    )
+    def test_truncate_cascade_breach_is_observable_with_the_privilege_restored(
+        self, privileged_session, role, auth_user_id
+    ):
+        """With TRUNCATE granted back to the client role, `TRUNCATE
+        organizations CASCADE` must empty every public table, every tenant's
+        rows included. Otherwise the survival check above proves nothing."""
+        refused, before, after = _truncate_cascade_attempt(
+            privileged_session, role, auth_user_id, "organizations", grant_truncate=True
+        )
+        assert not refused, "negative control failed: the restored privilege was refused"
+        assert all(before.values())
+        assert after == {table: 0 for table in PUBLIC_TABLES}, (
+            f"negative control failed: rows survived a permitted CASCADE: {after}"
+        )
+
+    @pytest.mark.parametrize(
+        "role,auth_user_id",
+        [pytest.param(role, sub, id=role) for role, sub in TRUNCATE_ACTORS],
+    )
+    def test_reindex_is_observable_with_maintain_restored(
+        self, privileged_session, role, auth_user_id
+    ):
+        """With MAINTAIN granted back, the same REINDEX succeeds, so the
+        refusal above comes from the missing privilege. PostgreSQL 16 has no
+        MAINTAIN to grant back; there the control shows the engine rejects
+        it, which is why 008 revokes it only on 17 and later."""
+        if _server_version_num(privileged_session) < MAINTAIN_MIN_SERVER_VERSION:
+            with pytest.raises(psycopg.errors.SyntaxError):
+                privileged_session.execute(f"GRANT MAINTAIN ON public.students TO {role}")
+            return
+        refused = _reindex_attempt(
+            privileged_session, role, auth_user_id, "students", grant_maintain=True
+        )
+        assert not refused, "negative control failed: REINDEX refused with MAINTAIN restored"
