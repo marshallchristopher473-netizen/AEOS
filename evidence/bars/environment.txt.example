@@ -1,0 +1,8 @@
+replit_project: <workspace>/<slug>
+environment: production
+backend_instance: <single Node process — confirm no parallel dev process>
+database: <sqlite path on persistent volume | managed DB name>
+database_is_shared_with_dev: no
+deployed_at: <UTC ISO>
+deployed_git_sha: <SHA or "unknown — no commit deployed">
+operator: <your name>
