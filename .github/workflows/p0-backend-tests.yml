@@ -149,6 +149,12 @@ jobs:
         working-directory: frontend
         run: npm ls --all
 
+      # package.json replaces the Next.js lint plugin's fast-glob with
+      # tinyglobby. These guards pin the conditions that make that safe.
+      - name: Verify Next.js lint glob override
+        working-directory: frontend
+        run: node tests/lint-glob-override.test.mjs
+
       - name: Lint frontend
         working-directory: frontend
         env:
