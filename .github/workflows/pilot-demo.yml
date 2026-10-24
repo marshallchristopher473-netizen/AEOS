@@ -1,0 +1,35 @@
+name: Pilot Review Demo
+
+on:
+  push:
+    paths:
+      - 'demo/pilot-review/**'
+      - '.github/workflows/pilot-demo.yml'
+  pull_request:
+    paths:
+      - 'demo/pilot-review/**'
+      - '.github/workflows/pilot-demo.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  demo-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # A syntax error in any script stops the whole page from loading, so
+      # every file is parsed before the tests run.
+      - name: Syntax-check demo scripts
+        run: for f in demo/pilot-review/*.js demo/pilot-review/tests/*.js; do node --check "$f"; done
+
+      - name: Run demo unit tests
+        run: node --test demo/pilot-review/tests/*.test.js
