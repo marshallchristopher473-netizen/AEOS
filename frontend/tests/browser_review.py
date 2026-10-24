@@ -1,17 +1,25 @@
 """Browser review smoke test via Chrome DevTools; synthetic backend required.
 
 Uses websockets already supplied by the backend's uvicorn[standard] dependency.
-No JWT, hosted Supabase, AI quality, or pilot-readiness claim is made.
+Signs in through /login against the loopback Supabase Auth fixture that the
+synthetic backend starts (backend/tests/supabase_auth_fixture.py). No hosted
+Supabase, AI quality, or pilot-readiness claim is made.
 """
 import asyncio
 import json
 import time
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import websockets
 
 BASE = "http://127.0.0.1:3000"
 DEBUG = "http://127.0.0.1:9222"
+AUTH = "http://127.0.0.1:9999"
+# Synthetic logins defined by backend/tests/supabase_auth_fixture.py.
+TEACHER = "teacher@synthetic.aeos.test"
+SUPPORT = "support@synthetic.aeos.test"
+PASSWORD = "synthetic-password"
 STUDENT = "33333333-3333-4333-8333-333333333333"
 OTHER_ASSESSMENT = "66666666-6666-4666-8666-666666666666"
 
@@ -22,14 +30,16 @@ def wait_for_services():
         try:
             with urlopen(Request("http://127.0.0.1:8000/assessments", headers={"Authorization": "Bearer synthetic-teacher"}), timeout=2) as response:
                 assert response.status == 200
-            with urlopen(BASE + "/assessments", timeout=2) as response:
+            with urlopen(AUTH + "/auth/v1/.well-known/jwks.json", timeout=2) as response:
+                assert response.status == 200
+            with urlopen(BASE + "/login", timeout=2) as response:
                 assert response.status == 200
             with urlopen(DEBUG + "/json/list", timeout=2) as response:
                 pages = json.load(response)
             return next(page["webSocketDebuggerUrl"] for page in pages if page["type"] == "page")
         except (OSError, AssertionError, StopIteration):
             time.sleep(0.5)
-    raise AssertionError("Synthetic backend, built frontend, or Chrome failed to start")
+    raise AssertionError("Synthetic backend, Auth fixture, built frontend, or Chrome failed to start")
 
 
 class Browser:
@@ -69,6 +79,25 @@ class Browser:
         await self.call("Page.navigate", url=BASE + path)
         await self.wait("window.__aeosNavigationMark !== true && location.pathname === " + json.dumps(path), "fresh navigation")
 
+    async def goto(self, path):
+        """Navigate and wait for the new document, wherever redirects land."""
+        await self.evaluate("window.__aeosNavigationMark = true")
+        await self.call("Page.navigate", url=BASE + path)
+        await self.wait("window.__aeosNavigationMark !== true && document.readyState === 'complete'", "fresh navigation")
+
+    async def sign_in(self, email, password, next_path):
+        await self.goto("/login?next=" + quote(next_path, safe=""))
+        # The form renders client-side; React props on it mean handlers are live,
+        # so submitting cannot fall back to a native GET that leaks the password.
+        await self.wait("location.pathname === '/login' && Object.keys(document.querySelector('form') || {}).some(k => k.startsWith('__reactProps'))", "hydrated sign-in form")
+        await self.fill("#email", email)
+        await self.fill("#password", password)
+        await self.submit()
+
+    async def sign_out(self):
+        await self.evaluate("Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Sign out').click()")
+        await self.wait("location.pathname === '/login'", "signed-out redirect to /login")
+
     async def reload(self):
         await self.evaluate("window.__aeosReloadMark = true")
         await self.call("Page.reload")
@@ -95,10 +124,20 @@ async def main():
         browser = Browser(socket)
         await browser.call("Page.enable")
         await browser.call("Runtime.enable")
-        preload = await browser.call("Page.addScriptToEvaluateOnNewDocument", source="try { localStorage.setItem('aeos_access_token', 'synthetic-teacher'); } catch (_) {}")
-        await browser.navigate("/assessments")
-        await browser.wait("document.body.innerText.includes('A Reading Screen')", "assessment list")
-        await browser.call("Page.removeScriptToEvaluateOnNewDocument", identifier=preload["identifier"])
+        await browser.goto("/assessments")
+        await browser.wait("location.pathname === '/login' && new URLSearchParams(location.search).get('next') === '/assessments'", "signed-out redirect to /login")
+        api = await browser.evaluate("fetch('/api/assessments').then(r => ({ status: r.status, redirected: r.redirected }))")
+        assert api == {"status": 401, "redirected": False}, api
+        print("PASS: signed out, pages redirect to /login with the return path and the API answers 401")
+
+        await browser.sign_in(TEACHER, "not-the-password", "/assessments")
+        await browser.wait("document.querySelector('.error')?.innerText.includes('Incorrect email or password.')", "generic sign-in refusal")
+        assert await browser.evaluate("location.pathname === '/login'")
+        await browser.fill("#password", PASSWORD)
+        await browser.submit()
+        await browser.wait("location.pathname === '/assessments' && document.body.innerText.includes('A Reading Screen')", "assessment list after sign-in")
+        assert await browser.evaluate("document.cookie.includes('-auth-token')")
+        print("PASS: wrong password refused generically; sign-in returns to the requested page with a cookie session")
 
         await browser.navigate("/assessments/new")
         await browser.wait("document.querySelector('#student_id') !== null", "assessment intake")
@@ -145,9 +184,9 @@ async def main():
         assert await browser.evaluate("document.querySelector('#review-summary').value === ''")
         print("PASS: invalid score is not saved; discard clears unsaved fields")
 
-        await browser.evaluate("localStorage.setItem('aeos_access_token', 'synthetic-support')")
-        await browser.reload()
-        await browser.wait("document.querySelector('#review-summary') !== null", "support read access")
+        await browser.sign_out()
+        await browser.sign_in(SUPPORT, PASSWORD, path)
+        await browser.wait("location.pathname === %s && document.querySelector('#review-summary') !== null" % json.dumps(path), "support read access")
         await browser.fill("#review-summary", "Synthetic forbidden write")
         await browser.submit()
         await browser.wait("document.querySelector('[role=alert]')?.innerText.includes('teacher or admin')", "write-role denial")
@@ -155,18 +194,18 @@ async def main():
         assert await browser.evaluate("document.querySelectorAll('.review-list li').length === 2")
         print("PASS: forbidden save preserves form; no false success or new review")
 
-        await browser.evaluate("localStorage.setItem('aeos_access_token', 'synthetic-teacher')")
-        await browser.navigate("/assessments/" + OTHER_ASSESSMENT)
+        await browser.sign_out()
+        await browser.sign_in(TEACHER, PASSWORD, "/assessments/" + OTHER_ASSESSMENT)
         await browser.wait("document.querySelector('[role=alert]')?.innerText.includes('Assessment not found')", "cross-tenant read denial")
         assert await browser.evaluate("document.querySelector('#review-summary') === null")
         print("PASS: cross-tenant assessment shows no review form")
 
-        await browser.evaluate("localStorage.removeItem('aeos_access_token')")
-        await browser.navigate(path)
-        await browser.wait("document.querySelector('[role=alert]')?.innerText.includes('Please sign in')", "missing-session feedback")
+        await browser.sign_out()
+        await browser.goto(path)
+        await browser.wait("location.pathname === '/login' && new URLSearchParams(location.search).get('next') === %s" % json.dumps(path), "signed-out redirect")
         assert await browser.evaluate("document.querySelector('#review-summary') === null")
         assert not browser.errors, browser.errors
-        print("PASS: missing session shows sign-in prerequisite; no browser runtime exceptions")
+        print("PASS: after sign-out the review page redirects to /login; no browser runtime exceptions")
 
 
 if __name__ == "__main__":

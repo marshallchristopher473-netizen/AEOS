@@ -297,6 +297,11 @@ jobs:
         working-directory: frontend
         run: python ../.github/scripts/record-command.py lint-glob-guards node tests/lint-glob-override.test.mjs
 
+      - name: Verify sign-in redirect guard and awaited session checks
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: python ../.github/scripts/record-command.py sign-in-guards node --test tests/redirect.test.mjs tests/session-token.test.mjs
+
       - name: Lint frontend
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
@@ -313,6 +318,12 @@ jobs:
         id: frontend-build
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
         working-directory: frontend
+        env:
+          # Public sign-in settings are inlined at build time. These point at the
+          # loopback Auth fixture the browser check signs in against; this build
+          # is never deployed.
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9999
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-anon-key
         run: python ../.github/scripts/record-command.py build npm run build
 
       - name: Set up Python for the synthetic review fixture

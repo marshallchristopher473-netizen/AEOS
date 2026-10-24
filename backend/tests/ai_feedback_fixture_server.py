@@ -14,6 +14,7 @@ from app.main import app
 from app.services.ai_feedback.provider import ProviderCompletion, get_feedback_provider_factory
 from app.services.ai_feedback.rubrics import load_registry
 from app.services.supabase_service import get_supabase_admin_client
+from tests import supabase_auth_fixture
 from tests.fakes import ORG_A, ORG_B
 from tests.review_fixture_server import database, synthetic_session
 
@@ -82,4 +83,5 @@ if __name__ == "__main__":
     app.dependency_overrides[get_supabase_admin_client] = lambda: database
     app.dependency_overrides[get_ai_feedback_settings] = lambda: SETTINGS
     app.dependency_overrides[get_feedback_provider_factory] = lambda: (lambda _settings: provider)
+    supabase_auth_fixture.start_in_background()
     uvicorn.run(app, host="127.0.0.1", port=8000)

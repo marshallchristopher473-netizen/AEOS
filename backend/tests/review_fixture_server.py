@@ -11,6 +11,7 @@ from fastapi.security import HTTPBearer
 from app.core.auth import get_current_user
 from app.main import app
 from app.services.supabase_service import get_supabase_admin_client
+from tests import supabase_auth_fixture
 from tests.fakes import FakeClient, seeded_tables
 
 bearer = HTTPBearer(auto_error=False)
@@ -23,9 +24,15 @@ async def synthetic_session(credentials=Depends(bearer)):
         "synthetic-support": "auth-support-a",
         "synthetic-other-tenant": "auth-user-b",
     }
-    if credentials is None or credentials.credentials not in subjects:
+    if credentials is None:
         raise HTTPException(status_code=401, detail="Synthetic session required")
-    return {"sub": subjects[credentials.credentials]}
+    if credentials.credentials in subjects:
+        return {"sub": subjects[credentials.credentials]}
+    # A session from signing in through /login against the synthetic Auth fixture.
+    claims = supabase_auth_fixture.verify_access_token(credentials.credentials)
+    if claims is None:
+        raise HTTPException(status_code=401, detail="Synthetic session required")
+    return {"sub": claims["sub"]}
 
 
 if __name__ == "__main__":
@@ -35,4 +42,5 @@ if __name__ == "__main__":
 
     app.dependency_overrides[get_current_user] = synthetic_session
     app.dependency_overrides[get_supabase_admin_client] = lambda: database
+    supabase_auth_fixture.start_in_background()
     uvicorn.run(app, host="127.0.0.1", port=8000)

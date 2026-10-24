@@ -16,7 +16,8 @@ recommendations; every new summary is teacher-entered.
 ## Services and boundaries
 
 - All three assessment pages use `src/lib/api.ts` through `src/lib/assessments.ts`.
-  The client reads the existing `aeos_access_token` session convention.
+  The client takes the bearer token from the signed-in Supabase session, which
+  `@supabase/ssr` keeps in a cookie; application code stores no token itself.
 - Next.js proxies same-origin `/api` requests to `AEOS_API_URL`. Bearer headers
   reach the unchanged backend authentication dependencies.
 - `AssessmentService` and `AssessmentResultService` reuse `tenant_scope.py`.
@@ -45,10 +46,10 @@ are the subject of the still-separate draft PR #22. Check the configured
 membership before using a real session. Do not treat that unmerged PR as part
 of this workflow candidate.
 
-The frontend currently expects a valid session access token under the browser
-local-storage key `aeos_access_token`; it has no sign-in UI. A development user
-must obtain that session from their configured authentication provider. Never
-use a service-role key as a browser session token.
+Sign in at `/login` with a Supabase Auth user that is linked to an active AEOS
+organization membership (see "Signing in to the teacher portal locally" in the
+root README). Signed-out visitors are redirected to `/login`. Never use a
+service-role key as a browser session token.
 
 Open `/assessments`, select **Review**, enter findings, select **Draft** or
 **Complete**, and choose **Save review**. Confirm the saved review appears,
@@ -82,11 +83,16 @@ CI also builds the actual Next.js frontend, starts the loopback-only
 `backend/tests/review_fixture_server.py` with `AEOS_SYNTHETIC_REVIEW=1`, and runs
 `frontend/tests/browser_review.py` against Chrome. The fixture uses production
 HTTP routes, actor resolution, services, and schemas with synthetic sessions
-and storage. The browser check covers intake, empty reviews, saving/reloading
-both states, zero/optional scores, validation, discard, failed-save retention,
-role and cross-tenant denial, and missing-session feedback. It uses the
-existing backend dependencies and the runner's Chrome.
-It does not establish JWT verification or real PostgREST persistence.
+and storage. The browser signs in through `/login` against the loopback
+`backend/tests/supabase_auth_fixture.py`, which issues ES256 tokens and
+publishes their key, so the Next.js proxy verifies sessions as it would against
+a hosted project. The check covers the signed-out redirect and API 401, a
+refused wrong password, intake, empty reviews, saving/reloading both states,
+zero/optional scores, validation, discard, failed-save retention, role and
+cross-tenant denial, and sign-out. It uses the existing backend dependencies
+and the runner's Chrome. The backend fixture maps the fixture-issued token's
+subject itself, so it does not establish the backend's JWT verification or real
+PostgREST persistence.
 
 For the limited offline business-logic check from the repository root:
 
