@@ -82,6 +82,7 @@ MIGRATIONS = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_primary_key_defaults.sql",
 )
 
 pytestmark = pytest.mark.skipif(
@@ -428,6 +429,67 @@ class TestEnvironmentPreconditions:
             cur.execute("SELECT auth.uid()::text")
             (subject,) = cur.fetchone()
         assert subject == AUTH_A
+
+
+# ---------------------------------------------------------------------------
+# Server-generated primary keys (P0-01 finding, fixed by migration 005).
+# ---------------------------------------------------------------------------
+
+
+class TestServerGeneratedPrimaryKeys:
+    """The API never sends an `id`; the database must generate one.
+
+    Before 005 no table had an id default, so every create endpoint failed with
+    23502 against a real database while the fake-backed API tests stayed green.
+    """
+
+    def test_every_public_id_column_has_a_default(self, admin_conn):
+        rows = admin_conn.execute(
+            "SELECT table_name, column_default FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND column_name = 'id' ORDER BY table_name"
+        ).fetchall()
+        assert rows, "no public tables with an id column were found"
+        missing = [table for table, default in rows if default is None]
+        assert not missing, f"id has no server default on: {missing}"
+
+    @pytest.mark.parametrize(
+        "table,columns,values",
+        [
+            (
+                "students",
+                "organization_id, school_id, first_name, last_name, created_by",
+                (ORG_A, SCHOOL_A, "Omit", "Id", USER_A),
+            ),
+            (
+                "assessments",
+                "organization_id, student_id, created_by, title, assessment_type",
+                (ORG_A, STUDENT_A, USER_A, "No id supplied", "ela"),
+            ),
+            (
+                "intervention_plans",
+                "organization_id, student_id, assessment_id, created_by, title",
+                (ORG_A, STUDENT_A, ASSESSMENT_A, USER_A, "No id supplied"),
+            ),
+            (
+                "assessment_results",
+                "organization_id, assessment_id, student_id, created_by, summary",
+                (ORG_A, ASSESSMENT_A, STUDENT_A, USER_A, "No id supplied"),
+            ),
+        ],
+    )
+    def test_authenticated_insert_without_id_gets_a_generated_uuid(
+        self, as_org_a, table, columns, values
+    ):
+        """Mirrors the API's insert shape, as the RLS-constrained role."""
+        placeholders = ", ".join(["%s"] * len(values))
+        with as_org_a.cursor() as cur:
+            cur.execute(
+                f"INSERT INTO public.{table} ({columns}) VALUES ({placeholders}) RETURNING id",
+                values,
+            )
+            (generated,) = cur.fetchone()
+        as_org_a.rollback()
+        assert isinstance(generated, uuid.UUID)
 
 
 # ---------------------------------------------------------------------------
