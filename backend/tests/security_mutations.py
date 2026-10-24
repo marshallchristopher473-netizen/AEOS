@@ -28,8 +28,9 @@ proves nothing about the suite. Every mutation therefore goes through an
 explicit validity precheck before any test runs:
 
   * Python targets       -> byte-compile the tree and import `app.main`
-  * SQL targets          -> apply the shim + migrations 001..004 to a scratch
-                            database and require every statement to succeed
+  * SQL targets          -> apply the shim + every migration in MIGRATION_FILES
+                            to a scratch database and require every statement
+                            to succeed
   * Frontend TS targets  -> textual substitution only (no build in this harness)
 
 RUNNING
@@ -71,6 +72,10 @@ MIGRATION_FILES = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_revoke_rls_blind_table_privileges.sql",
+    "006_ai_feedback_drafts.sql",
+    "007_ai_feedback_draft_ownership.sql",
+    "008_revoke_maintain_and_anon_function_execute.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement
@@ -96,6 +101,8 @@ APP_SUITE = (
     "tests/test_fk_relationship_rls.py",
 )
 FULL_SUITE = ("tests/",)
+AI_FEEDBACK_SUITE = ("tests/test_ai_feedback.py",)
+AI_FEEDBACK_RLS_SUITE = ("tests/test_ai_feedback_rls.py",)
 
 
 class Mutation:
@@ -110,11 +117,12 @@ class Mutation:
         suite,
         needs_db,
         equivalent_because=None,
+        min_server_version=None,
     ):
-        # Identifier from the requested M01..M18 mutation contract. Several
+        # Identifier from the M01..M22 mutation contract. Several
         # mutations may share an identifier when the contract line names one
         # boundary that this codebase enforces in more than one materially
-        # distinct place (e.g. M18's seven separate JWT validation cases).
+        # distinct place (e.g. M18's separate JWT validation cases).
         self.contract = contract
         self.name = name
         # Plain-language statement of the security property being removed.
@@ -129,6 +137,11 @@ class Mutation:
         # Set this ONLY with recorded evidence that the removed condition is
         # genuinely unreachable, and state the evidence in the string.
         self.equivalent_because = equivalent_because
+        # `server_version_num` the control exists from, for a privilege an
+        # older engine does not have (MAINTAIN is 17+). On an older engine the
+        # mutant is reported NOT APPLICABLE, neither scored nor a failure; the
+        # CI job on the newer engine must kill it.
+        self.min_server_version = min_server_version
 
     @property
     def kind(self):
@@ -186,8 +199,8 @@ MUTATIONS = [
         "backend/app/core/auth.py",
         "        payload = jwt.decode(\n"
         "            token,\n"
-        "            matching_key,\n"
-        '            algorithms=["RS256"],\n'
+        "            verification_key,\n"
+        "            algorithms=[algorithm],\n"
         "            audience=SUPABASE_JWT_AUDIENCE,\n"
         "            issuer=SUPABASE_JWT_ISSUER,\n"
         "            options={\n"
@@ -600,14 +613,14 @@ MUTATIONS = [
         # Audience is enforced in TWO places, so the mutation must remove both
         # to represent the boundary the contract names. Targeting only
         # `"verify_aud": True` proves nothing: the explicit check below strictly
-        # subsumes it (jose 3.3.0 returns early from `_validate_aud` when the
+        # subsumes it (jose 3.3.0-3.5.0 returns early from `_validate_aud` when the
         # claim is absent), so flipping the flag alone changes no observable
         # behaviour and the mutant would survive forever as a dead control.
         '                "verify_aud": True,\n'
         '                "verify_iss": True,\n'
         "            },\n"
         "        )\n"
-        "        # python-jose 3.3.0 returns early from `_validate_aud` when the `aud`\n"
+        "        # python-jose (3.3.0-3.5.0) returns early from `_validate_aud` when the `aud`\n"
         "        # claim is absent, so `verify_aud: True` above rejects a WRONG audience\n"
         "        # but silently accepts a MISSING one. Configuring an audience expresses\n"
         "        # the intent that audience be enforced, so require the claim here.\n"
@@ -632,6 +645,53 @@ MUTATIONS = [
         "backend/app/core/auth.py",
         '                "verify_signature": True,',
         '                "verify_signature": False,',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18i",
+        "symmetric (oct) published keys accepted as HS256",
+        "A shared secret must never verify a token, even one published in the "
+        "JWKS; otherwise anyone who can read the JWKS can mint any session.",
+        "backend/app/core/auth.py",
+        '    elif key_type == "EC" and jwk.get("crv") == "P-256":\n'
+        '        algorithm = "ES256"\n',
+        '    elif key_type == "EC" and jwk.get("crv") == "P-256":\n'
+        '        algorithm = "ES256"\n'
+        '    elif key_type == "oct":\n'
+        '        algorithm = "HS256"\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18j",
+        "verification algorithm taken from the token header",
+        "The algorithm is pinned by the published key the `kid` selects; the "
+        "token's own `alg` header may not choose it.",
+        "backend/app/core/auth.py",
+        # The pinned algorithm is enforced twice: the key is built for it and
+        # decode allows only it. Taking the header's alg means both.
+        "        verification_key = construct_jwk(matching_key, algorithm)\n"
+        "        payload = jwt.decode(\n"
+        "            token,\n"
+        "            verification_key,\n"
+        "            algorithms=[algorithm],\n",
+        '        verification_key = construct_jwk(matching_key, unverified_header.get("alg"))\n'
+        "        payload = jwt.decode(\n"
+        "            token,\n"
+        "            verification_key,\n"
+        '            algorithms=[unverified_header.get("alg")],\n',
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18k",
+        "raw JWKS entry handed to python-jose instead of the checked key",
+        "The key that verifies the signature must be exactly the published "
+        "entry whose type and curve were checked, not keys nested inside it.",
+        "backend/app/core/auth.py",
+        "        verification_key = construct_jwk(matching_key, algorithm)\n",
+        "        verification_key = matching_key\n",
         APP_SUITE,
         False,
     ),
@@ -674,12 +734,304 @@ MUTATIONS = [
         "Any JWT parse or validation error must fail closed with 401; the "
         "error path may not return an identity.",
         "backend/app/core/auth.py",
-        "    except (JWTError, ValueError, TypeError) as exc:\n"
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
         "        raise unauthorized() from exc",
-        "    except (JWTError, ValueError, TypeError):\n"
+        "    except (JOSEError, ValueError, TypeError):\n"
         '        return {"sub": "auth-user-a"}',
         APP_SUITE,
         False,
+    ),
+    Mutation(
+        "M18h",
+        "unusable published keys escape the 401 handler as server errors",
+        "Every JOSE error on the verification path, including a key the caller's "
+        "kid selects but python-jose cannot use, must fail closed with 401.",
+        "backend/app/core/auth.py",
+        "    except (JOSEError, ValueError, TypeError) as exc:\n",
+        # Re-raising JWKError reproduces the original JWTError-only catch
+        # exactly, without depending on a name the fixed module no longer
+        # imports.
+        "    except (JOSEError, ValueError, TypeError) as exc:\n"
+        '        if type(exc).__name__ == "JWKError":\n'
+        "            raise\n",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18l",
+        "tokens without an expiry claim accepted",
+        "A token must carry `exp`; python-jose treats the claim as optional, "
+        "so without the explicit check a token minted without one never expires.",
+        "backend/app/core/auth.py",
+        '        if "exp" not in payload:\n'
+        '            raise unauthorized("JWT is missing the expiry claim")\n',
+        "",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18m",
+        "cached key set never expires, so revoked keys keep verifying",
+        "A key the issuer stops publishing must stop verifying within the "
+        "cache's maximum age; a matching cached kid never forces a refresh.",
+        "backend/app/core/auth.py",
+        "    if _jwks is None or force_refresh or expired:\n",
+        "    if _jwks is None or force_refresh:\n",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18n",
+        "failed refresh falls back to the expired key set",
+        "When a due key-set refresh fails, verification must fail closed "
+        "rather than keep trusting keys whose freshness can no longer be shown.",
+        "backend/app/core/auth.py",
+        "        except (httpx.HTTPError, ValueError, TypeError) as exc:\n"
+        "            raise HTTPException(\n"
+        "                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,\n",
+        "        except (httpx.HTTPError, ValueError, TypeError) as exc:\n"
+        "            if _jwks is not None:\n"
+        "                return _jwks\n"
+        "            raise HTTPException(\n"
+        "                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,\n",
+        APP_SUITE,
+        False,
+    ),
+    Mutation(
+        "M18o",
+        "every unknown key ID forces a key-set fetch",
+        "An invented `kid` is read before any signature check, so it may force "
+        "at most one refresh per interval; otherwise anonymous requests drive "
+        "unbounded traffic to the key endpoint and real users get 503.",
+        "backend/app/core/auth.py",
+        "    if force_refresh and _jwks is not None and not expired and not _claim_forced_refresh():\n"
+        "        force_refresh = False\n",
+        "",
+        APP_SUITE,
+        False,
+    ),
+    # =====================================================================
+    # M19 — table privileges that RLS does not govern
+    # =====================================================================
+    Mutation(
+        "M19a",
+        "client roles keep TRUNCATE on existing tables",
+        "TRUNCATE is not subject to row-level security, so a client role "
+        "holding it can empty every tenant's rows regardless of policy.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "REVOKE TRUNCATE, TRIGGER, REFERENCES\n"
+        "    ON ALL TABLES IN SCHEMA public",
+        "REVOKE TRIGGER, REFERENCES\n"
+        "    ON ALL TABLES IN SCHEMA public",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19b",
+        "tables created later regain TRUNCATE from the default privileges",
+        "Revoking TRUNCATE from today's tables is not enough; the standing "
+        "default grant must not hand it to the next migration's tables.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        "    REVOKE TRIGGER, REFERENCES ON TABLES\n",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19c",
+        "default-privilege revoke issued globally instead of for schema public",
+        "A global default-privilege REVOKE does not take back a per-schema "
+        "default GRANT, so tables created later in public regain TRUNCATE.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public\n"
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        "ALTER DEFAULT PRIVILEGES\n"
+        "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES\n",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19d",
+        "anon keeps TRUNCATE on existing tables",
+        "The unauthenticated client role must not hold a privilege RLS does "
+        "not govern; revoking from `authenticated` alone leaves anon able to "
+        "empty every tenant's rows.",
+        f"{MIGRATIONS}/005_revoke_rls_blind_table_privileges.sql",
+        "    ON ALL TABLES IN SCHEMA public\n"
+        "    FROM anon, authenticated;\n",
+        "    ON ALL TABLES IN SCHEMA public\n"
+        "    FROM authenticated;\n",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M19e",
+        "client roles keep MAINTAIN on existing tables (PostgreSQL 17)",
+        "MAINTAIN is not subject to row-level security; a client role holding "
+        "it can REINDEX or CLUSTER, and so exclusively lock and rewrite, every "
+        "tenant's table.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "        EXECUTE 'REVOKE MAINTAIN ON ALL TABLES IN SCHEMA public FROM anon, authenticated';\n",
+        "",
+        RLS_SUITE,
+        True,
+        min_server_version=170000,
+    ),
+    Mutation(
+        "M19f",
+        "tables created later regain MAINTAIN from the default privileges",
+        "Revoking MAINTAIN from today's tables is not enough; the standing "
+        "default grant must not hand it to the next migration's tables.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public '\n"
+        "                'REVOKE MAINTAIN ON TABLES FROM anon, authenticated';\n",
+        "",
+        RLS_SUITE,
+        True,
+        min_server_version=170000,
+    ),
+    # =====================================================================
+    # M20 — WHERE-less writes on tables other than students
+    # =====================================================================
+    Mutation(
+        "M20",
+        "ai_recommendations_delete widened to any authenticated user",
+        "A WHERE-less DELETE never consults the SELECT policy, so the DELETE "
+        "policy's USING clause alone must stop another tenant, a suspended "
+        "tenant or a disabled account from removing a tenant's rows.",
+        f"{MIGRATIONS}/004_org_lifecycle_and_write_authority.sql",
+        "CREATE POLICY ai_recommendations_delete\n"
+        "ON public.ai_recommendations FOR DELETE TO authenticated\n"
+        "USING (public.aeos_is_org_admin(ai_recommendations.organization_id));",
+        "CREATE POLICY ai_recommendations_delete\n"
+        "ON public.ai_recommendations FOR DELETE TO authenticated\n"
+        "USING (true);",
+        RLS_SUITE,
+        True,
+    ),
+    # =====================================================================
+    # M21 — AI feedback drafts belong to the requesting teacher
+    # =====================================================================
+    Mutation(
+        "M21a",
+        "service lets any organization member read any feedback draft",
+        "Inside one organization only the requesting teacher and org admins "
+        "may read a draft and the student response it holds.",
+        "backend/app/services/ai_feedback/service.py",
+        '        return request_row["created_by"] == actor.user_id or actor.role == "admin"\n',
+        "        return True\n",
+        AI_FEEDBACK_SUITE,
+        False,
+    ),
+    Mutation(
+        "M21b",
+        "service lets an admin decide another teacher's draft",
+        "Only the teacher who requested a draft may accept, revise or reject "
+        "it; an admin reads for oversight but does not decide for the teacher.",
+        "backend/app/services/ai_feedback/service.py",
+        '        if request_row["created_by"] != actor.user_id:\n'
+        '            raise api_error(status.HTTP_403_FORBIDDEN, "not_draft_owner")\n',
+        "",
+        AI_FEEDBACK_SUITE,
+        False,
+    ),
+    Mutation(
+        "M21c",
+        "ownership read helper widened to any organization member",
+        "The database must not show a peer teacher or support staff another "
+        "teacher's requests, drafts or decisions through the data API.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "              AND public.aeos_is_current_actor_for_org(request.created_by, request.organization_id)\n",
+        "              AND public.aeos_has_org_access(request.organization_id)\n",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21d",
+        "ai_feedback_requests_select reverted to the 006 org-wide policy",
+        "A request row holds the student's response; a peer teacher must not "
+        "read it.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "USING (public.aeos_can_read_ai_feedback_request(ai_feedback_requests.id, "
+        "ai_feedback_requests.organization_id));",
+        "USING (public.aeos_has_org_access(ai_feedback_requests.organization_id));",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21e",
+        "ai_feedback_drafts_select reverted to the 006 org-wide policy",
+        "A peer teacher must not read another teacher's AI draft.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "USING (public.aeos_can_read_ai_feedback_request(ai_feedback_drafts.request_id, "
+        "ai_feedback_drafts.organization_id));",
+        "USING (public.aeos_has_org_access(ai_feedback_drafts.organization_id));",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21f",
+        "ai_feedback_decisions_select reverted to the 006 org-wide policy",
+        "A peer teacher must not read another teacher's decisions.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        # The whole USING clause: dropping only the helper call is an
+        # equivalent mutant, because the sub-select on ai_feedback_drafts is
+        # itself filtered by the drafts policy.
+        "USING (\n"
+        "    EXISTS (\n"
+        "        SELECT 1\n"
+        "        FROM public.ai_feedback_drafts AS draft\n"
+        "        WHERE draft.id = ai_feedback_decisions.draft_id\n"
+        "          AND draft.organization_id = ai_feedback_decisions.organization_id\n"
+        "          AND public.aeos_can_read_ai_feedback_request(draft.request_id, draft.organization_id)\n"
+        "    )\n"
+        ");",
+        "USING (public.aeos_has_org_access(ai_feedback_decisions.organization_id));",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M21g",
+        "decision trigger accepts any active teacher or admin as the decider",
+        "The database refuses a decision recorded by anyone other than the "
+        "teacher who requested the draft, even from the service role.",
+        f"{MIGRATIONS}/007_ai_feedback_draft_ownership.sql",
+        "    IF NEW.decided_by IS DISTINCT FROM requester_id THEN\n"
+        "        RAISE EXCEPTION 'ai_feedback_decisions: only the teacher who requested the draft may decide it'\n"
+        "            USING ERRCODE = '23514';\n"
+        "    END IF;\n",
+        "",
+        AI_FEEDBACK_RLS_SUITE,
+        True,
+    ),
+    # =====================================================================
+    # M22 — SECURITY DEFINER helpers callable without signing in
+    # =====================================================================
+    Mutation(
+        "M22a",
+        "anon keeps EXECUTE on the SECURITY DEFINER helpers",
+        "The helpers read membership with RLS bypassed; PostgREST serves them "
+        "at /rest/v1/rpc/<name>, so the anon key alone must not run them.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "REVOKE EXECUTE\n"
+        "    ON ALL FUNCTIONS IN SCHEMA public\n"
+        "    FROM anon;\n",
+        "",
+        RLS_SUITE,
+        True,
+    ),
+    Mutation(
+        "M22b",
+        "helpers created later are executable by anon",
+        "Revoking EXECUTE from today's helpers is not enough; the standing "
+        "default grant must not hand it to the next migration's helpers.",
+        f"{MIGRATIONS}/008_revoke_maintain_and_anon_function_execute.sql",
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public\n"
+        "    REVOKE EXECUTE ON FUNCTIONS\n"
+        "    FROM anon;\n",
+        "",
+        RLS_SUITE,
+        True,
     ),
 ]
 
@@ -732,14 +1084,14 @@ def _precheck(root, mutation, database_url):
                 for name in MIGRATION_FILES:
                     conn.execute((root / MIGRATIONS / name).read_text())
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
-            return False, f"migrations 001..004 failed to apply: {exc}"
+            return False, f"migrations {', '.join(MIGRATION_FILES)} failed to apply: {exc}"
         finally:
             try:
                 with psycopg.connect(database_url, autocommit=True) as conn:
                     conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
             except Exception:  # noqa: BLE001 - cleanup only
                 pass
-        return True, "migrations 001..004 apply cleanly"
+        return True, f"all {len(MIGRATION_FILES)} migrations apply cleanly"
 
     return True, "textual substitution (no build step in this harness)"
 
@@ -750,7 +1102,10 @@ def _run_suite(root, suite, database_url):
         env["AEOS_TEST_DATABASE_URL"] = database_url
     else:
         env.pop("AEOS_TEST_DATABASE_URL", None)
-    env.pop("AEOS_REQUIRE_RLS_TESTS", None)
+    if database_url:
+        env["AEOS_REQUIRE_RLS_TESTS"] = "1"
+    else:
+        env.pop("AEOS_REQUIRE_RLS_TESTS", None)
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", *suite, "-q", "--no-header",
          "-p", "no:cacheprovider", "--tb=line", "-rfE"],
@@ -767,6 +1122,13 @@ def _run_suite(root, suite, database_url):
     return completed.returncode, summary, failed, errored
 
 
+def _server_version_num(database_url):
+    import psycopg
+
+    with psycopg.connect(database_url) as conn:
+        return int(conn.execute("SHOW server_version_num").fetchone()[0])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", dest="json_path", default=None,
@@ -774,11 +1136,21 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     database_url = os.environ.get("AEOS_TEST_DATABASE_URL")
+    server_version = _server_version_num(database_url) if database_url else None
     print("AEOS security mutation suite")
     print(f"repository: {REPO_ROOT}")
     print(f"database  : {'configured' if database_url else 'NOT CONFIGURED'}")
+    if server_version is not None:
+        print(f"server    : server_version_num {server_version}")
     print(f"mutations : {len(MUTATIONS)}")
     print()
+
+    # A job meant to kill the PostgreSQL 17 mutants must not pass while quietly
+    # running 16, where they would all be reported NOT APPLICABLE.
+    expected_major = os.environ.get("AEOS_EXPECT_PG_MAJOR")
+    if expected_major and (server_version is None or server_version // 10000 != int(expected_major)):
+        print(f"AEOS_EXPECT_PG_MAJOR={expected_major} but the server is {server_version}")
+        return 1
 
     records = []
 
@@ -803,6 +1175,16 @@ def main(argv=None):
             record["precheck"] = "skipped: no database configured"
             records.append(record)
             print(f"[NOT RUN ] {mutation.contract} {mutation.name}")
+            continue
+
+        if mutation.min_server_version and server_version < mutation.min_server_version:
+            record["result"] = "NOT APPLICABLE"
+            record["precheck"] = (
+                f"needs server_version_num >= {mutation.min_server_version}; "
+                f"this server is {server_version}"
+            )
+            records.append(record)
+            print(f"[N/A     ] {mutation.contract} {mutation.name} -> {record['precheck']}")
             continue
 
         started = time.time()
@@ -837,20 +1219,21 @@ def main(argv=None):
                 root, mutation.suite, database_url if mutation.needs_db else None
             )
             record["subset_summary"] = summary
+            record["subset_exit"] = code
             record["killed_by"] = failed
             record["errors"] = errored
 
             # A kill must come from a failing test assertion. Collection
             # errors, import errors and setup errors are explicitly not kills.
-            if failed:
-                record["result"] = (
-                    "KILLED" if not mutation.equivalent_because else "KILLED (was documented equivalent)"
-                )
-            elif errored or code not in (0, 1):
+            if errored or code not in (0, 1) or (code == 1 and not failed):
                 record["result"] = "INVALID MUTATION"
                 record["precheck"] = (
                     f"{detail}; but the suite did not execute cleanly "
                     f"(exit {code}): {summary}"
+                )
+            elif failed:
+                record["result"] = (
+                    "KILLED" if not mutation.equivalent_because else "KILLED (was documented equivalent)"
                 )
             elif mutation.equivalent_because:
                 record["result"] = "EQUIVALENT"
@@ -860,11 +1243,21 @@ def main(argv=None):
             # Interaction check: the complete suite, for every mutation that
             # got as far as executing.
             if database_url:
-                _, full_summary, full_failed, _ = _run_suite(
+                full_code, full_summary, full_failed, full_errors = _run_suite(
                     root, FULL_SUITE, database_url
                 )
                 record["full_suite_summary"] = full_summary
                 record["full_suite_failed_count"] = len(full_failed)
+                record["full_suite_exit"] = full_code
+                record["full_suite_errors"] = full_errors
+                if full_errors or full_code not in (0, 1) or (full_code == 1 and not full_failed):
+                    record["result"] = "INVALID MUTATION"
+                    record["precheck"] = (
+                        f"{detail}; full suite did not execute cleanly "
+                        f"(exit {full_code}): {full_summary}"
+                    )
+                elif record["result"].startswith("KILLED") and not full_failed:
+                    record["result"] = "SURVIVED"
 
             record["seconds"] = round(time.time() - started, 1)
             records.append(record)
@@ -886,6 +1279,7 @@ def main(argv=None):
             if record["full_suite_summary"]:
                 print(f"           full suite: {record['full_suite_summary']}")
         finally:
+            record["seconds"] = round(time.time() - started, 1)
             shutil.rmtree(workdir, ignore_errors=True)
 
     killed = [r for r in records if r["result"].startswith("KILLED")]
@@ -893,6 +1287,7 @@ def main(argv=None):
     equivalent = [r for r in records if r["result"] == "EQUIVALENT"]
     invalid = [r for r in records if r["result"] == "INVALID MUTATION"]
     not_executed = [r for r in records if r["result"] == "NOT EXECUTED"]
+    not_applicable = [r for r in records if r["result"] == "NOT APPLICABLE"]
 
     denominator = len(killed) + len(survived)
     score = (len(killed) / denominator * 100) if denominator else 0.0
@@ -911,6 +1306,7 @@ def main(argv=None):
     print(f"equivalent       : {len(equivalent)}")
     print(f"invalid          : {len(invalid)}")
     print(f"not executed     : {len(not_executed)}")
+    print(f"not applicable   : {len(not_applicable)} (engine predates the control)")
     print(f"mutation score   : {len(killed)}/{denominator} = {score:.1f}%")
 
     if equivalent:
@@ -954,6 +1350,7 @@ def main(argv=None):
         payload = {
             "repository_root": str(REPO_ROOT),
             "database_configured": bool(database_url),
+            "server_version_num": server_version,
             "python": sys.version,
             "totals": {
                 "killed": len(killed),
@@ -961,6 +1358,7 @@ def main(argv=None):
                 "equivalent": len(equivalent),
                 "invalid": len(invalid),
                 "not_executed": len(not_executed),
+                "not_applicable": len(not_applicable),
                 "score_numerator": len(killed),
                 "score_denominator": denominator,
             },

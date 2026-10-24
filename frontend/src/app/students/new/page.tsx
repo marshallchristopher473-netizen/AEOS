@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
+import { apiFetch } from '@/lib/api';
+
 export default function NewStudentPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,24 +27,10 @@ export default function NewStudentPage() {
     };
 
     try {
-      const token = localStorage.getItem('aeos_access_token');
-      if (!token) {
-        throw new Error('Please sign in before creating a student.');
-      }
-
-      const response = await fetch('http://127.0.0.1:8000/students/', {
+      await apiFetch('/students', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || 'Unable to create student.');
-      }
 
       router.push('/students');
     } catch (err) {
