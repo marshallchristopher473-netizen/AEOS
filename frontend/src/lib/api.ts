@@ -1,3 +1,5 @@
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '');
 
 // Errors whose body is the backend's sanitized `{ code, message }` shape keep
@@ -14,14 +16,18 @@ export class ApiError extends Error {
   }
 }
 
-export function getAccessToken(): string | null {
+// The bearer token comes from the signed-in Supabase session. getSession()
+// refreshes an expired access token before returning it. Callers must await
+// it: the returned Promise itself is always truthy.
+export async function getAccessToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
 
-  return localStorage.getItem('aeos_access_token');
+  const { data } = await getSupabaseBrowserClient().auth.getSession();
+  return data.session?.access_token ?? null;
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAccessToken();
+  const token = await getAccessToken();
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

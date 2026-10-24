@@ -46,7 +46,38 @@ The assessment pages use the shared API client and this same-origin proxy.
 
 Use `backend/.env.example` for backend configuration. Keep credentials in ignored
 environment files or your environment's secret manager; service-role credentials
-must stay server-side. A configured, migrated database and a supported Supabase
-session are prerequisites for a real database run. This slice has no sign-in UI.
-Follow the workflow guide for the existing session-token convention and the
-separate synthetic-data verification path.
+must stay server-side. A configured, migrated database and a Supabase project
+for sign-in are prerequisites for a real database run.
+
+## Signing in to the teacher portal locally
+
+Use synthetic data only. Do not create accounts or records for real students.
+
+1. Backend: `cp backend/.env.example backend/.env` and fill in the Supabase
+   values. Browser requests go through the same-origin `/api` proxy, so CORS is
+   only needed if you point `NEXT_PUBLIC_API_URL` at another origin; then list
+   that origin in `CORS_ALLOWED_ORIGINS` (explicit origins only; `*` is refused
+   at startup).
+2. Frontend: `cp frontend/.env.example frontend/.env.local` and set
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the public
+   anon key, never the service-role key). Without them every page redirects to
+   `/login` and sign-in reports that it is not configured.
+3. Create a test teacher:
+   - Supabase dashboard → Authentication → Users → Add user (email + password,
+     auto-confirm). Copy the user's UID.
+   - In the SQL editor, link that login to an AEOS organization. A login with
+     no active `users` row, or an inactive organization, is refused by the API.
+     ```sql
+     INSERT INTO organizations (id, name, type)
+     VALUES (gen_random_uuid(), 'Synthetic Pilot Org', 'pilot')
+     RETURNING id;
+
+     INSERT INTO users (id, organization_id, auth_user_id, email, full_name, role)
+     VALUES (gen_random_uuid(), '<org id from above>', '<auth user UID>',
+             'teacher@example.test', 'Test Teacher', 'teacher');
+     ```
+4. Open http://localhost:3000. Signed-out visitors are redirected to `/login`;
+   after sign-in you land on Students. "Sign out" is in the header.
+
+Checks: `npm run lint`, `npx tsc --noEmit`, `npm test`, and `npm run build` in
+`frontend/`; `python -m pytest tests/ -q` in `backend/`.

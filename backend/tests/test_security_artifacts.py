@@ -74,3 +74,25 @@ def test_service_role_key_is_not_referenced_by_frontend_source():
     for path in frontend_source.rglob("*"):
         if path.is_file():
             assert "SUPABASE_SERVICE_ROLE_KEY" not in path.read_text()
+
+
+def test_frontend_does_not_store_tokens_in_local_storage():
+    # The session is owned by the Supabase client; hand-rolled token storage
+    # in localStorage is readable by any injected script and bypasses refresh.
+    frontend_source = REPOSITORY_ROOT / "frontend" / "src"
+
+    for path in frontend_source.rglob("*"):
+        if path.is_file():
+            source = path.read_text()
+            assert "localStorage" not in source, path
+            assert "aeos_access_token" not in source, path
+
+
+def test_frontend_pages_call_the_api_through_the_shared_client():
+    # apiFetch attaches the session token and the configured API base URL.
+    pages = REPOSITORY_ROOT / "frontend" / "src" / "app"
+
+    for path in pages.rglob("*.tsx"):
+        source = path.read_text()
+        assert "127.0.0.1" not in source, path
+        assert "localhost:8000" not in source, path
