@@ -10,6 +10,24 @@ verification claim.
 | Inspected on | 2026-10-24 |
 | Source documents | `AEOS_Pilot_Launch_Prompts_2026-10-13.md` and `AEOS_Research_to_Pilot_Decision_Packet_v0.1.md` were **not found** in the repo, the session filesystem, or Google Drive. The P01 prompt text was therefore not available verbatim; this inventory follows the task description's stated P01 objective. |
 
+> **Scope correction: this inventory describes `main`, not the pilot candidate.**
+> `main` does not contain the pilot work. That work is stacked in open draft PRs.
+> The most recent is **#51** (head `b1e113cb9c78480412f47f7c5cce133d01185755`,
+> stacked on #50, CI green). Read-only inspection of that head shows it already has:
+>
+> | Capability | Where on #51 |
+> |---|---|
+> | Requests, drafts and teacher decisions (`accepted` / `revised` / `rejected`) | migration `006_ai_feedback_drafts.sql`: `ai_feedback_requests`, `ai_feedback_drafts`, `ai_feedback_decisions` |
+> | Idempotency | `request_key` and `decision_key`, each unique per organization and actor |
+> | Evidence spans located verbatim in the response | `ai_feedback_drafts` (006) |
+> | Draft ownership restricted to the requesting teacher | `007_ai_feedback_draft_ownership.sql` |
+> | TRUNCATE / TRIGGER / REFERENCES revoked from client roles | `005_revoke_rls_blind_table_privileges.sql` |
+> | Endpoints | FastAPI `backend/app/api/ai_feedback.py`, behind the same auth chain as §2 |
+>
+> Sections 3–7 below are accurate for `main` only. Where they say something is
+> absent, check #51 before acting on it. A P01 inventory of the #51 head has
+> not been written.
+
 ---
 
 ## 1. Architecture as built
@@ -120,12 +138,17 @@ between them is a human decision:
 | A. Pilot endpoints in FastAPI (`backend/app/api/pilot_*.py`) | Reuses the verified auth chain and the 30-mutant security suite. Scaffold `.ts` files become thin frontend clients only. | Scaffold must be translated to Python. |
 | B. Next.js route handlers as specified | Needs JWT verification and actor resolution reimplemented in TypeScript, and a service-role key in the Next.js server runtime. | Second auth system, not covered by the existing mutation suite. Conflicts with the "no new auth system" rule. |
 
+The candidate stack (#51) has already taken option A in practice. Its
+decisions and drafts endpoints live in FastAPI (`ai_feedback.py`). Adding the
+scaffold's Next.js routes and a new `20261014000100` migration would duplicate
+that work, not extend it.
+
 ## 7. Gaps the P02 security tests must cover (found in this inventory)
 
 | Gap | Evidence | Status |
 |---|---|---|
-| `anon` and `authenticated` hold `TRUNCATE` on every public table | Reproduced on local PG16 with repo migrations + Supabase default grants: `SET ROLE anon; TRUNCATE public.audit_logs;` **succeeded**. RLS does not apply to TRUNCATE. Migrations contain no `REVOKE`. Live `AEOS-MVP` grants the same privilege (see environment map). | FAIL (privilege present). No PostgREST verb issues TRUNCATE; a reachable path would need an RPC or a login role. **Not exploited, not tested end-to-end.** |
-| No test asserts TRUNCATE is denied | `grep -i truncate backend/tests` returns nothing | NOT TESTED |
+| `anon` and `authenticated` hold `TRUNCATE` on every public table | Reproduced on local PG16 with repo migrations + Supabase default grants: `SET ROLE anon; TRUNCATE public.audit_logs;` **succeeded**. RLS does not apply to TRUNCATE. Migrations contain no `REVOKE`. Live `AEOS-MVP` grants the same privilege (see environment map). | FAIL on `main` and live (privilege present). No PostgREST verb issues TRUNCATE; a reachable path would need an RPC or a login role. **Not exploited, not tested end-to-end.** The candidate stack revokes it in migration 005 (#51); not re-run in this session. |
+| No test asserts TRUNCATE is denied | `grep -i truncate backend/tests` returns nothing on `main` | NOT TESTED on `main`; #51 not checked |
 | Self-role-change | `users` has no UPDATE policy, so direct updates are denied by RLS; no API route updates users | Not explicitly tested |
 
 ## 8. Baseline test evidence on `b9c68aa`

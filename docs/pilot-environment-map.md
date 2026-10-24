@@ -9,7 +9,7 @@ identifiers, not credentials.
 
 | Required artifact | Status | Why |
 |---|---|---|
-| Candidate branch / SHA | Observed | `main` = `b9c68aa3e6fe35f676da04c10683bfdda12a9eed`. Working branch `ccr-f3f20edd-1srqpx` started at the same SHA. A human must still confirm this is the pilot candidate. |
+| Candidate branch / SHA | **BLOCKED (human choice)** | `main` = `b9c68aa3e6fe35f676da04c10683bfdda12a9eed` holds none of the pilot work. The newest pilot stack is draft PR **#51** (`claude/highest-priority-blocker-8o0bl4` @ `b1e113cb9c78480412f47f7c5cce133d01185755`, stacked on #50, CI green on that head). 27 other draft PRs are open. The evidence points to #51, but only the owner can name the candidate. |
 | Local/test Supabase project for P02 migrations | **BLOCKED** | No project is both reachable and designated as test. See §3. |
 | Backend deployment | **BLOCKED** | No FastAPI deployment is observable. See §4. |
 | Launch pack + decision packet | **BLOCKED** | Not found in repo, filesystem, or Google Drive. |
@@ -67,7 +67,7 @@ privilege-metadata `SELECT`). No data rows were read. Nothing was written.
 
 | Surface | Observation | Status |
 |---|---|---|
-| Frontend on Vercel | A project named `aeos` (`prj_YN58grCsUbX3NNvC0ySXlBAfpNqR`, team `team_3l5DZy3Rr91pttvZdWfgQ9KJ`) appears in `list_projects`. `get_project` returned 404 and `list_deployments` returned 403. Git link, framework, root directory, env var names and deployed SHA are **not observable**. | BLOCKED |
+| Frontend on Vercel | Project `aeos` (`prj_YN58grCsUbX3NNvC0ySXlBAfpNqR`, team `team_3l5DZy3Rr91pttvZdWfgQ9KJ`). `get_project` returned 404 and `list_deployments` returned 403 from this session. The Vercel bot comment on PR #52 shows the project is **Git-connected to this repo**, root directory `frontend`, and builds a **preview per branch**, e.g. `aeos-git-ccr-f3f20edd-1srqpx-christopher-marshall-s-projects.vercel.app` (status Ready). The production deployment SHA and env var names are still **not observable**. | Partly observed |
 | FastAPI backend | `.replit` runs `uvicorn app.main:app` on port 8000 (Replit workflow). No deployment URL, SHA, or health response was observable from this session. No other backend host is configured in the repo. | BLOCKED |
 | `NEXT_PUBLIC_API_URL` in any deployed frontend | not observable | |
 
@@ -97,6 +97,10 @@ Supabase project and record the version" on its own.
 
 ## 7. Decisions needed from a human before P02
 
+0. **Candidate:** name the pilot candidate (#51 or another). Then re-run this
+   inventory against that SHA. #51 already carries decisions, drafts,
+   idempotency and the TRUNCATE revoke in FastAPI, so the master task's
+   Step 2 scaffold may be largely redundant there.
 1. **Test target:** designate one project for P02 migrations. Options:
    (a) restore DB access to `aeos-v05-verify-disposable` and confirm it is
    disposable; (b) run the Supabase CLI locally (Docker); (c) explicitly
