@@ -1,0 +1,56 @@
+{
+  "id": "RUB-ATTEND3",
+  "version": "0.3",
+  "status": "CANDIDATE-UNAPPROVED",
+  "data_classification": "synthetic",
+  "provenance": "Authored by an AI assistant on 2026-10-12 as a candidate for human review. Structure follows RUB-CER3@0.1; the 0 and IE definitions are new. Not transcribed from P-TER-01 v0.3, which was not located.",
+  "task_ref": "TASK-ATTEND@0.3",
+  "allowed_values": [
+    "0",
+    "1",
+    "2",
+    "IE"
+  ],
+  "value_definitions": {
+    "2": "Criterion fully shown, as the criterion's level 2 descriptor states. Requires an evidence span from the response.",
+    "1": "Criterion partly shown, as the criterion's level 1 descriptor states. Requires an evidence span from the response.",
+    "0": "Assessable and absent: the response contains on-task writing that could have shown this criterion, and it does not. No evidence span.",
+    "IE": "Insufficient evidence: the response does not contain enough readable, on-task writing to judge this criterion either way. No evidence span. IE is not a low score and is never counted as 0."
+  },
+  "not_values": {
+    "blank": "A blank cell means the rater recorded nothing. It is missing data, not IE and not 0.",
+    "ai_abstention": "An AI drafting abstention (outcome 'abstain') is system behavior, not a rubric value. It never sets or implies 0 or IE."
+  },
+  "boundary_rules_ref": "docs/pilots/p-ter-01/SCORING_BOUNDARIES.md",
+  "not_scored": "Spelling, punctuation, capitalization and transcription artifacts are not scored.",
+  "criteria": [
+    {
+      "id": "C1",
+      "name": "Claim",
+      "levels": {
+        "2": "States one way the check-in could help students come to school on time that the passage supports.",
+        "1": "States a feature of the check-in, a vague benefit, or a benefit the passage does not support.",
+        "0": "On-task writing is present, but it states no way the check-in helps."
+      }
+    },
+    {
+      "id": "C2",
+      "name": "Evidence",
+      "levels": {
+        "2": "Quotes or accurately paraphrases passage details that support the claim.",
+        "1": "Uses passage details that are related but imprecise, or that do not support the claim.",
+        "0": "On-task writing is present, but it uses no passage detail."
+      }
+    },
+    {
+      "id": "C3",
+      "name": "Reasoning",
+      "levels": {
+        "2": "Explains how the evidence shows the check-in helps students come on time.",
+        "1": "States a connection between evidence and claim without explaining it.",
+        "0": "On-task writing is present, but it makes no connection between evidence and claim."
+      }
+    }
+  ],
+  "approval_note": "Not approved. Not in the backend rubric registry, so the server cannot load it. Approval path: worksheet disposition APPROVE by a qualified Grade 6-8 ELA reviewer -> final edits (status set by the approver) -> copy into the registry -> the approver pins the new content hash. Any edit changes the hash."
+}

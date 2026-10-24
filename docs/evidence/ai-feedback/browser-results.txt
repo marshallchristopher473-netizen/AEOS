@@ -1,0 +1,13 @@
+PASS  panel renders with synthetic-only notice and empty state
+PASS  draft refused until synthetic data is confirmed
+PASS  draft shows criterion feedback, verified evidence, removed invented evidence, flags, versions
+PASS  accept blocked until flags are acknowledged
+PASS  explicit accept saves teacher-approved feedback
+PASS  edited text can only be saved as a revision; latest decision is current
+PASS  draft and decision persist across reload
+PASS  embedded-instruction response is flagged to the teacher
+PASS  very short response yields an abstention that cannot be accepted
+PASS  support role can read but not decide
+PASS  other tenant cannot open the assessment or its drafts
+PASS  no uncaught page errors
+12/12 passed
