@@ -15,7 +15,7 @@ BACKEND="$(cd "$H/../.." && pwd)"
 WORK="${AEOS_E2E_WORKDIR:-$H/.work}"
 DB="${AEOS_E2E_DB:-aeos_e2e}"
 PG_ADMIN="${AEOS_TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}"
-PG_HOSTPORT="$(python3 -c 'import sys,urllib.parse as u; p=u.urlparse(sys.argv[1]); print(f"{p.hostname or "localhost"}:{p.port or 5432}")' "$PG_ADMIN")"
+PG_HOSTPORT="$(python3 -c 'import sys,urllib.parse as u; p=u.urlparse(sys.argv[1]); print("%s:%s" % (p.hostname or "localhost", p.port or 5432))' "$PG_ADMIN")"
 AUTH_PW=e2e-local-only
 PGRST_VERSION=v12.2.3
 PGRST_SHA256=9f71269e61ac3a940281e93ff415760f5957e430e475ba4c3889f3ede7d5527c
