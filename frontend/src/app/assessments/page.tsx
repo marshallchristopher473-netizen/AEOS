@@ -14,7 +14,7 @@ export default function AssessmentsPage() {
     const controller = new AbortController();
     const loadAssessments = async () => {
       try {
-        const token = getAccessToken();
+        const token = await getAccessToken();
         if (!token) {
           setError('Please sign in to view assessments.');
           setLoading(false);

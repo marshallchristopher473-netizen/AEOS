@@ -184,10 +184,6 @@ export default function AiFeedbackPanel({ assessmentId }: { assessmentId: string
       setError('Paste a synthetic response first.');
       return;
     }
-    if (!getAccessToken()) {
-      setError('Please sign in before requesting a draft.');
-      return;
-    }
     const input = {
       assessment_id: assessmentId,
       response_text: responseText,
@@ -199,6 +195,12 @@ export default function AiFeedbackPanel({ assessmentId }: { assessmentId: string
     }
     setRequesting(true);
     try {
+      // Checked after the form is locked so a double submit cannot slip past
+      // the guard while the session is read.
+      if (!(await getAccessToken())) {
+        setError('Please sign in before requesting a draft.');
+        return;
+      }
       const draft = await requestFeedbackDraft(input, pendingKey.current.key);
       pendingKey.current = null;
       setDrafts((previous) => [draft, ...previous.filter((item) => item.id !== draft.id)]);

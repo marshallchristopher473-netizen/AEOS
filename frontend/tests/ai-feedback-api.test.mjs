@@ -11,7 +11,6 @@ async function client({ reply } = {}) {
   const context = vm.createContext({
     process: { env: {} },
     window: {},
-    localStorage: { getItem: (key) => key === 'aeos_access_token' ? 'synthetic-session' : null },
     crypto: { randomUUID: () => '00000000-0000-4000-8000-00000000abcd' },
     fetch: async (url, options) => {
       requests.push({ url, options });
@@ -23,7 +22,14 @@ async function client({ reply } = {}) {
     const source = await readFile(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
     modules.set(name, new vm.SourceTextModule(stripTypeScriptTypes(source), { context }));
   }
+  // Stands in for the Supabase browser client that owns the session.
+  const session = new vm.SyntheticModule(['getSupabaseBrowserClient'], function () {
+    this.setExport('getSupabaseBrowserClient', () => ({
+      auth: { getSession: async () => ({ data: { session: { access_token: 'synthetic-session' } }, error: null }) },
+    }));
+  }, { context });
   await modules.get('aiFeedback').link((specifier) => {
+    if (specifier === '@/lib/supabase/client') return session;
     assert.equal(specifier, './api');
     return modules.get('api');
   });

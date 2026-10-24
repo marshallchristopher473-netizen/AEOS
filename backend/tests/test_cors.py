@@ -41,3 +41,22 @@ def test_cors_does_not_bypass_authentication(public_client):
     response = public_client.get("/students", headers={"Origin": ALLOWED_ORIGIN})
 
     assert response.status_code == 401
+
+
+def test_ai_feedback_idempotency_key_passes_preflight(public_client):
+    # The AI feedback draft and decision requests send Idempotency-Key so a
+    # retried request cannot buy a second model call or record a second
+    # decision. If the header is not allowed, a cross-origin browser refuses
+    # the request before it is sent.
+    response = public_client.options(
+        "/ai-feedback/drafts",
+        headers={
+            "Origin": ALLOWED_ORIGIN,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,idempotency-key",
+        },
+    )
+
+    assert response.status_code == 200
+    allowed = response.headers["access-control-allow-headers"].lower()
+    assert "idempotency-key" in allowed

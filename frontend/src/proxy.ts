@@ -66,6 +66,8 @@ function redirectTo(request: NextRequest, target: string | URL, from: NextRespon
 }
 
 export const config = {
-  // Skip Next.js internals and static files.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  // Skip Next.js internals, static files and the same-origin /api rewrite to
+  // FastAPI, which checks the bearer token itself and answers 401 as JSON.
+  // Redirecting an API call to /login would hand the client an HTML page.
+  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
 };

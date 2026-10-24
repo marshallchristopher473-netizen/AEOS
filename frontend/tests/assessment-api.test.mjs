@@ -4,13 +4,23 @@ import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
 import vm from 'node:vm';
 
+// Stands in for the Supabase browser client: the bearer token comes from its
+// session, never from storage the application manages itself.
+function supabaseSession(context, token) {
+  return new vm.SyntheticModule(['getSupabaseBrowserClient'], function () {
+    this.setExport('getSupabaseBrowserClient', () => ({
+      auth: { getSession: async () => ({ data: { session: token ? { access_token: token } : null }, error: null }) },
+    }));
+  }, { context });
+}
+
 // Execute the production TypeScript request modules without a test dependency.
 // These are transport-contract tests; they do not render React or test live auth.
 async function client({ base, token = 'synthetic-session', reply, browser = true } = {}) {
   const requests = [];
   const context = vm.createContext({
     process: { env: { NEXT_PUBLIC_API_URL: base } },
-    ...(browser ? { window: {}, localStorage: { getItem: (key) => key === 'aeos_access_token' ? token : null } } : {}),
+    ...(browser ? { window: {} } : {}),
     fetch: async (url, options) => {
       requests.push({ url, options });
       return reply ? reply(url, options) : Response.json({ id: 'synthetic-result' }, { status: 201 });
@@ -21,7 +31,9 @@ async function client({ base, token = 'synthetic-session', reply, browser = true
     const source = await readFile(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
     modules.set(name, new vm.SourceTextModule(stripTypeScriptTypes(source), { context }));
   }
+  const session = supabaseSession(context, token);
   await modules.get('assessments').link((specifier) => {
+    if (specifier === '@/lib/supabase/client') return session;
     assert.equal(specifier, './api');
     return modules.get('api');
   });
@@ -67,7 +79,7 @@ test('intake and reads share the configured API base; assessment IDs are encoded
 test('no browser session never substitutes a credential and server-side token lookup is safe', async () => {
   for (const settings of [{ token: null }, { browser: false }]) {
     const { api, requests } = await client(settings);
-    assert.equal(api.getAccessToken(), null);
+    assert.equal(await api.getAccessToken(), null);
     await api.apiFetch('/assessments');
     assert.ok(!('Authorization' in requests[0].options.headers));
   }

@@ -26,7 +26,7 @@ export default function NewAssessmentPage() {
     };
 
     try {
-      const token = getAccessToken();
+      const token = await getAccessToken();
       if (!token) {
         throw new Error('Please sign in before creating an assessment.');
       }
