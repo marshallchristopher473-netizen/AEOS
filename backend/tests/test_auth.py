@@ -130,7 +130,7 @@ async def test_invalid_required_claims_are_401(configured_auth, claim_overrides)
 async def test_token_with_no_audience_claim_is_401(configured_auth):
     """A validly signed token with the right issuer but NO `aud` must be rejected.
 
-    This is not implied by `{"aud": "wrong-audience"}` above. python-jose 3.3.0
+    This is not implied by `{"aud": "wrong-audience"}` above. python-jose 3.3.0-3.5.0
     returns early from `_validate_aud` when the claim is absent:
 
         if "aud" not in claims:
@@ -151,6 +151,33 @@ async def test_token_with_no_audience_claim_is_401(configured_auth):
     # path and not an accidentally-wrong-audience path.
     assert "aud" not in jwt.get_unverified_claims(token)
 
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(credentials)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+@pytest.mark.asyncio
+async def test_token_with_no_expiry_claim_is_401(configured_auth):
+    """A validly signed token with NO `exp` must be rejected: it would never expire.
+
+    python-jose 3.3.0-3.5.0 treats `exp` as optional (`_validate_exp` returns early
+    when the claim is absent), so `verify_exp: True` alone accepts this token.
+    It is otherwise entirely valid, so the only thing that can reject it is the
+    explicit expiry-presence check in `get_current_user`.
+    """
+    token = make_token(configured_auth, exp=OMIT)
+    public_jwk = (await auth.get_jwks())["keys"][0]
+
+    # Preconditions: the claim really is absent, and python-jose alone accepts
+    # the token, so the rejection below comes from our check.
+    assert "exp" not in jwt.get_unverified_claims(token)
+    assert jwt.decode(
+        token, public_jwk, algorithms=["RS256"], audience=AUDIENCE, issuer=ISSUER
+    )["sub"] == "auth-user-a"
+
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
     with pytest.raises(HTTPException) as exc_info:
         await auth.get_current_user(credentials)
 
@@ -335,6 +362,7 @@ async def test_es256_token_still_enforces_the_required_claims(both_key_types):
         "es256-token-naming-the-rsa-key",
         "rs256-token-naming-the-ec-key",
         "hs256-keyed-with-the-rsa-public-key",
+        "hs256-keyed-with-the-rsa-public-key-der",
         "unsigned-alg-none",
     ],
 )
@@ -355,19 +383,22 @@ async def test_algorithm_the_published_key_does_not_allow_is_401(both_key_types,
         token = make_token(ec_pem, algorithm="ES256")
     elif case == "rs256-token-naming-the-ec-key":
         token = make_token(rsa_pem, headers={"kid": EC_KID})
-    elif case == "hs256-keyed-with-the-rsa-public-key":
-        public_pem = (
+    elif case.startswith("hs256-keyed-with-the-rsa-public-key"):
+        # PEM is the CVE-2024-33663 shape; bare DER is GHSA-3qf3-8w2g-rqmx,
+        # which python-jose through 3.5.0 still accepts as an HMAC secret when
+        # the caller does not restrict the algorithm.
+        encoding = (
+            serialization.Encoding.DER if case.endswith("-der") else serialization.Encoding.PEM
+        )
+        public_bytes = (
             serialization.load_pem_private_key(rsa_pem, password=None)
             .public_key()
-            .public_bytes(
-                serialization.Encoding.PEM,
-                serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
+            .public_bytes(encoding, serialization.PublicFormat.SubjectPublicKeyInfo)
         )
         token = hand_built_token(
             {"alg": "HS256", "typ": "JWT", "kid": "test-kid"},
             claims,
-            lambda data: hmac.new(public_pem, data, hashlib.sha256).digest(),
+            lambda data: hmac.new(public_bytes, data, hashlib.sha256).digest(),
         )
     else:
         token = hand_built_token(
@@ -579,7 +610,7 @@ def _ec_public_jwk(kid):
 @pytest.mark.parametrize(
     "published_key",
     [
-        pytest.param(_ec_public_jwk("test-kid"), id="non-rsa-key-under-the-token-kid"),
+        pytest.param(_ec_public_jwk("test-kid"), id="ec-p256-key-under-the-rs256-tokens-kid"),
         pytest.param(
             {"kid": "test-kid", "kty": "oct", "k": "c3ltbWV0cmljLXNlY3JldA"},
             id="symmetric-key-under-the-token-kid",
@@ -589,11 +620,17 @@ def _ec_public_jwk(kid):
 async def test_unusable_published_key_is_401_not_a_server_error(
     monkeypatch, configured_auth, published_key
 ):
-    """SEC-G1-06 regression: an RSA token selecting an EC/oct key returns 401.
+    """SEC-G1-06 regression: an RS256 token whose `kid` names a non-RSA key is 401.
 
-    EC P-256 is now supported, but cannot verify this RSA token. Symmetric
-    keys are rejected before construction. The separate unloadable-key test
-    exercises JWKError and kills M18h after the ES256 repair.
+    The token's `kid` selects the published key, and the caller chooses the
+    `kid`. Against an RS256-only verifier, both keys below made python-jose
+    raise `JWKError` (a `JOSEError` but not a `JWTError`), which escaped the
+    401 handler as a 500. With each key type now pinned to one algorithm
+    (`signing_algorithm`), neither case reaches `JWKError` any more: the EC
+    P-256 key is used for ES256 and the RS256 signature fails to verify, and the
+    symmetric key is refused before python-jose sees it. Both must still fail
+    closed as 401. The remaining `JWKError` path, and the test that kills M18h,
+    is `test_published_key_python_jose_cannot_load_is_401_not_a_server_error`.
     """
     token = make_token(configured_auth)
 
@@ -607,3 +644,193 @@ async def test_unusable_published_key_is_401_not_a_server_error(
         await auth.get_current_user(credentials)
 
     assert exc_info.value.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Key-set cache: a key the issuer stops publishing must stop verifying.
+#
+# These run the real `get_jwks` against an in-process HTTP transport, so the
+# cache, its expiry and its refresh are exercised rather than replaced.
+# ---------------------------------------------------------------------------
+
+
+JWKS_URL = "https://example.supabase.co/auth/v1/.well-known/jwks.json"
+
+
+@pytest.fixture
+def live_jwks(monkeypatch):
+    """Serve a mutable key set to the real `get_jwks`, starting from an empty cache.
+
+    Returns the state dict: assign `state["body"]` to change what is published,
+    `state["status"]` to make the endpoint fail; `state["fetches"]` counts
+    requests.
+    """
+    import httpx
+
+    state = {"body": {"keys": []}, "status": 200, "fetches": 0}
+
+    def serve(request):
+        state["fetches"] += 1
+        assert str(request.url) == JWKS_URL
+        return httpx.Response(state["status"], json=state["body"])
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        auth.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(serve), **kwargs),
+    )
+    monkeypatch.setattr(auth, "SUPABASE_JWKS_URL", JWKS_URL)
+    monkeypatch.setattr(auth, "SUPABASE_JWT_ISSUER", ISSUER)
+    monkeypatch.setattr(auth, "SUPABASE_JWT_AUDIENCE", AUDIENCE)
+    monkeypatch.setattr(auth, "_jwks", None)
+    monkeypatch.setattr(auth, "_jwks_fetched_at", 0.0)
+    monkeypatch.setattr(auth, "_jwks_forced_refresh_at", float("-inf"))
+    return state
+
+
+def age_cached_key_set(monkeypatch):
+    """Make the cached key set exactly one second older than its maximum age."""
+    monkeypatch.setattr(
+        auth, "_jwks_fetched_at", time.monotonic() - auth.JWKS_MAX_AGE_SECONDS - 1
+    )
+
+
+async def verify(token):
+    return await auth.get_current_user(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    )
+
+
+@pytest.mark.asyncio
+async def test_revoked_signing_key_is_refused_once_the_cached_key_set_expires(
+    monkeypatch, live_jwks, signing_material
+):
+    """A key removed from the JWKS must stop verifying within the cache's max age.
+
+    Before the max age, a matching `kid` is served from cache and never causes a
+    refresh, so without an expiry a revoked key verifies tokens for as long as
+    the process lives. The token here is correctly signed by that key and is
+    otherwise valid; only the refresh can reject it.
+    """
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    token = make_token(private_pem)
+
+    # Positive control: while the key is published it verifies.
+    assert (await verify(token))["sub"] == "auth-user-a"
+
+    # The issuer revokes the key and publishes a replacement.
+    replacement = {**public_jwk, "kid": "replacement-kid"}
+    live_jwks["body"] = {"keys": [replacement]}
+    age_cached_key_set(monkeypatch)
+
+    await assert_rejected(token)
+    # 1: initial fetch. 2: refresh because the cached set expired. 3: the
+    # existing forced refresh, because the refreshed set no longer has the kid.
+    assert live_jwks["fetches"] == 3
+
+
+@pytest.mark.asyncio
+async def test_cached_key_set_is_reused_within_its_max_age(live_jwks, signing_material):
+    """The key set is not refetched for every request while it is fresh."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    token = make_token(private_pem)
+
+    await verify(token)
+    await verify(token)
+
+    assert live_jwks["fetches"] == 1
+
+
+@pytest.mark.asyncio
+async def test_expired_key_set_is_not_used_when_its_refresh_fails(
+    monkeypatch, live_jwks, signing_material
+):
+    """When a due refresh fails, verification fails closed instead of trusting the
+    expired set."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    token = make_token(private_pem)
+    assert (await verify(token))["sub"] == "auth-user-a"
+
+    live_jwks["status"] = 500
+    age_cached_key_set(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await verify(token)
+    assert exc_info.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Unknown key IDs: a refresh for key rotation, not one per anonymous request.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_unknown_key_ids_force_at_most_one_refresh_per_interval(
+    live_jwks, signing_material
+):
+    """A `kid` costs nothing to invent and reaches the refresh before any
+    signature check, so each one must not cost an outbound fetch. Otherwise an
+    anonymous caller drives unbounded traffic to the key endpoint, and once it
+    rate-limits us, legitimate users get 503."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    assert (await verify(make_token(private_pem)))["sub"] == "auth-user-a"
+    assert live_jwks["fetches"] == 1
+
+    for attempt in range(50):
+        await assert_rejected(
+            make_token(private_pem, headers={"kid": f"invented-{attempt}", "alg": "RS256"})
+        )
+
+    # 1: the first verification. 2: the single refresh the interval allows.
+    assert live_jwks["fetches"] == 2
+
+
+@pytest.mark.asyncio
+async def test_key_rotated_in_since_the_last_fetch_verifies_on_first_use(
+    live_jwks, signing_material
+):
+    """Positive control for the bound: an unknown `kid` still triggers a
+    refresh, so a key the issuer has just published verifies at once."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    await verify(make_token(private_pem))
+
+    rotated_in = {**public_jwk, "kid": "rotated-in-kid"}
+    live_jwks["body"] = {"keys": [public_jwk, rotated_in]}
+    token = make_token(private_pem, headers={"kid": "rotated-in-kid", "alg": "RS256"})
+
+    assert (await verify(token))["sub"] == "auth-user-a"
+    assert live_jwks["fetches"] == 2
+
+
+@pytest.mark.asyncio
+async def test_rotated_in_key_verifies_once_a_spent_refresh_interval_passes(
+    monkeypatch, live_jwks, signing_material
+):
+    """The bound's cost is a bounded delay, never a lockout: when an invented
+    `kid` has just spent the interval's refresh, a newly published key is
+    refused until the interval passes and verifies after it."""
+    private_pem, public_jwk = signing_material
+    live_jwks["body"] = {"keys": [public_jwk]}
+    await verify(make_token(private_pem))
+    await assert_rejected(make_token(private_pem, headers={"kid": "invented", "alg": "RS256"}))
+    assert live_jwks["fetches"] == 2
+
+    rotated_in = {**public_jwk, "kid": "rotated-in-kid"}
+    live_jwks["body"] = {"keys": [public_jwk, rotated_in]}
+    token = make_token(private_pem, headers={"kid": "rotated-in-kid", "alg": "RS256"})
+    await assert_rejected(token)
+    assert live_jwks["fetches"] == 2
+
+    monkeypatch.setattr(
+        auth,
+        "_jwks_forced_refresh_at",
+        time.monotonic() - auth.JWKS_FORCED_REFRESH_INTERVAL_SECONDS - 1,
+    )
+    assert (await verify(token))["sub"] == "auth-user-a"
+    assert live_jwks["fetches"] == 3

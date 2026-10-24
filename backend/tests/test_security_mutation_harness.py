@@ -31,8 +31,11 @@ class TestMutationEvidence(unittest.TestCase):
                     patch.object(harness, 'MUTATIONS', [mutation]), \
                     patch.object(harness, '_precheck', return_value=(True, 'valid')), \
                     patch.object(harness, '_run_suite', side_effect=[subset, full]), \
+                    patch.object(harness, '_server_version_num', return_value=160000), \
                     patch.dict(os.environ, {'AEOS_TEST_DATABASE_URL': 'synthetic'}), \
                     contextlib.redirect_stdout(io.StringIO()):
+                # CI sets the engine guard job-wide; these cases exercise scoring only.
+                os.environ.pop('AEOS_EXPECT_PG_MAJOR', None)
                 code = harness.main(['--json', str(output)])
             return code, json.loads(output.read_text())
 

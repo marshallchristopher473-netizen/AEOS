@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, Optional
 
 import httpx
@@ -16,6 +17,26 @@ from app.core.config import (
 security_scheme = HTTPBearer(auto_error=False)
 
 _jwks: Optional[Dict[str, Any]] = None
+_jwks_fetched_at: float = 0.0
+_jwks_forced_refresh_at: float = float("-inf")
+
+# How long a fetched key set is trusted before it is fetched again. Without a
+# limit, a key the issuer has revoked keeps verifying tokens for as long as the
+# process runs, because a cached `kid` that still matches never triggers a
+# refresh. This bounds how long a revoked key can still be accepted here. When
+# a refresh is due and fails, verification fails closed with 503 rather than
+# falling back to the expired set.
+JWKS_MAX_AGE_SECONDS = 600.0
+
+# How often a token's unknown `kid` may make a fresh key set be fetched. The
+# refresh exists so a key the issuer has just rotated in verifies without
+# waiting out JWKS_MAX_AGE_SECONDS. But a `kid` costs nothing to invent and is
+# read before any signature is checked, so without a bound every anonymous
+# request with a random `kid` was one outbound fetch; once the key endpoint
+# rate-limits us, legitimate users get 503. Within the interval an unknown
+# `kid` is refused from the cached set, so a genuinely new key is delayed by
+# at most this long.
+JWKS_FORCED_REFRESH_INTERVAL_SECONDS = 30.0
 
 
 def unauthorized(detail: str = "Invalid authentication credentials") -> HTTPException:
@@ -26,9 +47,28 @@ def unauthorized(detail: str = "Invalid authentication credentials") -> HTTPExce
     )
 
 
+def _claim_forced_refresh() -> bool:
+    """Claim the one forced refresh the current interval allows.
+
+    Synchronous on purpose: the claim is recorded before any await, so
+    concurrent requests with unknown `kid`s cannot all pass the check.
+    """
+    global _jwks_forced_refresh_at
+    now = time.monotonic()
+    if now - _jwks_forced_refresh_at < JWKS_FORCED_REFRESH_INTERVAL_SECONDS:
+        return False
+    _jwks_forced_refresh_at = now
+    return True
+
+
 async def get_jwks(force_refresh: bool = False) -> Dict[str, Any]:
-    global _jwks
-    if _jwks is None or force_refresh:
+    global _jwks, _jwks_fetched_at
+    expired = time.monotonic() - _jwks_fetched_at >= JWKS_MAX_AGE_SECONDS
+    # An empty or expired cache is fetched regardless; only a refresh the
+    # caller forces on a fresh cache is rationed.
+    if force_refresh and _jwks is not None and not expired and not _claim_forced_refresh():
+        force_refresh = False
+    if _jwks is None or force_refresh or expired:
         if not SUPABASE_JWKS_URL:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -52,6 +92,7 @@ async def get_jwks(force_refresh: bool = False) -> Dict[str, Any]:
                 detail="Authentication key service returned an invalid response",
             )
         _jwks = candidate
+        _jwks_fetched_at = time.monotonic()
     return _jwks
 
 
@@ -137,7 +178,7 @@ async def get_current_user(
                 "verify_iss": True,
             },
         )
-        # python-jose 3.3.0 returns early from `_validate_aud` when the `aud`
+        # python-jose (3.3.0-3.5.0) returns early from `_validate_aud` when the `aud`
         # claim is absent, so `verify_aud: True` above rejects a WRONG audience
         # but silently accepts a MISSING one. Configuring an audience expresses
         # the intent that audience be enforced, so require the claim here.
@@ -149,6 +190,16 @@ async def get_current_user(
         if SUPABASE_JWT_AUDIENCE not in presented:
             raise unauthorized("JWT audience is not accepted")
 
+        # python-jose (3.3.0-3.5.0) treats `exp` as optional: `_validate_exp` returns
+        # early when the claim is absent, so `verify_exp: True` rejects an
+        # EXPIRED token but accepts one that never expires. Require the claim
+        # here. Its value was already validated by `verify_exp` when present.
+        # This is not done with python-jose's `require_exp` option because that
+        # also forces `verify_exp` on, which would hide a regression that turns
+        # expiry verification off.
+        if "exp" not in payload:
+            raise unauthorized("JWT is missing the expiry claim")
+
         subject = payload.get("sub")
         if not isinstance(subject, str) or not subject.strip():
             raise unauthorized("JWT is missing a usable subject")
@@ -156,6 +207,6 @@ async def get_current_user(
     # JOSEError, not JWTError: python-jose raises JWKError (a JOSEError that is
     # not a JWTError) when it cannot build the key the caller's `kid` selects,
     # for example an EC key published without its coordinates. Catching only
-    # JWTError let that escape as a 500 instead of a 401.
+    # JWTError let that escape as a 500 instead of a 401 (SEC-G1-06).
     except (JOSEError, ValueError, TypeError) as exc:
         raise unauthorized() from exc

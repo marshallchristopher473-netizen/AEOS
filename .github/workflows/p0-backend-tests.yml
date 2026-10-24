@@ -15,14 +15,26 @@ jobs:
   # cross-tenant denial through the database. Every other RLS test in this repo
   # asserts against migration *text* and cannot detect a policy that fails to
   # apply or fails to deny.
+  #
+  # Runs on 16 and on 17. Hosted Supabase runs 17, which added the MAINTAIN
+  # privilege; a 16-only job cannot see it, and the M19e/M19f mutants can only
+  # be killed on 17. AEOS_EXPECT_PG_MAJOR makes the tests and the mutation
+  # suite fail if the service is not the engine this leg names.
   rls-enforcement:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '17']
+
     env:
       AEOS_EVIDENCE_DIR: /tmp/aeos-command-evidence
+      AEOS_EXPECT_PG_MAJOR: ${{ matrix.postgres }}
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -69,6 +81,25 @@ jobs:
           AEOS_REQUIRE_RLS_TESTS: '1'
         run: python ../.github/scripts/record-command.py backend-required python -m pytest tests/ -v -rs --junitxml=/tmp/aeos-command-evidence/backend-required.xml
 
+      # pytest exits 0 when tests skip. A skipped security test proves nothing,
+      # so any skip, failure or error in the complete run fails the job.
+      - name: Require zero failed, errored or skipped tests
+        run: |
+          python - /tmp/aeos-command-evidence/backend-required.xml <<'EOF'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse(sys.argv[1]).getroot()
+          suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+          totals = {
+              key: sum(int(suite.get(key, 0)) for suite in suites)
+              for key in ("tests", "failures", "errors", "skipped")
+          }
+          print(totals)
+          if totals["tests"] == 0 or any(totals[k] for k in ("failures", "errors", "skipped")):
+              sys.exit("complete backend suite did not pass with zero skips")
+          EOF
+
       - name: Prove tenant isolation is enforced by the database
         working-directory: backend
         env:
@@ -82,11 +113,15 @@ jobs:
       # NAME intact while removing its effect — e.g. students_select becoming
       # USING (true) — which every string- and regex-based test would accept.
       #
-      # Covers the full M01-M20 contract including M18h-M18k: authentication, JWT validation, actor
-      # and organization authority, RLS tenant isolation, lifecycle, write
-      # authority, service-role exposure and RLS-blind table privileges. Each mutant is byte-compiled (or
-      # its migrations applied) before any test runs, so a mutant that does not
-      # build is reported INVALID rather than counted as killed.
+      # Covers the full M01-M22 contract: authentication, JWT validation
+      # (including key-type pinning, expiry presence, key-set freshness and
+      # the forced-refresh bound), actor and organization authority, RLS tenant
+      # isolation, lifecycle, write authority, service-role exposure, AI
+      # feedback draft ownership, RLS-blind table privileges (MAINTAIN on 17)
+      # and anon EXECUTE on the helpers. Each mutant is byte-compiled (or its
+      # migrations applied) before any test runs, so a mutant that does not
+      # build is reported INVALID rather than counted as killed. On 16 the
+      # MAINTAIN mutants are reported NOT APPLICABLE; the 17 leg must kill them.
       - name: Prove the security suite can actually fail
         working-directory: backend
         env:
@@ -103,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mutation-matrix-${{ github.sha }}
+          name: mutation-matrix-pg${{ matrix.postgres }}-${{ github.sha }}
           path: mutation-matrix.json
           if-no-files-found: warn
 
@@ -111,7 +146,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: command-evidence-${{ github.job }}-${{ github.sha }}
+          name: command-evidence-${{ github.job }}-pg${{ matrix.postgres }}-${{ github.sha }}
           path: /tmp/aeos-command-evidence/
           if-no-files-found: error
 

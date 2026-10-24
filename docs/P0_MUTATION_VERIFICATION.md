@@ -46,8 +46,9 @@ against the complete suite, so an interaction failure cannot hide.
 ## Running the verification
 
 ```bash
-# 1. Disposable PostgreSQL 16, never a production database
+# 1. Disposable PostgreSQL 16 or 17, never a production database
 export AEOS_TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres
+export AEOS_EXPECT_PG_MAJOR=17   # optional locally; fails the run on a mismatch
 
 cd backend
 pip install -r requirements-dev.txt
@@ -55,20 +56,26 @@ pip install -r requirements-dev.txt
 # 2. Unmodified baseline — must be green before anything else means anything
 python -m pytest tests/ -q
 
-# 3. Complete M01-M21 mutation contract
+# 3. Complete M01-M22 mutation contract
 python -m tests.security_mutations --json mutation-matrix.json
 
 ```
 
-Both run in CI (`.github/workflows/p0-backend-tests.yml`) against a
-PostgreSQL 16 service container, and the matrix is uploaded as a build
-artifact keyed to the exact commit SHA.
+Both run in CI (`.github/workflows/p0-backend-tests.yml`) once against a
+PostgreSQL 16 service container and once against PostgreSQL 17, the engine
+hosted Supabase runs. Each matrix is uploaded as a build artifact keyed to the
+engine and the exact commit SHA.
+
+M19e and M19f remove the MAINTAIN revoke, a privilege PostgreSQL 16 does not
+have. On 16 they are reported `NOT APPLICABLE`: neither scored nor a failure.
+The 17 leg must kill them, and `AEOS_EXPECT_PG_MAJOR` makes that leg fail if
+its service is not actually 17.
 
 `AEOS_REQUIRE_RLS_TESTS=1` turns a missing database into a hard failure rather
 than a silent skip, because a security test that skips quietly is worse than no
 test: CI stays green while proving nothing.
 
-## The M01–M20 contract
+## The M01–M22 contract
 
 | ID | Security boundary | Mutation | Primary killing test |
 | --- | --- | --- | --- |
@@ -96,10 +103,20 @@ test: CI stays green while proving nothing.
 | M18e | Missing `kid` rejected | fall back to the first published key | `test_auth.py::test_token_without_a_key_id_is_401` |
 | M18f | Unknown `kid` rejected | fall back to the first published key | `test_auth.py::test_unknown_key_id_is_401_even_though_a_usable_key_is_published` |
 | M18g | Malformed tokens fail closed | JWT error path returns a default subject | `test_auth.py::test_malformed_token_is_401` |
-| M18h | Unusable published keys fail closed as 401 | `JWKError` re-raised past the 401 handler (the pre-SEC-G1-06 behaviour) | `test_auth.py::test_published_key_python_jose_cannot_load_is_401_not_a_server_error` |
+| M18h | Unusable published keys fail closed as 401 | `JWKError` re-raised past the 401 handler (the pre-SEC-G1-06 behaviour) | `test_auth.py::test_published_key_python_jose_cannot_load_is_401_not_a_server_error` (see note on M18h below) |
+| M18l | Tokens without `exp` rejected | explicit expiry-presence check removed | `test_auth.py::test_token_with_no_expiry_claim_is_401` |
+| M18m | A key the issuer stops publishing stops verifying | cached key set never expires | `test_auth.py::test_revoked_signing_key_is_refused_once_the_cached_key_set_expires`; `test_expired_key_set_is_not_used_when_its_refresh_fails` |
 | M19a | Client roles hold no privilege RLS does not govern | 005 stops revoking TRUNCATE on existing tables | `TestPrivilegesRlsDoesNotGovern::test_client_roles_hold_no_rls_blind_privilege`; `test_cross_tenant_truncate_is_refused[*]` |
 | M19b | Tables created later do not regain TRUNCATE | 005 stops revoking TRUNCATE from the default privileges | `TestPrivilegesRlsDoesNotGovern::test_tables_created_later_do_not_inherit_rls_blind_privileges` |
+| M19c | Tables created later do not regain TRUNCATE (scope) | 005's default-privilege REVOKE issued globally instead of `IN SCHEMA public` | `TestTruncateCascadeAndFutureTables::test_no_default_privilege_entry_grants_rls_blind_privileges`; `test_tables_created_by_every_authorized_creator_withhold_rls_blind_privileges` |
+| M19d | `anon` holds no privilege RLS does not govern | 005 revokes from `authenticated` only | `TestTruncateCascadeAndFutureTables::test_truncate_cascade_is_refused_and_every_row_survives[anon-*]`; `test_client_roles_hold_no_rls_blind_privilege[anon]` |
 | M20 | WHERE-less writes cannot reach another tenant on any table | `ai_recommendations_delete` → `USING (true)` | `TestWherelessWritesAcrossEveryTable::test_whereless_delete_leaves_org_a_untouched[*-ai_recommendations]` |
+| M18n | A failed key-set refresh fails closed | the expired set is returned when its refresh fails | `test_auth.py::test_expired_key_set_is_not_used_when_its_refresh_fails` |
+| M18o | An unknown `kid` forces at most one key-set fetch per interval | the forced-refresh bound is removed | `test_auth.py::test_unknown_key_ids_force_at_most_one_refresh_per_interval`; `test_rotated_in_key_verifies_once_a_spent_refresh_interval_passes` |
+| M19e | Client roles hold no MAINTAIN (PostgreSQL 17) | 008 stops revoking MAINTAIN on existing tables | `TestMaintainPrivilege::test_client_roles_cannot_reindex_any_table[*]`; `test_client_roles_hold_no_rls_blind_privilege[*]` |
+| M19f | Tables created later do not regain MAINTAIN | 008 stops revoking MAINTAIN from the default privileges | `test_tables_created_later_do_not_inherit_rls_blind_privileges`; `test_no_default_privilege_entry_grants_rls_blind_privileges` |
+| M22a | `anon` cannot execute the SECURITY DEFINER helpers | 008 stops revoking EXECUTE from `anon` | `TestHelperFunctionExecution::test_anon_cannot_call_any_security_definer_helper` |
+| M22b | Helpers created later are not executable by `anon` | 008 stops revoking EXECUTE from `anon` in the default privileges | `TestHelperFunctionExecution::test_helpers_created_later_are_not_executable_by_anon`; `test_no_default_privilege_entry_grants_anon_execute` |
 
 ### M21 — AI feedback drafts belong to the requesting teacher
 
@@ -208,6 +225,36 @@ merely passing:
   frontend would compile.
 - This verification measures whether the security suite can fail. It is not a
   penetration test, not a formal proof, and not a compliance certification.
+
+### On M18l, M18m, M19c and M19d
+
+- **M18l.** python-jose (3.3.0 through 3.5.0) returns early from `_validate_exp`
+  when `exp` is absent, so `verify_exp: True` accepts a token that never
+  expires. `get_current_user` now requires the claim explicitly. python-jose's
+  `require_exp` option was not used: it also forces `verify_exp` on, which would
+  make M18a (`verify_exp: False`) undetectable.
+- **M18m.** Before this change the key set was cached for the life of the
+  process, and a cached `kid` that still matched never caused a refresh, so a
+  revoked key kept verifying. The cache now expires after
+  `JWKS_MAX_AGE_SECONDS` (600 s), and a due refresh that fails returns 503
+  rather than reusing the expired set.
+- **M19c.** A global `ALTER DEFAULT PRIVILEGES ... REVOKE` does not take back a
+  per-schema default GRANT, so this mutant applies cleanly and leaves new tables
+  in `public` with TRUNCATE. It is the realistic way to get 005 wrong.
+- **M19d.** Shows the `anon` half of the TRUNCATE denial is tested on its own,
+  not only implied by the `authenticated` cases.
+
+### On M18h after composing the key-type policy
+
+PR #20 introduced M18h with `test_unusable_published_key_is_401_not_a_server_error[*]`
+as its killer: against an RS256-only verifier, an EC or a symmetric key under
+the token's `kid` made python-jose raise `JWKError`. PR #22 pins each key type
+to one algorithm, so in the composed tree an EC P-256 key is used for ES256 and
+a symmetric key is refused before python-jose sees it. Neither case reaches
+`JWKError` any more, so that test still asserts 401 but no longer kills M18h.
+M18h is killed, and only killed, by the one remaining `JWKError` path: an EC
+P-256 key published without its coordinates. This was checked by applying M18h
+to the composed tree and recording the failing test, not inferred.
 
 ### On M20
 
