@@ -6,12 +6,27 @@ import vm from 'node:vm';
 
 // Transport-contract tests for the AI feedback client. They execute the real
 // TypeScript modules against synthetic fetch responses; no provider exists here.
+
+// Stands in for the Supabase browser client: only the session lookup that
+// api.ts performs. A null token means no signed-in session.
+function supabaseClientModule(context, token, lookups) {
+  return new vm.SyntheticModule(['getSupabaseBrowserClient'], function () {
+    this.setExport('getSupabaseBrowserClient', () => ({
+      auth: {
+        getSession: async () => {
+          lookups.push('getSession');
+          return { data: { session: token ? { access_token: token } : null }, error: null };
+        },
+      },
+    }));
+  }, { context });
+}
+
 async function client({ reply } = {}) {
   const requests = [];
   const context = vm.createContext({
     process: { env: {} },
     window: {},
-    localStorage: { getItem: (key) => key === 'aeos_access_token' ? 'synthetic-session' : null },
     crypto: { randomUUID: () => '00000000-0000-4000-8000-00000000abcd' },
     fetch: async (url, options) => {
       requests.push({ url, options });
@@ -23,9 +38,11 @@ async function client({ reply } = {}) {
     const source = await readFile(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
     modules.set(name, new vm.SourceTextModule(stripTypeScriptTypes(source), { context }));
   }
+  const supabase = supabaseClientModule(context, 'synthetic-session', []);
   await modules.get('aiFeedback').link((specifier) => {
-    assert.equal(specifier, './api');
-    return modules.get('api');
+    if (specifier === './api') return modules.get('api');
+    assert.equal(specifier, '@/lib/supabase/client');
+    return supabase;
   });
   await modules.get('aiFeedback').evaluate();
   return { api: modules.get('api').namespace, feedback: modules.get('aiFeedback').namespace, requests };

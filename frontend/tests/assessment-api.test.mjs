@@ -6,11 +6,28 @@ import vm from 'node:vm';
 
 // Execute the production TypeScript request modules without a test dependency.
 // These are transport-contract tests; they do not render React or test live auth.
+
+// Stands in for the Supabase browser client: only the session lookup that
+// api.ts performs. A null token means no signed-in session.
+function supabaseClientModule(context, token, lookups) {
+  return new vm.SyntheticModule(['getSupabaseBrowserClient'], function () {
+    this.setExport('getSupabaseBrowserClient', () => ({
+      auth: {
+        getSession: async () => {
+          lookups.push('getSession');
+          return { data: { session: token ? { access_token: token } : null }, error: null };
+        },
+      },
+    }));
+  }, { context });
+}
+
 async function client({ base, token = 'synthetic-session', reply, browser = true } = {}) {
   const requests = [];
+  const sessionLookups = [];
   const context = vm.createContext({
     process: { env: { NEXT_PUBLIC_API_URL: base } },
-    ...(browser ? { window: {}, localStorage: { getItem: (key) => key === 'aeos_access_token' ? token : null } } : {}),
+    ...(browser ? { window: {} } : {}),
     fetch: async (url, options) => {
       requests.push({ url, options });
       return reply ? reply(url, options) : Response.json({ id: 'synthetic-result' }, { status: 201 });
@@ -21,12 +38,14 @@ async function client({ base, token = 'synthetic-session', reply, browser = true
     const source = await readFile(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
     modules.set(name, new vm.SourceTextModule(stripTypeScriptTypes(source), { context }));
   }
+  const supabase = supabaseClientModule(context, token, sessionLookups);
   await modules.get('assessments').link((specifier) => {
-    assert.equal(specifier, './api');
-    return modules.get('api');
+    if (specifier === './api') return modules.get('api');
+    assert.equal(specifier, '@/lib/supabase/client');
+    return supabase;
   });
   await modules.get('assessments').evaluate();
-  return { api: modules.get('api').namespace, assessments: modules.get('assessments').namespace, requests };
+  return { api: modules.get('api').namespace, assessments: modules.get('assessments').namespace, requests, sessionLookups };
 }
 
 test('save sends a zero score and only review fields through the shared bearer client', async () => {
@@ -66,10 +85,12 @@ test('intake and reads share the configured API base; assessment IDs are encoded
 
 test('no browser session never substitutes a credential and server-side token lookup is safe', async () => {
   for (const settings of [{ token: null }, { browser: false }]) {
-    const { api, requests } = await client(settings);
-    assert.equal(api.getAccessToken(), null);
+    const { api, requests, sessionLookups } = await client(settings);
+    assert.equal(await api.getAccessToken(), null);
     await api.apiFetch('/assessments');
     assert.ok(!('Authorization' in requests[0].options.headers));
+    // Server-side rendering never touches the browser session.
+    if (settings.browser === false) assert.deepEqual(sessionLookups, []);
   }
 });
 

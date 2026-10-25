@@ -274,6 +274,11 @@ jobs:
         working-directory: frontend
         run: python ../.github/scripts/record-command.py typecheck npx --no-install tsc --noEmit
 
+      - name: Unit-test frontend
+        if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}
+        working-directory: frontend
+        run: python ../.github/scripts/record-command.py unit-tests npm test
+
       - name: Build frontend
         id: frontend-build
         if: ${{ !cancelled() && steps.frontend-install.outcome == 'success' }}

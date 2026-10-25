@@ -16,7 +16,7 @@ recommendations; every new summary is teacher-entered.
 ## Services and boundaries
 
 - All three assessment pages use `src/lib/api.ts` through `src/lib/assessments.ts`.
-  The client reads the existing `aeos_access_token` session convention.
+  The client sends the signed-in Supabase session's access token as a bearer header.
 - Next.js proxies same-origin `/api` requests to `AEOS_API_URL`. Bearer headers
   reach the unchanged backend authentication dependencies.
 - `AssessmentService` and `AssessmentResultService` reuse `tenant_scope.py`.
@@ -45,10 +45,13 @@ are the subject of the still-separate draft PR #22. Check the configured
 membership before using a real session. Do not treat that unmerged PR as part
 of this workflow candidate.
 
-The frontend currently expects a valid session access token under the browser
-local-storage key `aeos_access_token`; it has no sign-in UI. A development user
-must obtain that session from their configured authentication provider. Never
-use a service-role key as a browser session token.
+Teachers sign in at `/login` with Supabase Auth (email and password). The
+session lives in `sb-*` cookies managed by `@supabase/ssr`; application code
+never stores tokens. Signed-out visitors are redirected to `/login` by
+`src/proxy.ts`, which is a navigation convenience only: the backend still
+verifies every bearer token. The root README shows how to link a synthetic
+teacher login to an organization. Never use a service-role key as a browser
+session token.
 
 Open `/assessments`, select **Review**, enter findings, select **Draft** or
 **Complete**, and choose **Save review**. Confirm the saved review appears,

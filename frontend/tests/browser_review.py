@@ -1,12 +1,16 @@
 """Browser review smoke test via Chrome DevTools; synthetic backend required.
 
+Signs in through the real /login page against the loopback fake Supabase Auth
+server that backend/tests/review_fixture_server.py starts. The frontend must be
+built and started with NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:9999.
 Uses websockets already supplied by the backend's uvicorn[standard] dependency.
-No JWT, hosted Supabase, AI quality, or pilot-readiness claim is made.
+No hosted Supabase, production JWT, AI quality, or pilot-readiness claim is made.
 """
 import asyncio
 import json
 import time
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 import websockets
 
@@ -14,22 +18,38 @@ BASE = "http://127.0.0.1:3000"
 DEBUG = "http://127.0.0.1:9222"
 STUDENT = "33333333-3333-4333-8333-333333333333"
 OTHER_ASSESSMENT = "66666666-6666-4666-8666-666666666666"
+TEACHER = "teacher@synthetic.aeos.test"
+SUPPORT = "support@synthetic.aeos.test"
+PASSWORD = "synthetic-password"
+# No token may live in localStorage; the session belongs in sb-* cookies.
+NO_STORED_TOKENS = "Object.keys(localStorage).every(key => !/token|auth/i.test(key))"
+
+
+def responds(url, status):
+    try:
+        with urlopen(url, timeout=2) as response:
+            return response.status == status
+    except HTTPError as error:
+        return error.code == status
+    except OSError:
+        return False
 
 
 def wait_for_services():
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        try:
-            with urlopen(Request("http://127.0.0.1:8000/assessments", headers={"Authorization": "Bearer synthetic-teacher"}), timeout=2) as response:
-                assert response.status == 200
-            with urlopen(BASE + "/assessments", timeout=2) as response:
-                assert response.status == 200
-            with urlopen(DEBUG + "/json/list", timeout=2) as response:
-                pages = json.load(response)
-            return next(page["webSocketDebuggerUrl"] for page in pages if page["type"] == "page")
-        except (OSError, AssertionError, StopIteration):
-            time.sleep(0.5)
-    raise AssertionError("Synthetic backend, built frontend, or Chrome failed to start")
+        # Fake auth refuses an unauthenticated user lookup with 401.
+        if (responds("http://127.0.0.1:8000/health", 200)
+                and responds("http://127.0.0.1:9999/auth/v1/user", 401)
+                and responds(BASE + "/login", 200)):
+            try:
+                with urlopen(DEBUG + "/json/list", timeout=2) as response:
+                    pages = json.load(response)
+                return next(page["webSocketDebuggerUrl"] for page in pages if page["type"] == "page")
+            except (OSError, StopIteration):
+                pass
+        time.sleep(0.5)
+    raise AssertionError("Synthetic backend, fake auth, built frontend, or Chrome failed to start")
 
 
 class Browser:
@@ -64,10 +84,22 @@ class Browser:
         body = await self.evaluate("document.body.innerText")
         raise AssertionError(f"Timed out waiting for {description}: {body}")
 
-    async def navigate(self, path):
+    async def navigate(self, path, landing=None):
         await self.evaluate("window.__aeosNavigationMark = true")
         await self.call("Page.navigate", url=BASE + path)
-        await self.wait("window.__aeosNavigationMark !== true && location.pathname === " + json.dumps(path), "fresh navigation")
+        await self.wait("window.__aeosNavigationMark !== true && location.pathname === " + json.dumps(landing or path), "fresh navigation")
+
+    async def sign_in(self, email, password, landing):
+        await self.wait("location.pathname === '/login' && document.querySelector('#email') !== null", "sign-in form")
+        await self.fill("#email", email)
+        await self.fill("#password", password)
+        await self.submit()
+        await self.wait("location.pathname === " + json.dumps(landing), "return to " + landing)
+
+    async def sign_out(self):
+        await self.wait("Array.from(document.querySelectorAll('button')).some(b => b.textContent === 'Sign out')", "sign-out button")
+        await self.evaluate("Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Sign out').click()")
+        await self.wait("location.pathname === '/login'", "sign-in page after sign-out")
 
     async def reload(self):
         await self.evaluate("window.__aeosReloadMark = true")
@@ -95,10 +127,14 @@ async def main():
         browser = Browser(socket)
         await browser.call("Page.enable")
         await browser.call("Runtime.enable")
-        preload = await browser.call("Page.addScriptToEvaluateOnNewDocument", source="try { localStorage.setItem('aeos_access_token', 'synthetic-teacher'); } catch (_) {}")
-        await browser.navigate("/assessments")
+        await browser.navigate("/assessments", landing="/login")
+        assert await browser.evaluate("new URLSearchParams(location.search).get('next') === '/assessments'")
+        await browser.sign_in(TEACHER, "wrong-password", "/login")
+        await browser.wait("document.querySelector('.error')?.innerText.includes('Incorrect email or password.')", "generic sign-in error")
+        await browser.sign_in(TEACHER, PASSWORD, "/assessments")
         await browser.wait("document.body.innerText.includes('A Reading Screen')", "assessment list")
-        await browser.call("Page.removeScriptToEvaluateOnNewDocument", identifier=preload["identifier"])
+        assert await browser.evaluate("document.cookie.includes('sb-')")
+        assert await browser.evaluate(NO_STORED_TOKENS)
 
         await browser.navigate("/assessments/new")
         await browser.wait("document.querySelector('#student_id') !== null", "assessment intake")
@@ -125,7 +161,7 @@ async def main():
         await browser.reload()
         await browser.wait("document.querySelector('.review-list')?.innerText.includes('Synthetic findings')", "review after reload")
         assert await browser.evaluate("document.querySelector('.review-list').innerText.includes('complete')")
-        print("PASS: create → complete review → save → reload; zero score and literal summary")
+        print("PASS: sign-in returns to the requested page → create → complete review → save → reload; zero score and literal summary")
 
         await browser.fill("#review-summary", "Synthetic draft without a score")
         await browser.submit()
@@ -145,8 +181,9 @@ async def main():
         assert await browser.evaluate("document.querySelector('#review-summary').value === ''")
         print("PASS: invalid score is not saved; discard clears unsaved fields")
 
-        await browser.evaluate("localStorage.setItem('aeos_access_token', 'synthetic-support')")
-        await browser.reload()
+        await browser.sign_out()
+        await browser.navigate(path, landing="/login")
+        await browser.sign_in(SUPPORT, PASSWORD, path)
         await browser.wait("document.querySelector('#review-summary') !== null", "support read access")
         await browser.fill("#review-summary", "Synthetic forbidden write")
         await browser.submit()
@@ -155,18 +192,22 @@ async def main():
         assert await browser.evaluate("document.querySelectorAll('.review-list li').length === 2")
         print("PASS: forbidden save preserves form; no false success or new review")
 
-        await browser.evaluate("localStorage.setItem('aeos_access_token', 'synthetic-teacher')")
-        await browser.navigate("/assessments/" + OTHER_ASSESSMENT)
+        await browser.sign_out()
+        await browser.navigate("/assessments/" + OTHER_ASSESSMENT, landing="/login")
+        await browser.sign_in(TEACHER, PASSWORD, "/assessments/" + OTHER_ASSESSMENT)
         await browser.wait("document.querySelector('[role=alert]')?.innerText.includes('Assessment not found')", "cross-tenant read denial")
         assert await browser.evaluate("document.querySelector('#review-summary') === null")
         print("PASS: cross-tenant assessment shows no review form")
 
-        await browser.evaluate("localStorage.removeItem('aeos_access_token')")
-        await browser.navigate(path)
-        await browser.wait("document.querySelector('[role=alert]')?.innerText.includes('Please sign in')", "missing-session feedback")
+        await browser.sign_out()
+        assert not await browser.evaluate("document.cookie.includes('sb-')")
+        await browser.navigate(path, landing="/login")
+        assert await browser.evaluate("new URLSearchParams(location.search).get('next') === " + json.dumps(path))
         assert await browser.evaluate("document.querySelector('#review-summary') === null")
+        assert await browser.evaluate("fetch('/api/assessments').then(r => r.status)") == 401
+        assert await browser.evaluate(NO_STORED_TOKENS)
         assert not browser.errors, browser.errors
-        print("PASS: missing session shows sign-in prerequisite; no browser runtime exceptions")
+        print("PASS: sign-out redirects protected pages to /login and the API refuses the request; no browser runtime exceptions")
 
 
 if __name__ == "__main__":

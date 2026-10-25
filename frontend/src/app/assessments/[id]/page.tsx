@@ -47,15 +47,12 @@ function ReviewForm({ assessmentId, onSave }: {
       setError('Use scores from 0 to 9999.99 and a maximum of at least 0.01. The score cannot exceed the maximum.');
       return;
     }
-    if (!getAccessToken()) {
-      setError('Please sign in before saving a review.');
-      return;
-    }
 
     const controller = new AbortController();
     request.current = controller;
     setSaving(true);
     try {
+      if (!(await getAccessToken())) throw new Error('Please sign in before saving a review.');
       const result = await saveAssessmentReview(assessmentId, {
         score: enteredScore,
         max_score: enteredMax,
@@ -138,7 +135,7 @@ export default function AssessmentDetailPage() {
       setAssessment(null);
       setResults([]);
       try {
-        if (!getAccessToken()) throw new Error('Please sign in to review this assessment.');
+        if (!(await getAccessToken())) throw new Error('Please sign in to review this assessment.');
         const [record, reviews] = await Promise.all([
           getAssessment(params.id, controller.signal),
           listAssessmentResults(params.id, controller.signal),
