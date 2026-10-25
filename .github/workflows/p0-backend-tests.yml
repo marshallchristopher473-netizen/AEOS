@@ -185,6 +185,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AEOS_EVIDENCE_DIR: /tmp/aeos-command-evidence
+      # Loopback-only fake Supabase Auth started by the synthetic review fixture
+      # (backend/tests/fake_supabase_auth.py). Not a real project or credential.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9999
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-anon-key
 
     steps:
       - name: Checkout repository

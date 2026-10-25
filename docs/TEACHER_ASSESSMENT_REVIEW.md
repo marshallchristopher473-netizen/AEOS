@@ -85,11 +85,16 @@ CI also builds the actual Next.js frontend, starts the loopback-only
 `backend/tests/review_fixture_server.py` with `AEOS_SYNTHETIC_REVIEW=1`, and runs
 `frontend/tests/browser_review.py` against Chrome. The fixture uses production
 HTTP routes, actor resolution, services, and schemas with synthetic sessions
-and storage. The browser check covers intake, empty reviews, saving/reloading
-both states, zero/optional scores, validation, discard, failed-save retention,
-role and cross-tenant denial, and missing-session feedback. It uses the
-existing backend dependencies and the runner's Chrome.
-It does not establish JWT verification or real PostgREST persistence.
+and storage. It also starts `backend/tests/fake_supabase_auth.py`, a loopback
+stand-in for Supabase Auth on port 9999, so the browser signs in through the
+real `/login` page, `@supabase/ssr` cookies, and `src/proxy.ts`. The frontend
+is built with `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:9999`. The browser
+check covers the signed-out redirect, a refused wrong password, sign-in and
+sign-out, intake, empty reviews, saving/reloading both states, zero/optional
+scores, validation, discard, failed-save retention, role and cross-tenant
+denial, and that no token is kept in localStorage. It uses the existing backend
+dependencies and the runner's Chrome. It does not establish hosted Supabase
+sign-in, production JWKS verification, or real PostgREST persistence.
 
 For the limited offline business-logic check from the repository root:
 
