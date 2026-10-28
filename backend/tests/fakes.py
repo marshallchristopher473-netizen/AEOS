@@ -77,14 +77,71 @@ class FakeQuery:
         return FakeResponse(rows)
 
 
+class FakeRpc:
+    def __init__(self, client: "FakeClient", name: str, params: Dict[str, Any]):
+        self.client = client
+        self.name = name
+        self.params = deepcopy(params)
+
+    def execute(self) -> FakeResponse:
+        self.client.queries.append(
+            {"table": None, "operation": "rpc", "filters": {}, "payload": {"name": self.name, **self.params}}
+        )
+        handler = self.client.rpc_handlers.get(self.name)
+        if handler is None:
+            raise AssertionError(f"unexpected rpc: {self.name}")
+        return FakeResponse(handler(self.client, deepcopy(self.params)))
+
+
+def fake_reserve_ai_feedback_request(client: "FakeClient", params: Dict[str, Any]):
+    """Mirror of public.aeos_reserve_ai_feedback_request (migration 006).
+
+    The fake has no clock, so every stored row counts as inside both windows.
+    The SQL itself is exercised against PostgreSQL in test_ai_feedback_rls.py.
+    """
+    request = params["p_request"]
+    limits = params["p_limits"]
+    rows = client.tables.setdefault("ai_feedback_requests", [])
+    drafts = {row["request_id"]: row for row in client.tables.get("ai_feedback_drafts", [])}
+    org, user = request["organization_id"], request["created_by"]
+
+    for row in rows:
+        if (row["organization_id"], row["created_by"], row["request_key"]) == (org, user, request["request_key"]):
+            return {"outcome": "duplicate", "request_id": row["id"]}
+
+    def cost(row):
+        draft = drafts.get(row["id"])
+        return draft["actual_cost_microusd"] if draft else row["reserved_cost_microusd"]
+
+    org_rows = [row for row in rows if row["organization_id"] == org]
+    user_rows = [row for row in org_rows if row["created_by"] == user]
+    if len(user_rows) >= limits["user_hourly_requests"]:
+        return {"outcome": "user_rate_limited"}
+    if len(org_rows) >= limits["org_daily_requests"]:
+        return {"outcome": "org_rate_limited"}
+    if sum(map(cost, user_rows)) + request["reserved_cost_microusd"] > limits["user_daily_cost_microusd"]:
+        return {"outcome": "user_budget_exceeded"}
+    if sum(map(cost, org_rows)) + request["reserved_cost_microusd"] > limits["org_daily_cost_microusd"]:
+        return {"outcome": "org_budget_exceeded"}
+
+    rows.append(deepcopy(request))
+    return {"outcome": "reserved", "request_id": request["id"]}
+
+
 class FakeClient:
     def __init__(self, tables: Optional[Dict[str, List[Dict[str, Any]]]] = None):
         self.tables = deepcopy(tables or {})
         self.queries: List[Dict[str, Any]] = []
         self._id_counter = 0
+        self.rpc_handlers = {
+            "aeos_reserve_ai_feedback_request": fake_reserve_ai_feedback_request,
+        }
 
     def table(self, name: str) -> FakeQuery:
         return FakeQuery(self, name)
+
+    def rpc(self, name: str, params: Dict[str, Any]) -> FakeRpc:
+        return FakeRpc(self, name, params)
 
     def next_id(self) -> str:
         self._id_counter += 1
