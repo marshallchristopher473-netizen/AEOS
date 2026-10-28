@@ -53,10 +53,26 @@ separate synthetic-data verification path.
 ## Running the teacher portal locally (sign-in)
 
 Use synthetic data only. Do not create accounts or records for real students.
+`<project-ref>` below is your Supabase project's reference ID.
 
-1. Backend: `cp backend/.env.example backend/.env` and fill in the Supabase
-   values. The browser reaches the API through the same-origin `/api` proxy, so
-   the backend needs no CORS configuration. Then:
+Before you start, check both of these; either one blocks sign-in:
+
+- **Asymmetric JWT signing keys** (Project Settings → JWT Keys shows an ES256
+  or RS256 key). The backend refuses tokens signed with the legacy HS256
+  secret, so sign-in would succeed but every API call would return 401.
+- **Migrations 001–007 applied** (`backend/supabase/migrations/`). The Table
+  Editor should list `organizations`, `users`, `students`, `assessments`, and
+  `ai_feedback_drafts`.
+
+1. Backend: `cp backend/.env.example backend/.env` and set:
+   - `SUPABASE_URL=https://<project-ref>.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY` (server-side only; never in the frontend,
+     chat, or a commit)
+   - `SUPABASE_JWKS_URL=https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json`
+   - `SUPABASE_JWT_ISSUER=https://<project-ref>.supabase.co/auth/v1`
+
+   The browser reaches the API through the same-origin `/api` proxy, so the
+   backend needs no CORS configuration. Then:
    ```bash
    cd backend && pip install -r requirements.txt
    uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -83,6 +99,19 @@ Use synthetic data only. Do not create accounts or records for real students.
      ```
 4. Open http://localhost:3000. Signed-out visitors are redirected to `/login`;
    after sign-in you land on Students. "Sign out" is in the header.
+5. A new organization has no records, so walk the review flow end to end:
+   create a synthetic student, create an assessment for that student, save a
+   review, reload the page and confirm the review is still there, then sign
+   out. Done when every step completes with no error message on the page and
+   no red errors in the browser console.
+
+If it fails:
+
+| Symptom | Likely cause |
+|---|---|
+| Signed in, but pages say "Please sign in again to continue." | Legacy HS256 signing keys, or a wrong `SUPABASE_JWKS_URL` or `SUPABASE_JWT_ISSUER` |
+| "Authenticated identity has no active AEOS user" | No active `users` row for the login, or its `auth_user_id` does not match the auth user's UID |
+| "Sign-in is not configured" | `frontend/.env.local` is missing, or the dev server was not restarted after creating it |
 
 Checks: `npm run lint`, `npx tsc --noEmit`, `npm test`, and `npm run build` in
 `frontend/`; `python -m pytest tests/ -q` in `backend/`.
