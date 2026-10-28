@@ -1,0 +1,18 @@
+date,experiment,category,activity,hours,amount_usd,notes
+2026-10-28,deck_sprint,delivery,Build portfolio sample slides,2.0,,First pass
+2026-10-29,deck_sprint,delivery,Write speaker notes for sample,1.0,,
+2026-10-30,deck_sprint,acquisition,Email 5 contacts with sample,1.5,,Templates B and C
+2026-11-03,deck_sprint,acquisition,Scope call with consultant,0.75,,Verbal yes
+2026-11-03,deck_sprint,admin,Proposal and deposit invoice,0.5,,
+2026-11-04,deck_sprint,income,Deposit received,,325.00,50% of 650
+2026-11-06,deck_sprint,delivery,Intake review and outline,1.5,,
+2026-11-08,deck_sprint,delivery,Slide build,4.0,,
+2026-11-10,deck_sprint,delivery,Revision round,1.0,,One consolidated list
+2026-11-11,deck_sprint,income,Balance received,,325.00,Final payment
+2026-11-11,deck_sprint,admin,Handoff and file delivery,0.25,,
+2026-10-29,ai_eval,admin,Complete application and assessment,1.25,,No paid work yet
+2026-10-30,coverage_pay,admin,Draft and send inquiry,0.5,,Three dates listed
+2026-11-05,tutoring,delivery,Session with student,1.0,,Posted rate 60
+2026-11-05,tutoring,delivery,Session prep,0.5,,
+2026-11-05,tutoring,income,Session payment,,60.00,
+2026-11-05,tutoring,fee,Platform fee,,15.00,25 percent
