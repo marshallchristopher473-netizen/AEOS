@@ -11,7 +11,7 @@
  *   node --experimental-strip-types --import ./scripts/ts-resolve.mjs --test "src/**\/*.test.ts"
  */
 
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'node:module';
@@ -21,13 +21,26 @@ const SRC_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), '..', 'src
 /** Extensions tried, in the order a bundler would try them. */
 const CANDIDATES = ['.ts', '.tsx', '/index.ts', '/index.tsx', '.js', '.mjs'];
 
+/**
+ * Must test for a *file*, not mere existence: `@/content/mindunlock` names a directory, and
+ * returning the directory path makes Node try to read it as a module (EISDIR). The directory
+ * case is handled by the `/index.*` candidates below.
+ */
+function isFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function firstExisting(basePath) {
-  if (existsSync(basePath) && !basePath.endsWith('/')) {
+  if (isFile(basePath)) {
     return basePath;
   }
   for (const extension of CANDIDATES) {
     const candidate = `${basePath}${extension}`;
-    if (existsSync(candidate)) {
+    if (isFile(candidate)) {
       return candidate;
     }
   }

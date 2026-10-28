@@ -3,7 +3,11 @@
  *
  * Run with the Node runtime already required by this project — no test dependency is added:
  *
- *   node --experimental-strip-types --test src/lib/briefing/**\/*.test.ts
+ *   npm test
+ *
+ * Imports here are extensionless and use the `@/` alias, matching the rest of the codebase
+ * and keeping `npx tsc --noEmit` happy. `scripts/ts-resolve.mjs` teaches Node to resolve
+ * both, since Node's own ESM resolver requires explicit extensions.
  *
  * These assert that the gate *rejects* malformed briefings. A validator nobody has watched
  * fail is indistinguishable from a validator that always passes, and this one is the only
@@ -13,8 +17,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { Briefing, Claim, Source } from './types.ts';
-import { assertBriefingValid, validateBriefing } from './validate.ts';
+import type { Briefing, Claim, Source } from './types';
+import { assertBriefingValid, validateBriefing } from './validate';
 
 const META_SOURCE: Source = {
   id: 'meta',
@@ -231,6 +235,6 @@ test('assertBriefingValid throws with every error listed', () => {
 });
 
 test('the shipped MindUnlock briefing passes the gate', async () => {
-  const { MINDUNLOCK_BRIEFING } = await import('../../content/mindunlock/index.ts');
+  const { MINDUNLOCK_BRIEFING } = await import('@/content/mindunlock');
   assert.doesNotThrow(() => assertBriefingValid(MINDUNLOCK_BRIEFING));
 });
