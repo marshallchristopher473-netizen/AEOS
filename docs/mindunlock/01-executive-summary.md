@@ -60,6 +60,28 @@ Stack the facts the way an ethics panel or a reporter would:
 Maryland's Public Ethics Law treats intentional use of public position for private gain as a
 prohibition, not a disclosure item. This is not a Week 12 compliance task; it is a Week 0 gate.
 
+**Verification confirmed the institutional map and corrected the citations.** MCPS Regulation
+GCA-RA (Employee Conflict of Interest), Board Policy BBB (Ethics), the Board of Education Ethics
+Panel, an Ethics Officer, and Form 460-50 as the outside-employment pre-approval all exist as
+designated. COMAR 19A.05.02.04 covers outside employment impairing impartiality and
+disqualification from matters of direct economic impact. Three corrections:
+
+1. **The §5-816 citation is now wrong.** SB 109 (2025), Ch. 299, effective 1 October 2025,
+   renumbered §§5-816–5-820 to **§§5-817–5-821**. The conflict-of-interest provision is now
+   **§5-817**; §5-816 is a new annual certification duty.
+2. **Title 5 Subtitle 5 does not bind you directly.** It governs *State* officials and employees.
+   It reaches an MCPS employee through the rules the Board has adopted — Policy BBB and
+   Regulation GCA-RA. Those are the enforceable instruments, and those are what to read.
+3. **§5-506 is broader than the audit said.** A 2017 amendment added a prong barring use of
+   position to influence the award of a State or local contract to a specific person outside
+   official duties. That is the prong that actually bites a founder selling software, and the
+   audit did not surface it.
+
+**The most important operational point, and it changes the strategy:** the risk here is a
+**status prohibition** — holding an employment or financial interest in an entity contracting
+with the school system. **Recusal does not cure a status prohibition.** Stepping back from the
+sales conversation does not fix it. Do not pitch MCPS until the Ethics Panel says so in writing.
+
 **What to do, in order.** (1) File the MCPS outside-employment pre-approval disclosing the
 venture, your role and the intent to sell to MCPS. (2) Request a written advisory opinion from
 the MCPS Ethics Panel describing the actual fact pattern, including the pilot and the sales
@@ -97,6 +119,27 @@ There are two coherent postures and no third:
   and the referral threshold.
 
 What you cannot do is keep the clinical language without the licence.
+
+**Verification both confirmed and narrowed this.** Md. Health Occ. §18-101(f)(1)(iii) and
+§18-401(a) say what the audit claimed — pulled from the General Assembly's own statute pages —
+and there is **no software, ed-tech or self-assessment exemption** anywhere in §18-102 or
+§18-301(c). But the statute has no bright line, and the audit supplied none. The real limiting
+language is §18-101(f)(3), tying "psychological methods" to graduate-psychology knowledge, and
+§18-102, which pivots on whether you *describe* your service as "psychological". A study-habits
+inventory with a plain-language summary sits in grey; a named clinical instrument scored for
+"anxiety severity" with a "referral flag" is what makes it concrete.
+
+**So do not tell a district you are "outside" §18-101.** You cannot prove that, and nobody has.
+Change the product so the question doesn't arise.
+
+**The instrument findings came back stronger than the audit stated:**
+
+- The **Spielberger TAI** external licence is research-only and explicitly not for individual
+  feedback — *and it is normed for high school and up*, so a 12-year-old is outside the
+  instrument **regardless of licensing**. That settles it without a licensing negotiation.
+- **VARK** forbids app embedding outright.
+- **CAS2** is PAR Qualification Level C and a print examiner battery — not an app component at
+  any price.
 
 ---
 
@@ -193,20 +236,30 @@ can promise.
 This is a quantified inducement attached to a priced product sold to under-resourced families,
 and unlike the efficacy claims, **no amount of pilot data can ever make it true.**
 
-### 3.2 The compliance section cites the wrong country's law
+### 3.2 The compliance section cites the wrong country's law — and the audit got the fix backwards
 
 FERPA is invoked nine times as the governing regime — including as a property of the database
 itself ("PostgreSQL (Supabase) … FERPA-compliant"). But FERPA binds educational agencies, and
 reaches a vendor only through the school-official exception. **Where a parent subscribes
-directly and no school discloses a record, FERPA does not apply at all** — and the primary
-revenue line is a $399/yr family subscription. The operative regimes for that track are COPPA
-and state student-privacy law, neither treated as primary.
+directly and no school discloses a record, FERPA does not apply at all.**
 
 The tell: the stated **"72-hour breach notification protocol"** is the *GDPR Article 33* clock.
-FERPA imposes no breach-notification requirement. Maryland's PIPA gives **45 days**. A US K-12
-product advertising a European regulator's deadline indicates the compliance section was
-assembled from ambient material rather than from the statutes that actually govern it — the same
-defect as the research citations, in the section that most assumed competence.
+FERPA imposes no breach-notification requirement. Maryland's PIPA gives **45 days**.
+
+**But verification inverted the conclusion, and this is the important part.** FERPA, IDEA Part B
+confidentiality, PPRA and Md. Educ. §4-131 *all* bind schools, districts and their contractors.
+A direct-to-parent product sits outside all four — and the audit treated that as **reassurance**.
+It is not. It means the regimes that actually bite are the ones nobody looked at:
+
+- **COPPA** — your users are under 13.
+- **FTC Act §5** and the **Maryland Consumer Protection Act** — the Maryland statute reaches
+  "crisis detection" marketing without needing the unsettled negligent-undertaking tort theory
+  the red team relied on. That is a much shorter path to the same liability.
+- **The Maryland Online Data Privacy Act**, which the audit missed entirely.
+
+And the sharpest reframing of all: **your real FERPA exposure is not the product. It is you, as
+an MCPS employee, touching district data or district students.** That is an employment and
+ethics question, not a product-compliance one — and it routes straight back to §2.1.
 
 ### 3.3 Licensed instruments used as product features
 
@@ -290,17 +343,39 @@ vendor's algorithm. MCPS's Office of Special Education will read it that way in 
 
 **Three things stop this at the door before pedagogy is discussed:** IDEA's own confidentiality
 subpart (34 CFR 300.610–300.627), which is stricter than the general FERPA framing and is never
-mentioned; Maryland's vendor regime (Educ. §4-131 operator duties, MCPS's data-privacy vetting,
-a signed data privacy agreement) which must precede any student data touching the system; and a
-Board-approval threshold that a five-school licence trips in aggregate.
+mentioned; Maryland's vendor regime, where MCPS's own vetting gate reportedly takes **60 days
+minimum** before you touch any student data; and a Board-approval threshold for purchases.
 
-**And the artifact never makes its own best argument.** The MCPS lens found that the district is
-under a state finding of significant disproportionality in suspensions of Black students with
-disabilities, carrying a documented IDEA set-aside consequence in the millions. *That* is a budget
-line with a buyer attached. Test anxiety is not.
+> **Correction from verification:** the audit cited Md. Educ. §5-112 for a $25,000 Board-approval
+> threshold. The 2024 General Assembly **raised that threshold to $100,000.** The $25,000 figure
+> is real but lives in MCPS Policy DJA and the procurement manual, not the statute. And the
+> County Inspector General recently found MCPS purchasing above that threshold without Board
+> approval — so the district is *tightening* controls exactly where a new vendor would enter.
 
-> This specific finding is high-value and currently unverified. Confirm the finding and the
-> set-aside figure against MSDE and MCPS sources before using it in any pitch.
+**And the artifact never makes its own best argument** — though targeted verification cut this
+one down substantially, and the corrected version matters more than the original.
+
+**What survives:** MCPS genuinely *is* identified for significant disproportionality in the
+discipline of Black students with disabilities. MCPS says so in its own Board materials. That is
+real, and it is a far better reason for this product to exist than test anxiety.
+
+**What does not survive, and must not be repeated:**
+
+- **The "$5.64M" figure is not yours to cite.** It traces to a single AI-generated summary of a
+  March 2025 committee meeting — not to any document the verifier could open. Putting an
+  unsourced dollar figure in front of a district is the exact failure mode this whole audit is
+  about.
+- **"Funded buyer" badly overstates it.** This is not a budget looking for a vendor. It is 15%
+  of MCPS's *existing* IDEA Part B allocation, redirected under an MSDE-approved CCEIS plan
+  written **before the fiscal year starts** — and MCPS has already named what it is spending on
+  (a Summer Belonging Initiative, de-escalation PD for roughly 12,000 staff). The money is
+  committed, through a plan you are not in.
+- Identification is **annual**, and rests on 2020–21/2021–22 data. MSDE updates each May;
+  current status is unconfirmed.
+
+The honest version: the *problem* is real and documented, which makes it a credible basis for a
+conversation. The *money* is already allocated through a process with a deadline that precedes
+the fiscal year. Those are different things, and only the first one is yours.
 
 ---
 

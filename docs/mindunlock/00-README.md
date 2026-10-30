@@ -35,7 +35,8 @@ you how much to trust the rest.
 | [`60-deepseek-engineering.md`](60-deepseek-engineering.md) | Systems & cost | Unit economics, scope, architecture, evaluability. |
 | [`70-code-modernization.md`](70-code-modernization.md) | Code & a11y | The independent code lens (compare with `10-`). |
 | [`80-business-reality.md`](80-business-reality.md) | Business reality | P&L, revenue assumptions, grants, go-to-market, competition. |
-| [`90-verification.md`](90-verification.md) | Verification | **What survived adversarial checking and what did not. Read this before acting on any finding.** |
+| [`90-verification.md`](90-verification.md) | Verification | What survived adversarial checking on the research-integrity lens, and the error rate to assume elsewhere. |
+| [`91-targeted-verification.md`](91-targeted-verification.md) | Targeted verification | **The career- and liability-critical claims, checked. Read this before acting on anything in `30-` or `40-`.** |
 
 The rebuilt document itself lives in the app, not in this folder:
 `frontend/src/content/mindunlock/` (content as graded claims),
@@ -54,9 +55,22 @@ returned findings with an explicit evidence tier.
 learning science, note-taking and metacognition, systems and cost engineering, code and
 accessibility, and business reality. **188 findings and 118 proposed additions.**
 
-**What did not:** verification. Across three attempts, the verification stage hit a usage limit
-each time. **One skeptic of thirteen planned auditors completed**, on the research-integrity
-lens. The cross-lens synthesis never ran.
+**What did not:** the full verification suite. Across three attempts, the thirteen-auditor stage
+hit a usage limit each time; **one skeptic completed**, on the research-integrity lens, and the
+cross-lens synthesis never ran.
+
+**What was done instead:** four skeptics were pointed at only the claims that could cost the
+founder his job, expose him to liability, or embarrass him in front of a district. All four
+completed — see [`91-targeted-verification.md`](91-targeted-verification.md). They produced the
+sharpest corrections in the whole exercise, including retiring a figure this audit had
+previously called the single most valuable finding in it.
+
+**A caveat that applies to all of it:** the targeted verifiers were largely unable to reach
+primary sources — `mgaleg.maryland.gov`, `ethics.maryland.gov`, `law.justia.com`,
+`law.cornell.edu`, `labor.maryland.gov`, `ecfr.gov`, `ftc.gov` and both MCPS domains were
+blocked from this environment. Much of what they report rests on search returns and secondary
+summaries rather than statute text read directly. They flagged this themselves. It means those
+documents are **a map of what to open**, not a substitute for opening it.
 
 [`90-verification.md`](90-verification.md) records exactly what that one verifier found — and it
 is the most important file in this folder, because it tells you the **error rate to assume on
