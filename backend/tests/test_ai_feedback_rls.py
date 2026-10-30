@@ -336,6 +336,49 @@ def test_draft_and_decision_saves_write_audit_rows_without_student_text(committe
     assert "Synthetic response" not in json.dumps([r[4] for r in rows])
 
 
+def decision_audit_rows(conn, draft_id):
+    """Every decision audit row for one draft, read with privilege."""
+    conn.execute("RESET ROLE")
+    return conn.execute(
+        "SELECT entity_type, entity_id::text, action, performed_by::text, organization_id::text "
+        "FROM public.audit_logs "
+        "WHERE entity_type = 'ai_feedback_decision' AND metadata->>'draft_id' = %s",
+        (draft_id,),
+    ).fetchall()
+
+
+def test_service_role_decision_writes_exactly_one_audit_row(service):
+    """The API saves decisions as service_role. The 006 trigger, not the
+    application, writes the audit row, so there is exactly one per decision and
+    its tenant and actor are the decision row's own."""
+    row, _ = reserve(service)
+    draft_id = insert_draft(service, row["id"])
+    decision_id = insert_decision(service, draft_id, decision="revised", text="Teacher's own text")
+
+    assert decision_audit_rows(service, draft_id) == [
+        ("ai_feedback_decision", decision_id, "ai_feedback.decision.revised", USER_A, ORG_A)
+    ]
+
+
+def test_cross_tenant_decision_is_refused_and_leaves_no_audit_row(service):
+    """A decision claiming organization B for organization A's draft fails, so
+    no audit row can record a decision that never happened."""
+    row, _ = reserve(service)
+    draft_id = insert_draft(service, row["id"])
+
+    service.execute("SAVEPOINT probe")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        service.execute(
+            "INSERT INTO public.ai_feedback_decisions "
+            "(id, organization_id, draft_id, decided_by, decision, approved_text, teacher_confirmed, "
+            " decision_key, payload_sha256) VALUES (%s, %s, %s, %s, 'rejected', NULL, true, %s, %s)",
+            (str(uuid.uuid4()), ORG_B, draft_id, USER_B, str(uuid.uuid4()), SHA),
+        )
+    service.execute("ROLLBACK TO SAVEPOINT probe")
+
+    assert decision_audit_rows(service, draft_id) == []
+
+
 def test_a_save_fails_when_its_audit_row_cannot_be_written(service, admin_conn):
     row, result = reserve(service)
     assert result["outcome"] == "reserved"
