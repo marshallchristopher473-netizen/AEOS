@@ -20,7 +20,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## Endpoints
-- `GET /health`: reports a database connectivity result; `status: ok` alone does not establish readiness.
+- `GET /health`: returns 200 with `database: connected` when the database probe succeeds, otherwise 503 with `status: unavailable`.
 - `POST /assessments`, `GET /assessments`, `GET /assessments/{id}`
 - `POST /assessment-results`, `GET /assessment-results`, `GET /assessment-results/{id}`
 - `GET /assessment-results?assessment_id={id}`: reviews for an accessible assessment in the actor's organization.

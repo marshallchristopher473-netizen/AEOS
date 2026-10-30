@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, status
+from fastapi.responses import JSONResponse
 
 from app.services.supabase_service import get_supabase_client
 
@@ -33,11 +34,17 @@ def health_check():
     except Exception as exc:
         database_status, detail = _classify_database_error(exc)
 
+    healthy = database_status == "connected"
     response = {
-        "status": "ok",
+        "status": "ok" if healthy else "unavailable",
         "database": database_status,
     }
     if detail:
         response["detail"] = detail
 
-    return response
+    # Uptime checks and load balancers read the status code, not the body, so
+    # an unusable database must not be reported as a healthy 200.
+    return JSONResponse(
+        response,
+        status_code=status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
