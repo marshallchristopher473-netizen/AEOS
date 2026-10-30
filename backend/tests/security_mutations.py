@@ -76,6 +76,7 @@ MIGRATION_FILES = (
     "006_ai_feedback_drafts.sql",
     "007_ai_feedback_draft_ownership.sql",
     "008_revoke_maintain_and_anon_function_execute.sql",
+    "009_primary_key_defaults.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement

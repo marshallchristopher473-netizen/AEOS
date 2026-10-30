@@ -86,6 +86,7 @@ MIGRATIONS = (
     "006_ai_feedback_drafts.sql",
     "007_ai_feedback_draft_ownership.sql",
     "008_revoke_maintain_and_anon_function_execute.sql",
+    "009_primary_key_defaults.sql",
 )
 
 # Set in CI to the PostgreSQL major version the job's service runs, so a job
