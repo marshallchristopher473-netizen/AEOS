@@ -270,6 +270,41 @@ export const MINDUNLOCK_BRIEFING: Briefing = {
                 'and useful thing to have done.',
             },
             {
+              id: 'retract-paid-tutoring',
+              text:
+                'Maryland’s minimum working age is 14 and work permits are not issued below it, ' +
+                'so paid tutoring cannot lawfully be delivered to most of a grades 6–8 cohort.',
+              tier: 'retracted',
+              sources: ['md-child-labor'],
+              note:
+                'The student certification advertised "Paid peer tutoring eligibility ' +
+                '($15–20/hr)" and "MCPS paid peer tutoring eligibility" to a cohort the document ' +
+                'defines as grades 6–8 — roughly ages 11 to 14. Unlike the efficacy claims, no ' +
+                'amount of pilot evidence can make this one true. It also raises a question the ' +
+                'original never asked: if the product pays the tutors, the product is the ' +
+                'employer, with permit, hour, wage and recordkeeping obligations in every ' +
+                'household it serves.',
+            },
+            {
+              id: 'retract-ferpa-posture',
+              text:
+                'FERPA does not govern a product a parent subscribes to directly; it binds ' +
+                'educational agencies and reaches a vendor only through the school-official ' +
+                'exception. The operative regimes for the family channel are COPPA and state ' +
+                'student-privacy law.',
+              tier: 'retracted',
+              sources: ['ferpa', 'coppa-rule', 'md-pipa'],
+              note:
+                'The original invoked FERPA nine times as the governing regime, including as a ' +
+                'property of the database itself ("PostgreSQL (Supabase) … FERPA-compliant"), ' +
+                'while its primary revenue line was a direct-to-family subscription. The tell is ' +
+                'the stated "72-hour breach notification protocol": that is the GDPR Article 33 ' +
+                'clock. FERPA imposes no breach-notification duty at all, and Maryland’s PIPA ' +
+                'gives 45 days. Row-level security is good practice but it is not what makes a ' +
+                'consumer product compliant — verifiable parental consent, minimisation at ' +
+                'collection and deletion rights are, and those are COPPA mechanics.',
+            },
+            {
               id: 'retract-phd-level',
               text:
                 '"PhD-Level" is not a property a forty-hour course for a twelve-year-old can have, ' +

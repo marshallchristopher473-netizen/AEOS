@@ -11,9 +11,12 @@ document itself.
 | If you have | Read |
 |---|---|
 | 10 minutes | [`01-executive-summary.md`](01-executive-summary.md) |
-| 30 minutes | the executive summary, then [`30-red-team.md`](30-red-team.md) |
-| An hour | add [`40-mcps-sped.md`](40-mcps-sped.md) and [`20-evidence-audit.md`](20-evidence-audit.md) |
+| 30 minutes | the executive summary, then [`90-verification.md`](90-verification.md) |
+| An hour | add [`30-red-team.md`](30-red-team.md) and [`40-mcps-sped.md`](40-mcps-sped.md) |
 | You want to build | [`31-blue-team.md`](31-blue-team.md) and [`60-deepseek-engineering.md`](60-deepseek-engineering.md) |
+
+**Before you act on any single finding, read `90-verification.md`.** It is short, and it tells
+you how much to trust the rest.
 
 ---
 
@@ -31,6 +34,8 @@ document itself.
 | [`51-notetaking-metacognition.md`](51-notetaking-metacognition.md) | Note-taking & metacognition | Replacement specification for both sections. |
 | [`60-deepseek-engineering.md`](60-deepseek-engineering.md) | Systems & cost | Unit economics, scope, architecture, evaluability. |
 | [`70-code-modernization.md`](70-code-modernization.md) | Code & a11y | The independent code lens (compare with `10-`). |
+| [`80-business-reality.md`](80-business-reality.md) | Business reality | P&L, revenue assumptions, grants, go-to-market, competition. |
+| [`90-verification.md`](90-verification.md) | Verification | **What survived adversarial checking and what did not. Read this before acting on any finding.** |
 
 The rebuilt document itself lives in the app, not in this folder:
 `frontend/src/content/mindunlock/` (content as graded claims),
@@ -45,20 +50,33 @@ Nine independent expert lenses each read the full source and used live web searc
 statutes, regulations, effect sizes and product facts against primary sources. Each lens
 returned findings with an explicit evidence tier.
 
-**What ran:** eight of nine lenses completed — research integrity, red team, blue team, MCPS
-special education, learning science, note-taking and metacognition, systems and cost
-engineering, and code and accessibility. 168 findings and 107 proposed additions.
+**What ran:** all nine lenses — research integrity, red team, blue team, MCPS special education,
+learning science, note-taking and metacognition, systems and cost engineering, code and
+accessibility, and business reality. **188 findings and 118 proposed additions.**
 
-**What did not:** the business-reality lens and, more importantly, **all thirteen adversarial
-verifiers and the synthesis stage failed on a usage limit.** They were re-run afterwards; see
-`90-verification.md` for the result. Until you have read that file alongside a finding, treat
-the finding as **single-source and unchecked**.
+**What did not:** verification. Across three attempts, the verification stage hit a usage limit
+each time. **One skeptic of thirteen planned auditors completed**, on the research-integrity
+lens. The cross-lens synthesis never ran.
 
-This matters because the design of this audit assumed verification. Each lens was to be
-attacked by a skeptic (checking every citation, statute number and figure independently) and,
-for the four high-stakes lenses, by a practitioner (checking whether the finding is true in the
-real operating environment or only on paper). A finding that has not been through that is a
-well-reasoned lead, not a fact.
+[`90-verification.md`](90-verification.md) records exactly what that one verifier found — and it
+is the most important file in this folder, because it tells you the **error rate to assume on
+everything else**:
+
+> Roughly 60% of the lens's findings survive adversarial checking intact, about 25% survive in
+> weakened form, and a handful of its supporting citations and remedies would themselves fail
+> the verification gate it proposes.
+
+Six of 23 findings refuted or materially corrected. Six substantive items missed. And the lens
+**introduced a new false claim inside its own recommended fix** — it told the founder to publish
+that FSRS is "Anki's default scheduler," which it is not.
+
+That is the correction rate on the lens whose *entire job* was citation accuracy. Assume at
+least that rate on the eight unverified lenses. **Do not carry any specific number, statute
+section or legal conclusion from them into a grant application, an investor conversation or a
+district meeting without reading the primary source yourself.**
+
+The exception is [`10-code-and-accessibility-audit.md`](10-code-and-accessibility-audit.md):
+every claim in it was measured directly rather than reasoned, so it needs no verification.
 
 ### Reading the evidence tiers
 

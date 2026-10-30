@@ -120,12 +120,38 @@ not occurred."* Judged against that standard, it fails in its own foundational t
 
 **Numbers attributed to sources that do not report them:**
 
+Verification sharpened this into three distinct classes, and the distinction matters — because
+"you fabricated this" is a charge you would lose in a room if the number actually traces.
+
+**Class 1 — fabricated.** No source contains them; none was located.
+
 | Claim | Problem |
 |---|---|
 | African-centred pedagogy "(ES: 0.8)" | Attributed to three theorists, none of whom published a meta-analysis. The real quantitative evidence (Dee & Penner) is stronger than the invented number. |
 | "40% greater intrinsic motivation" | Attributed to Holt, Gray and Freire — trade books and theory, not effect sizes. |
 | "73% of MCPS families lack both" | Attributed to a 1997 national theory paper, which cannot contain a Montgomery County statistic. |
-| "Interleaving ... by 43%", "15–20%" stereotype threat, "38%" test anxiety prevalence, "85%" of interventions | Unverified against their cited sources. |
+| "85% of test anxiety interventions", "15–20%" stereotype threat, "90% faster", "60–90% speed increase" | No source located. |
+
+**Class 2 — misreported.** The number traces to the cited study, but the unit or scope is wrong.
+This is a real defect and a smaller one.
+
+- **"43%"** is a 43-*percentage-point* gap between conditions in one Rohrer & Taylor experiment
+  (63% interleaved vs 20% blocked on a one-week delayed test), restated as a 43% improvement.
+- **"50%"** is a defensible relative restatement of one Roediger & Karpicke one-week contrast
+  (61% vs 40%), presented as a general law.
+
+**Class 3 — untraceable to the source given.** The effect is real; that citation doesn't report
+that figure. "2× retention" from Cepeda et al., whose actual finding is the interaction between
+spacing gap and retention interval; "38% debilitating test anxiety" from Zeidner.
+
+Class 1 must be deleted. Class 2 must be corrected to the actual contrast with its condition,
+delay and sample stated. Class 3 must be re-sourced or made magnitude-free.
+
+**And a fairness point the first pass missed:** a substantial part of the artifact's citation
+scaffolding is *correct*. Liebert & Morris (1967) for the worry/emotionality distinction, Wine
+(1971), Flavell (1979), Scarborough (2001), Sweller (1988/2011), Dawson & Guare, Gagné's nine
+events, Wiggins & McTighe, and Saphier are all accurately attributed and make no fabricated
+quantitative claims. The problem is concentrated in the numbers, not the reading.
 
 **Debunked constructs embedded in the instrument:** VARK modality preference (item 5.1) and
 "Preferred cultural learning style" (item 4.8). Learning-styles matching has no adequate evidence
@@ -146,6 +172,51 @@ diagram. None exists. Call it a competitive scan — which is a legitimate thing
 UMCP" — none agreed — is a deceptive-credential fact pattern. The **"GED-to-PhD pathway"** at
 $99–$999 a level is the most exposed surface in the document: five of its eight rungs are marked
 "Partner" with no partner, sold to families the artifact itself describes as under-resourced.
+
+### 3.1 The one the audit itself nearly missed
+
+Verification found a finding sharper than anything in the original lens output, and it is cheap
+to fix only because it has not shipped yet.
+
+The student certification's advertised payoff is **"Paid peer tutoring eligibility
+($15–20/hr)"**, sold to a cohort the document defines throughout as MCPS grades 6–8 — roughly
+ages 11 to 14. **Maryland's minimum working age is 14, and work permits are not issued below
+it.** For sixth and seventh graders and most eighth graders, the headline benefit of a
+certification they are being sold *cannot lawfully be delivered*.
+
+For the few who turn 14, it can only happen through a permitted employment relationship with a
+named employer — which raises a question the document never asks. If MindUnlock pays the tutors,
+MindUnlock is the employer, and inherits permit, hour, wage and recordkeeping obligations in
+every household it serves. If MCPS pays them, that is a district employment decision no vendor
+can promise.
+
+This is a quantified inducement attached to a priced product sold to under-resourced families,
+and unlike the efficacy claims, **no amount of pilot data can ever make it true.**
+
+### 3.2 The compliance section cites the wrong country's law
+
+FERPA is invoked nine times as the governing regime — including as a property of the database
+itself ("PostgreSQL (Supabase) … FERPA-compliant"). But FERPA binds educational agencies, and
+reaches a vendor only through the school-official exception. **Where a parent subscribes
+directly and no school discloses a record, FERPA does not apply at all** — and the primary
+revenue line is a $399/yr family subscription. The operative regimes for that track are COPPA
+and state student-privacy law, neither treated as primary.
+
+The tell: the stated **"72-hour breach notification protocol"** is the *GDPR Article 33* clock.
+FERPA imposes no breach-notification requirement. Maryland's PIPA gives **45 days**. A US K-12
+product advertising a European regulator's deadline indicates the compliance section was
+assembled from ambient material rather than from the statutes that actually govern it — the same
+defect as the research citations, in the section that most assumed competence.
+
+### 3.3 Licensed instruments used as product features
+
+The audit checked whether citations were *real* and never asked whether the named instruments
+could lawfully be *used*. At least four cannot, as specified: the **Spielberger TAI** (an AI
+agent tool and a competency inside a $299 certification — published commercially under a
+research-only licence that forbids open-web availability and charges per administration),
+**VARK** (trademarked and licensed), **Phinney's MEIM**, and **PASS/CAS** (a restricted-level
+test requiring qualified-purchaser status). Separately, **Anki is AGPL-3.0** — vendoring its
+code into a closed-source commercial product triggers network-use copyleft.
 
 ---
 
@@ -186,6 +257,26 @@ Three further structural problems:
   multi-tenant model over exactly the right entities — students, assessments, AI recommendations,
   intervention plans, audit logs. The artifact proposes a parallel stack instead, contradicting
   the founder's own shared-infrastructure principle.
+
+### 4.1 The revenue line contradicts the roadmap by about 4×
+
+The arithmetic inside the Year 1 table is correct. The error is upstream of the arithmetic, in
+what gets counted.
+
+The roadmap says 500 families arrive in **Phase 4, months 10–12**, and the five school contracts
+close in **Phase 3, months 7–9**. The projection then books a **full twelve months** of
+subscription revenue from those subscribers and a **full annual licence fee** from those
+contracts. If customers arrive when the roadmap says they do, recognised Year 1 family revenue
+is on the order of **$50K, not $199,500**.
+
+On top of that, **$100,000 of federal grant funding is booked into total revenue and flows
+through to the "Net Year 1 ~$216,850" line.** Federal grant funds are restricted and
+purpose-bound. They are not margin, and no grant reviewer or investor will accept them in a net
+income line. Strip them and the stated net falls to $116,850 *before* the timing correction.
+
+A 55% net margin in Year 1, on a build that includes two mobile platforms, a web dashboard, an
+8-agent backend, four certification curricula and quarterly penetration testing, with no founder
+compensation anywhere in the model, is not a projection a diligence reader will engage with.
 
 ---
 
@@ -257,14 +348,29 @@ less. Streaks and accuracy percentages are not primary metrics.
 
 ## 7. Sequence
 
-**Gate 0 — before any further building.**
+Verification added a point the first pass missed, and it reorders everything: **separate
+"stop the bleeding" from "build the system."**
+
+**Gate 0a — the hour that removes most of the exposure.** The fabricated figures (73%, 85%,
+38%, ES 0.8, 40%, 15–20%, 90% faster, 60–90%) can be **deleted in under an hour with no
+replacement research**, and deleting them removes essentially all of the document's falsifiable
+exposure. Do this before anything else. Everything below is improvement on top of a document
+that is no longer dangerous; this one step is the difference between a document that is wrong
+and a document that is evidence against you.
+
+Delete in the same pass: "PhD-Level", "systematic review", "NASA BARS", "Anki SM-18",
+"CEU-eligible", the named universities, GED-to-PhD levels 4–8, the "$15–20/hr paid tutoring
+eligibility", and the "72-hour breach notification".
+
+**Gate 0b — before any further building.**
 1. MCPS outside-employment disclosure and written Ethics Panel advisory opinion.
 2. Decide the clinical posture. (Recommended: non-clinical. Then delete the clinical vocabulary
    everywhere.)
-3. Strike from every document: "PhD-Level", "90% faster", "systematic review", "NASA BARS",
-   "Anki SM-18", "CEU-eligible", the named universities, GED-to-PhD levels 4–8, and every
-   unverifiable number. Replace each with a verified figure and page cite, or a qualitative
-   statement, or nothing.
+3. Write the instrument licensing register — one row per named instrument (TAI, VARK, MEIM,
+   PASS/CAS), with rights-holder, licence required for commercial per-user administration with
+   individual feedback, cost, and status. Expect at least one to be unaffordable at $49/month,
+   and plan the open-instrument replacement now rather than at launch.
+4. Correct the compliance section to the statutes that actually govern the chosen channel.
 
 **Gate 1 — the defensible MVP (~8 weeks).** One segment, direct-to-family, outside MCPS. No IEP
 upload (a parent-selected accommodation checklist delivers the same product behaviour and holds
@@ -278,6 +384,11 @@ delayed retention, and unprompted week-six use (the honest early signal — most
 there, and the original roadmap had no measure that would have detected it). Independent ethics
 review, parent consent and child assent, a defined withdrawal procedure, and pre-defined stop
 conditions. No outcome claim in any customer-facing material until this reports.
+
+**The pilot date has to move, and the roadmap does not say so.** It puts enrolment at weeks 6–8.
+Independent review of research involving children routinely takes longer than that on its own,
+before the conflict-of-interest question from Gate 0b is even answered. Plan the pilot around
+the review, not the review around the pilot.
 
 **Gate 3 — only then** consider schools, and lead with disproportionality rather than test anxiety.
 

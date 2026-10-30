@@ -500,6 +500,33 @@ export const MINDUNLOCK_SOURCES: Source[] = [
       'provisions; the specific designators must be confirmed with MCPS before relying on them.',
   },
   {
+    id: 'md-child-labor',
+    kind: 'regulation',
+    authors: 'Maryland Division of Labor and Industry',
+    year: 2024,
+    title: 'Employment of Minors — work permit requirements',
+    venue: 'Maryland Department of Labor',
+    locator: 'https://labor.maryland.gov/labor/wages/empm.shtml',
+    caveat:
+      'Minimum working age is 14; work permits are not issued to minors under 14, and are ' +
+      'issued only after a job has been offered. Where Maryland law is less restrictive than ' +
+      'the federal Fair Labor Standards Act, following only the state provision violates ' +
+      'federal law. Confirm the current text before relying on any specific provision.',
+  },
+  {
+    id: 'md-pipa',
+    kind: 'statute',
+    authors: 'State of Maryland',
+    year: 2022,
+    title: 'Maryland Personal Information Protection Act — breach notification',
+    venue: 'Md. Code, Commercial Law § 14-3504',
+    locator: 'https://mgaleg.maryland.gov/mgawebsite/Laws/StatuteText?article=gcl&section=14-3504',
+    caveat:
+      'Requires notice as soon as reasonably practicable and no later than 45 days after ' +
+      'discovery, with the Attorney General notified in advance. The widely quoted 72-hour ' +
+      'deadline is GDPR Article 33 and does not apply to a US K-12 product.',
+  },
+  {
     id: 'essa-evidence-tiers',
     kind: 'statute',
     authors: 'US Congress',
