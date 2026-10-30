@@ -1,0 +1,11 @@
+# Dependencies for the AEOS revenue tools (tools/revenue/).
+# Kept separate from backend/requirements.txt: these tools are commercial
+# tooling and are not imported by the platform.
+#
+#   pip install -r tools/revenue/requirements.txt
+#
+# rate_report.py needs nothing beyond the standard library.
+# build_deck.py needs python-pptx only for .pptx output; with --markdown-only
+# it also runs on a bare standard library.
+
+python-pptx==1.0.2

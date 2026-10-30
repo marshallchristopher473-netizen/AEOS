@@ -44,6 +44,14 @@ AI:
 - RAG pipelines
 - AI agents
 
+## Revenue Validation
+
+Commercial assets for the first paid AEOS experiment — the deck sprint offer, its
+quality gate, outreach, and the hour/income ledger — live in
+[`docs/revenue/`](docs/revenue/README.md), with runnable tools in
+[`tools/revenue/`](tools/revenue/). That module contains no platform code and handles
+no student data.
+
 ## Development Status
 
 Current Phase:
