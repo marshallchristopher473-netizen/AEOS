@@ -1,6 +1,12 @@
 from tests.fakes import ORG_A, ORG_B, SCHOOL_B, STUDENT_A, STUDENT_B, USER_A
 
 
+def student_queries(fake_db):
+    # A student view or create is followed by an audit_logs insert, so select
+    # the students queries instead of relying on query order.
+    return [query for query in fake_db.queries if query["table"] == "students"]
+
+
 def test_student_collection_is_tenant_scoped(api_client, fake_db):
     response = api_client.get("/students")
 
@@ -14,7 +20,7 @@ def test_same_tenant_student_object_is_returned(api_client, fake_db):
 
     assert response.status_code == 200
     assert response.json()["id"] == STUDENT_A
-    assert fake_db.queries[-1]["filters"] == {
+    assert student_queries(fake_db)[-1]["filters"] == {
         "id": STUDENT_A,
         "organization_id": ORG_A,
     }
@@ -43,7 +49,7 @@ def test_student_create_derives_tenant_and_actor_server_side(api_client, fake_db
     assert response.status_code == 201
     assert response.json()["organization_id"] == ORG_A
     assert response.json()["created_by"] == USER_A
-    inserted = fake_db.queries[-1]["payload"]
+    inserted = student_queries(fake_db)[-1]["payload"]
     assert inserted["organization_id"] == ORG_A
     assert inserted["created_by"] == USER_A
 

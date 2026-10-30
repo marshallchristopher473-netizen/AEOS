@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.dependencies import get_current_actor, require_privileged_write
 from app.models.schemas import AuthenticatedActor
+from app.services.audit_log import record_audit_event
 from app.services.supabase_service import get_supabase_admin_client
 from app.services.tenant_scope import (
     assert_related_row_in_tenant,
@@ -67,6 +68,13 @@ def create_student(
         },
         actor.organization_id,
     )
+    record_audit_event(
+        client,
+        actor,
+        entity_type="student",
+        entity_id=row["id"],
+        action="student.create",
+    )
     return StudentResponse(**row)
 
 
@@ -93,5 +101,12 @@ def get_student(
         student_id,
         actor.organization_id,
         "Student not found",
+    )
+    record_audit_event(
+        client,
+        actor,
+        entity_type="student",
+        entity_id=row["id"],
+        action="student.view",
     )
     return StudentResponse(**row)

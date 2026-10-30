@@ -11,6 +11,7 @@ node_modules/
 dist/
 build/
 .next/
+*.tsbuildinfo
 
 # Logs
 npm-debug.log*
@@ -31,6 +32,8 @@ Thumbs.db
 
 # AI / ML Files
 models/
+# Application source, not ML artifacts: re-included so schema modules are committed.
+!backend/app/models/
 embeddings/
 vector_cache/
 

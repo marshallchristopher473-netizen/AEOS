@@ -34,6 +34,24 @@ from tests.fakes import ASSESSMENT_A, ASSESSMENT_RESULT_A, PLAN_A, STUDENT_A
             "/assessment-results",
             {"assessment_id": ASSESSMENT_A, "score": 80, "max_score": 100},
         ),
+        ("get", f"/ai-feedback/drafts?assessment_id={ASSESSMENT_A}", None),
+        ("get", "/ai-feedback/drafts/00000000-0000-4000-8000-000000000001", None),
+        (
+            "post",
+            "/ai-feedback/drafts",
+            {
+                "assessment_id": ASSESSMENT_A,
+                "rubric_id": "RUB-CER3",
+                "rubric_version": "0.1",
+                "response_text": "Synthetic response.",
+                "data_classification": "synthetic",
+            },
+        ),
+        (
+            "post",
+            "/ai-feedback/drafts/00000000-0000-4000-8000-000000000001/decisions",
+            {"decision": "rejected", "teacher_confirmed": True},
+        ),
     ],
 )
 def test_every_business_route_requires_authentication(public_client, method, path, payload):

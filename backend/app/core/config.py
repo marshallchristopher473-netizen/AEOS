@@ -19,9 +19,11 @@ DATABASE_URL = get_env("DATABASE_URL")
 SUPABASE_URL = get_env("SUPABASE_URL")
 SUPABASE_ANON_KEY = get_env("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = get_env("SUPABASE_SERVICE_ROLE_KEY")
+# Supabase's documented key discovery endpoint:
+# https://supabase.com/docs/guides/auth/signing-keys
 SUPABASE_JWKS_URL = get_env(
     "SUPABASE_JWKS_URL",
-    f"{SUPABASE_URL.rstrip('/')}/auth/v1/jwks" if SUPABASE_URL else "",
+    f"{SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else "",
 )
 SUPABASE_JWT_ISSUER = get_env(
     "SUPABASE_JWT_ISSUER",
@@ -29,3 +31,13 @@ SUPABASE_JWT_ISSUER = get_env(
 )
 SUPABASE_JWT_AUDIENCE = get_env("SUPABASE_JWT_AUDIENCE", "authenticated")
 AI_PROVIDER = get_env("AI_PROVIDER", "placeholder")
+
+# Browser origins allowed to call the API (comma-separated). Must be explicit:
+# a wildcard would let any website make requests with a user's token.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in get_env("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
+if "*" in CORS_ALLOWED_ORIGINS:
+    raise ValueError("CORS_ALLOWED_ORIGINS must list explicit origins, not '*'")
