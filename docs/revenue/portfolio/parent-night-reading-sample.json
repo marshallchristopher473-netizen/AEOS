@@ -8,7 +8,7 @@
     "purpose": "Portfolio sample for the AEOS Education Deck Sprint",
     "attribution": "Written by Christopher Marshall. Original work; not adapted from coursework or client material.",
     "verification_required": [
-      "Open every page in the 'Where to Go Next' slide and confirm it loads and still covers what the slide says it covers.",
+      "Open every page in the 'Where to Go Next' slide and confirm it loads and still covers what the slide says it covers. Each of the four was checked against search results on 2026-10-30 and each organization exists with the attribution shown, but the pages themselves were NOT opened - the session's network policy blocked them. Opening them is still outstanding.",
       "Confirm the classroom example is clearly labeled as composite on the slide, not only in the notes.",
       "Run docs/revenue/quality/deck-quality-checklist.md twice: once at build, once the next morning."
     ],
@@ -77,21 +77,21 @@
       "bullets": [
         "Avoiding reading in every subject, not just English.",
         "Grades dropping while effort stays the same.",
-        "Rereading one paragraph three times and still not holding it.",
-        "Ask: who do I talk to, what information do you already have, what happens next?"
+        "Rereading one paragraph three times and still not holding it."
       ],
+      "footnote": "Three questions worth asking: who do I talk to, what do you already know, and what happens next?",
       "notes": "The first three are signals, not diagnoses. Be careful with wording. You are telling parents when a conversation is warranted, not telling them what is wrong with their child.\n\nThe cross-subject signal matters most. Reading trouble shows up in science and social studies before anyone calls it a reading problem.\n\nThe three questions on the last line are the practical gift of this slide. Many parents do not know they are allowed to ask what information the school already has. They are.\n\nName the actual starting point at your school - the counselor, the team lead, whoever it genuinely is. If you do not know, say you will find out and follow up, rather than guessing from the front of a room.\n\nDo not use terms like evaluation, tier, or intervention without defining them. If you use one, define it in the same breath.\n\nSay plainly that asking a question is not a referral and does not start a process on its own. Parents who fear setting something irreversible in motion often say nothing for a year."
     },
     {
       "layout": "content",
       "title": "Where to Go Next",
       "bullets": [
-        "Reading Rockets - readingrockets.org",
-        "National Center on Improving Literacy - improvingliteracy.org",
-        "Colorin Colorado - colorincolorado.org (for multilingual families)",
-        "What Works Clearinghouse, U.S. Dept. of Education - ies.ed.gov/ncee/wwc"
+        "AdLit - adlit.org (grades 4-12, from WETA)",
+        "Colorín Colorado - colorincolorado.org (multilingual families)",
+        "Improving Literacy - improvingliteracy.org (your state's dyslexia laws)",
+        "IES practice guide, grades 4-9 - ies.ed.gov/ncee/wwc/practiceguide/29"
       ],
-      "notes": "Keep this slide up while you take questions. People photograph it.\n\nBefore presenting, open all four and confirm each one still loads and still covers what this slide claims. This is a blocking item on the quality checklist, and an address that has moved is the kind of small failure a room remembers.\n\nReading Rockets and Colorin Colorado are the two most useful for parents - plain language, practical. Point to those first.\n\nThe What Works Clearinghouse is dense and aimed at educators. Mention it for the parent who wants the research base, and say honestly that it is heavy going.\n\nClose by restating the one action: four nights, twelve minutes, one question. Not the whole deck. One action.\n\nIf you are handing anything out, this slide is the handout."
+      "notes": "Keep this slide up while you take questions. People photograph it.\n\nBefore presenting, open all four and confirm each one still loads and still covers what this slide claims. This is a blocking item on the quality checklist, and an address that has moved is the kind of small failure a room remembers.\n\nAdLit is the one to point at first. It is WETA's site for grades 4-12, so it is built for the age in this room. Reading Rockets, its better-known sister site, is deliberately not on this list: its focus is PreK through third grade, and sending a seventh grader's parent there wastes their evening.\n\nColorín Colorado is second. Bilingual, practical, and the right first stop for any family in the room raising a reader in more than one language.\n\nImproving Literacy earns its place for one specific thing: a tool for looking up your own state's dyslexia laws, which is exactly what a parent needs before the conversation on the previous slide. Most of its family material is aimed at much younger children, so point at the state-law tool rather than the site in general.\n\nThe IES practice guide is the research base, written for educators rather than parents. Mention it for the parent who asks what the evidence says, and tell them honestly that it is heavy going.\n\nClose by restating the one action: four nights, twelve minutes, one question. Not the whole deck. One action.\n\nIf you are handing anything out, this slide is the handout."
     }
   ]
 }
