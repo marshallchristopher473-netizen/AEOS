@@ -53,6 +53,29 @@ const ESTABLISHED_SOURCE_KINDS = new Set([
  */
 const QUANTITY_PATTERN = /(\d+(?:\.\d+)?\s*(?:%|×|x\b)|\bES[:=]|\bd\s*=|\bg\s*=|\$\s?\d)/i;
 
+/**
+ * Claims that were made, found to be unsupported, and must never re-enter the product.
+ *
+ * A one-time cleanup does not survive contact with a deadline: the same phrases come back when
+ * someone copies an old slide. Each entry is checked against claim text at every build, with
+ * `retracted` claims exempt — the whole point of that tier is to quote the bad claim so the
+ * correction stays legible.
+ *
+ * Adding to this list is cheap. Removing from it requires a source.
+ */
+const RETIRED_CLAIMS: ReadonlyArray<{ pattern: RegExp; why: string }> = [
+  { pattern: /\bES[:\s]*0\.8\b/i, why: 'Invented effect size for culturally affirming instruction. Cite Dee & Penner (2017) instead.' },
+  { pattern: /\b90%\s*faster\b/i, why: 'Unsubstantiated quantified performance claim made to parents.' },
+  { pattern: /\bSM-?18\b/i, why: "SuperMemo's proprietary algorithm; Anki has never implemented it. Use FSRS." },
+  { pattern: /\bNASA\s+BARS\b/i, why: 'No such NASA method. BARS is Behaviorally Anchored Rating Scales (Smith & Kendall, 1963).' },
+  { pattern: /\bPhD[- ]Level\b/i, why: 'Not a property a short course can have; a credential-implication claim.' },
+  { pattern: /\bVARK\b/i, why: 'Learning-styles matching has no adequate evidence base, and VARK forbids app embedding.' },
+  { pattern: /cultural learning style/i, why: 'Attaches a disproven cognitive trait to ethnicity.' },
+  { pattern: /\b72[- ]hour breach\b/i, why: "GDPR Art. 33 clock. Maryland's PIPA gives 45 days." },
+  { pattern: /\bCEU[- ]eligible\b/i, why: 'No CEU-granting authority has approved this. Name one or drop it.' },
+  { pattern: /paid peer tutoring eligibility/i, why: "Maryland's minimum working age is 14; unlawful for most of a grades 6-8 cohort." },
+];
+
 /** Words that assert proven benefit. Only a marketable tier may use them unqualified. */
 const EFFICACY_PATTERN =
   /\b(proven|guarantees?|guaranteed|clinically validated|evidence[- ]based results|cures?|eliminates?)\b/i;
@@ -158,6 +181,19 @@ export function validateBriefing(briefing: Briefing): ValidationIssue[] {
 
     if (claim.tier === 'retracted' && !claim.note) {
       at('error', 'A retracted claim must record what was previously asserted in `note`.');
+    }
+
+    // A `retracted` claim exists to quote the bad claim, so the blocklist does not apply to it.
+    if (claim.tier !== 'retracted') {
+      for (const retired of RETIRED_CLAIMS) {
+        if (retired.pattern.test(claim.text)) {
+          at(
+            'error',
+            `Claim text revives a retired claim (${retired.pattern.source}). ${retired.why} ` +
+              'If this is a correction, set tier "retracted" and record the original in `note`.',
+          );
+        }
+      }
     }
   }
 

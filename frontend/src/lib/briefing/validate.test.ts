@@ -199,6 +199,51 @@ test('a retraction must record what was previously said', () => {
   assert.ok(errors.some((message) => /must record what was previously asserted/.test(message)));
 });
 
+test('a retired claim cannot re-enter at a non-retracted tier', () => {
+  // The failure mode this guards: someone copies an old slide into new content under a tier
+  // that reads as endorsement. Every one of these was actually asserted in the original.
+  for (const text of [
+    'Culturally affirming instruction raises achievement (ES: 0.8).',
+    'Students study 90% faster with our method.',
+    'Spaced repetition powered by the Anki SM-18 engine.',
+    'Scheduling built on the NASA BARS method.',
+    'A PhD-Level certification for middle schoolers.',
+    'We assess VARK modality preference at intake.',
+    'We detect preferred cultural learning style from ancestry.',
+    'We operate a 72-hour breach notification protocol.',
+    'The programme is CEU-eligible.',
+    'Certification confers paid peer tutoring eligibility.',
+  ]) {
+    const errors = errorsFor(
+      briefingWith({
+        id: 'c',
+        text,
+        // `inference` is the tier a well-meaning author would reach for.
+        tier: 'inference',
+        sources: ['meta'],
+        magnitude: { value: 'n/a', metric: 'n/a', population: 'n/a' },
+      }),
+    );
+    assert.ok(
+      errors.some((message) => /revives a retired claim/.test(message)),
+      `expected the blocklist to catch: ${text}`,
+    );
+  }
+});
+
+test('the same retired claims ARE allowed at tier "retracted"', () => {
+  // The retracted tier exists to quote the bad claim so the correction stays legible.
+  const briefing = briefingWith({
+    id: 'c',
+    text: 'Anki does not implement SM-18; it is SuperMemo’s proprietary algorithm.',
+    tier: 'retracted',
+    sources: ['meta'],
+    note: 'The original described an "Anki SM-18 engine" in six places.',
+  });
+
+  assert.deepEqual(errorsFor(briefing), []);
+});
+
 test('duplicate claim ids are rejected', () => {
   const briefing = briefingWith({
     id: 'dupe',

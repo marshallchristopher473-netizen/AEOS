@@ -25,6 +25,7 @@ you how much to trust the rest.
 | File | Lens | What it covers |
 |---|---|---|
 | [`01-executive-summary.md`](01-executive-summary.md) | — | Synthesis across all lenses. What survives, what must change, what to do next. |
+| [`02-remediation-checklist.md`](02-remediation-checklist.md) | — | **Gate 0a.** Every unsupported claim, its exact line, and its replacement wording. The highest-leverage hour of work available. |
 | [`10-code-and-accessibility-audit.md`](10-code-and-accessibility-audit.md) | — | The code and WCAG audit **I ran and verified myself**, with measured contrast ratios and axe results. |
 | [`20-evidence-audit.md`](20-evidence-audit.md) | Research integrity | Every citation, named method, effect size and number, checked against its source. |
 | [`30-red-team.md`](30-red-team.md) | Red team | Legal, ethical, clinical, privacy, AI-security and reputational exposure. |
