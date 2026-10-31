@@ -1,0 +1,467 @@
+/*
+ * Briefing styles.
+ *
+ * The original document hard-coded nine Tailwind colour families at dark-mode-only values,
+ * used `text-xs` as its body size for an audience defined partly by reading difficulty, and
+ * carried meaning in colour alone. The audience for this product includes students with
+ * ADHD, dyslexia and sensory sensitivity; shipping that to them would have contradicted the
+ * product's own premise.
+ *
+ * What changed:
+ *  - Semantic tokens, redefined for dark and for forced-colours, rather than literal colours.
+ *  - 1.0625rem body text with a 1.65 line height and a 68ch measure.
+ *  - Every pair below meets WCAG 1.4.3 contrast at AA; severity is carried by the badge word
+ *    and symbol, never by hue alone.
+ *  - Motion respects prefers-reduced-motion; focus is always visible.
+ */
+
+.briefing {
+  --surface: #ffffff;
+  --surface-sunken: #f4f6fa;
+  --surface-raised: #ffffff;
+  --line: #d2d9e4;
+  --line-strong: #9aa6b8;
+  --text: #16202e;
+  --text-muted: #4a5668; /* 7.0:1 on --surface */
+  --accent: #1a4fa0;
+  --accent-contrast: #ffffff;
+
+  --tier-established: #15603c;
+  --tier-emerging: #1a4fa0;
+  --tier-expert: #5a4393;
+  --tier-inference: #4a5668;
+  --tier-hypothesis: #8a5000;
+  --tier-retracted: #99231c;
+
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  min-height: 100vh;
+  padding: 0 clamp(1rem, 4vw, 2.5rem) 5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .briefing {
+    --surface: #10151d;
+    --surface-sunken: #161d27;
+    --surface-raised: #1b232f;
+    --line: #2e3845;
+    --line-strong: #5a687a;
+    --text: #e8edf4;
+    --text-muted: #a9b5c5; /* 7.4:1 on --surface */
+    --accent: #7fb0ff;
+    --accent-contrast: #0b1018;
+
+    --tier-established: #6cc79a;
+    --tier-emerging: #7fb0ff;
+    --tier-expert: #b7a4ef;
+    --tier-inference: #a9b5c5;
+    --tier-hypothesis: #e0a94b;
+    --tier-retracted: #ff9a92;
+  }
+}
+
+/*
+ * Windows High Contrast and any forced-colours mode: hand every colour back to the user
+ * agent. A product that promises a high-contrast mode has to actually honour the one the
+ * operating system already provides.
+ */
+@media (forced-colors: active) {
+  .briefing {
+    --surface: Canvas;
+    --surface-sunken: Canvas;
+    --surface-raised: Canvas;
+    --line: CanvasText;
+    --line-strong: CanvasText;
+    --text: CanvasText;
+    --text-muted: CanvasText;
+    --accent: LinkText;
+  }
+
+  .claim,
+  .briefing-nav__link {
+    border: 1px solid CanvasText;
+  }
+}
+
+.visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.skip-link {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  left: 0.5rem;
+  padding: 0.75rem 1rem;
+  position: absolute;
+  top: -100vh;
+  z-index: 10;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+.briefing :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The main region takes programmatic focus after navigation, but should not show a ring. */
+.briefing__main:focus {
+  outline: none;
+}
+
+.briefing a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* ── Masthead ──────────────────────────────────────────────────────────────── */
+
+.briefing__masthead {
+  border-bottom: 1px solid var(--line);
+  margin: 0 auto;
+  max-width: 68ch;
+  padding: 2.5rem 0 2rem;
+}
+
+.briefing__eyebrow {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.briefing__masthead h1 {
+  font-size: clamp(1.9rem, 5vw, 2.6rem);
+  line-height: 1.15;
+  margin: 0 0 0.5rem;
+}
+
+.briefing__subtitle {
+  font-size: 1.1875rem;
+  margin: 0 0 1.25rem;
+}
+
+.briefing__scope {
+  background: var(--surface-sunken);
+  border-left: 4px solid var(--line-strong);
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+  padding: 0.875rem 1rem;
+}
+
+.briefing__revised {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+/* ── Section navigation ────────────────────────────────────────────────────── */
+
+.briefing-nav {
+  margin: 0 auto;
+  max-width: 68ch;
+  padding: 1.5rem 0;
+}
+
+.briefing-nav ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.briefing-nav__link {
+  align-items: baseline;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--text);
+  display: inline-flex;
+  gap: 0.45rem;
+  padding: 0.5rem 0.85rem;
+  text-decoration: none;
+}
+
+.briefing-nav__link:hover {
+  border-color: var(--line-strong);
+}
+
+.briefing-nav__link--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.briefing-nav__index {
+  font-size: 0.8125rem;
+  opacity: 0.75;
+}
+
+/* ── Body ──────────────────────────────────────────────────────────────────── */
+
+.briefing__main {
+  margin: 0 auto;
+  max-width: 68ch;
+}
+
+.briefing__section-title {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  line-height: 1.2;
+  margin: 1rem 0 0.5rem;
+}
+
+.briefing__section-summary {
+  color: var(--text-muted);
+  font-size: 1.0625rem;
+  margin: 0 0 2rem;
+}
+
+.claim-group {
+  margin: 0 0 3rem;
+}
+
+.claim-group h3 {
+  border-bottom: 2px solid var(--line-strong);
+  font-size: 1.25rem;
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.4rem;
+}
+
+.claim-group__intro {
+  color: var(--text-muted);
+  margin: 0 0 1.5rem;
+}
+
+.claim-group__claims {
+  display: grid;
+  gap: 1.25rem;
+}
+
+/* ── Claim ─────────────────────────────────────────────────────────────────── */
+
+.claim {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--tier-inference);
+  border-radius: 0.5rem;
+  padding: 1.125rem 1.25rem;
+}
+
+.claim--established { border-left-color: var(--tier-established); }
+.claim--emerging { border-left-color: var(--tier-emerging); }
+.claim--expert-opinion { border-left-color: var(--tier-expert); }
+.claim--inference { border-left-color: var(--tier-inference); }
+.claim--hypothesis { border-left-color: var(--tier-hypothesis); }
+.claim--retracted { border-left-color: var(--tier-retracted); }
+
+.claim__head {
+  margin-bottom: 0.6rem;
+}
+
+.claim__text {
+  font-size: 1.125rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.claim--retracted .claim__text {
+  text-decoration: line-through;
+  text-decoration-color: var(--tier-retracted);
+  text-decoration-thickness: 1px;
+}
+
+/* ── Evidence badge ────────────────────────────────────────────────────────── */
+
+.evidence-badge {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 0.4rem;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.6rem;
+  text-transform: uppercase;
+}
+
+.evidence-badge--established { color: var(--tier-established); }
+.evidence-badge--emerging { color: var(--tier-emerging); }
+.evidence-badge--expert-opinion { color: var(--tier-expert); }
+.evidence-badge--inference { color: var(--tier-inference); }
+.evidence-badge--hypothesis { color: var(--tier-hypothesis); }
+.evidence-badge--retracted { color: var(--tier-retracted); }
+
+.evidence-badge__symbol {
+  font-size: 0.6875rem;
+  letter-spacing: -0.05em;
+}
+
+/* ── Magnitude ─────────────────────────────────────────────────────────────── */
+
+.claim__magnitude {
+  background: var(--surface-sunken);
+  border-radius: 0.375rem;
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.9rem;
+}
+
+.claim__magnitude div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.claim__magnitude dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.claim__magnitude dd {
+  margin: 0;
+}
+
+/* ── Note ──────────────────────────────────────────────────────────────────── */
+
+.claim__note {
+  border-top: 1px dashed var(--line);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+.claim__note p {
+  margin: 0;
+}
+
+.claim__note-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.25rem !important;
+  text-transform: uppercase;
+}
+
+/* ── Sources ───────────────────────────────────────────────────────────────── */
+
+.claim__sources {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+.claim__sources-heading {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.4rem;
+  text-transform: uppercase;
+}
+
+.claim__sources ul {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.claim__sources li {
+  font-size: 0.9375rem;
+}
+
+.claim__source-kind {
+  border: 1px solid var(--line-strong);
+  border-radius: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 0.05rem 0.35rem;
+  white-space: nowrap;
+}
+
+.claim__caveat {
+  color: var(--text-muted);
+  margin: 0.35rem 0 0;
+}
+
+.claim__sources--none {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  font-style: italic;
+}
+
+/* ── Pager ─────────────────────────────────────────────────────────────────── */
+
+.briefing__pager {
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+}
+
+/* ── Motion and print ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .briefing *,
+  .briefing *::before,
+  .briefing *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * This is a document people will print and take into meetings. The original had no print
+ * path at all: a dark-background single-page app prints as either blank or unreadable.
+ */
+@media print {
+  .briefing {
+    --surface: #ffffff;
+    --surface-sunken: #ffffff;
+    --surface-raised: #ffffff;
+    --text: #000000;
+    --text-muted: #333333;
+    font-size: 11pt;
+    padding: 0;
+  }
+
+  .briefing-nav,
+  .briefing__pager,
+  .skip-link {
+    display: none;
+  }
+
+  .claim {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* A printed citation is useless without its URL. */
+  .claim__sources a::after {
+    content: ' (' attr(href) ')';
+    font-size: 9pt;
+    word-break: break-all;
+  }
+}
