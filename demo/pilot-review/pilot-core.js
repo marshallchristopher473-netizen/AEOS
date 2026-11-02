@@ -203,7 +203,9 @@
       };
       order.push(c.criterionId);
     }
-    return { responseId: response.id, order: order, criteria: criteria, decided: false };
+    const unscorable = typeof response.text !== 'string' || response.text.trim().length === 0 ||
+      (suggestion.flags || []).some((flag) => flag === 'BLANK' || flag === 'OFF_TOPIC');
+    return { responseId: response.id, order: order, criteria: criteria, decided: false, unscorable: unscorable };
   }
 
   function findEvidence(review, key) {
@@ -242,6 +244,9 @@
   function canAcceptCriterion(review, criterionId) {
     const crit = review.criteria[criterionId];
     if (!crit) return { ok: false, reason: 'Unknown criterion.' };
+    if (review.unscorable) {
+      return { ok: false, reason: 'This response cannot be scored in the demo. Flag each criterion and reject without scores.' };
+    }
     if (crit.aiScore === null || crit.aiScore === undefined) {
       return { ok: false, reason: 'No AI score to accept. Revise or flag instead.' };
     }
@@ -274,6 +279,9 @@
       return { ok: true };
     }
     if (action === 'revise') {
+      if (review.unscorable) {
+        return { ok: false, error: 'This response cannot be scored in the demo. Flag each criterion and reject without scores.' };
+      }
       if (!isValidScore(input.score)) {
         return { ok: false, error: 'Revised score must be a whole number from ' + SCORE_MIN + ' to ' + SCORE_MAX + '.' };
       }
@@ -323,6 +331,11 @@
       return { ACCEPT: done, REVISE: done, REJECT: done };
     }
     if (!status.complete) return { ACCEPT: notInspected, REVISE: notInspected, REJECT: notInspected };
+
+    if (review.unscorable) {
+      const noScore = { ok: false, reason: 'This response cannot be scored in the demo. Reject without scores.' };
+      return { ACCEPT: noScore, REVISE: noScore, REJECT: { ok: true, reason: null } };
+    }
 
     const crits = review.order.map((id) => review.criteria[id]);
     const allAccepted = crits.every((c) => c.action === 'accepted');

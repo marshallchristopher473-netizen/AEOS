@@ -67,6 +67,9 @@ CI runs both on every push and PR that touches `demo/pilot-review/`
    - `ACCEPT`: every criterion accepted unchanged. No reason.
    - `REVISE`: every criterion has a final score and at least one was revised. Reason required.
    - `REJECT`: always available after inspection. Reason required. No final scores recorded.
+   - Blank/whitespace-only and OFF_TOPIC responses are unscorable in this demo.
+     Each criterion must be flagged; ACCEPT and numeric REVISE are blocked in
+     both action and final-decision guards. Rejection records only null scores.
 6. **Active time** counts only while the review is open in a visible tab, and
    stops 60 s after the last input. Reading time up to that limit counts.
    It is labelled **demo interaction time over prewritten mock suggestions**,

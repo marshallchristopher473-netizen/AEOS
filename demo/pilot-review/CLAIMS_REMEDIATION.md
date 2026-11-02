@@ -2,6 +2,22 @@
 
 Status: builder checks pass; independent browser re-verification pending. Do not publish on this record alone.
 
+## November 2 independent-review follow-up
+
+Independent review rejected the first repair head 40a7ef59967bd737de818d8d59cd5deeae1634f3:
+its blank/OFF_TOPIC responses could acquire numeric scores through REVISE even
+though their mock scores were null. The follow-up blocks numeric actions and
+final scored decisions for blank, whitespace-only and OFF_TOPIC responses;
+the UI disables the corresponding revision controls. Criterion flagging and
+REJECT remain available after inspection, with null final scores.
+
+Four additional regression/renderer checks cover both affected fixtures,
+whitespace without a mock flag, final-decision defense against stale numeric
+criterion state, and disabled UI controls. Current builder result: all five
+syntax checks and 34 Node tests pass, zero failed/skipped. The original 30-test
+result below is historical and did not establish this boundary. The new exact
+candidate must receive fresh independent verification before publication.
+
 Source: PR #54 at 6ec4db7595b9334e408c32b20f09f66c8ca9811f.
 Replacement base: main at b9c68aa3e6fe35f676da04c10683bfdda12a9eed.
 

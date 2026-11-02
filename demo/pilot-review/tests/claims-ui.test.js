@@ -69,3 +69,19 @@ test('dashboard UI: runs with v2 timing and offers no manual-baseline comparison
   }
 });
 
+
+test('blank response UI: numeric revision controls are disabled and rejection remains the path', () => {
+  const root = renderDemo();
+  descendants(root).find((n) => n.tag === 'button' && n.textContent === 'Response queue').events.click();
+  const row = descendants(root).find((n) => n.tag === 'tr' && n.textContent.startsWith('R-004'));
+  assert.ok(row);
+  descendants(row).find((n) => n.tag === 'button').events.click();
+  assert.match(root.textContent, /cannot be scored in the demo/);
+  assert.match(root.textContent, /Flag each criterion and reject without scores/);
+  const revise = descendants(root).filter((n) => n.tag === 'button' && n.textContent === 'Revise');
+  assert.equal(revise.length, 4);
+  assert.ok(revise.every((n) => Object.hasOwn(n.attributes, 'disabled')));
+  const scores = descendants(root).filter((n) => n.tag === 'select' && (n.attributes['aria-label'] || '').startsWith('Revised score'));
+  assert.equal(scores.length, 4);
+  assert.ok(scores.every((n) => Object.hasOwn(n.attributes, 'disabled')));
+});

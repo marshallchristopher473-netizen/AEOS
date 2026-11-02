@@ -196,7 +196,7 @@ test('review: blank responses cannot be accepted, only flagged and rejected', ()
   const review = newReview('R-004');
   const r = Core.setCriterionAction(review, 'claim', { action: 'accept' });
   assert.equal(r.ok, false);
-  assert.match(r.error, /No AI score/);
+  assert.match(r.error, /cannot be scored/);
   for (const cid of review.order) {
     assert.ok(Core.setCriterionAction(review, cid, { action: 'flag', reasonCode: 'CANNOT_SCORE' }).ok);
   }
@@ -420,3 +420,44 @@ test('CSV: quotes comma, quote and newline cells without changing plain or empty
   assert.equal(csv, 'metric,value\n"metric,quoted","a,""b""\nc"\nplain,4.1\nempty,\nomitted,\ncr,"a\rb"\n');
 });
 
+
+test('review: blank and off-topic responses cannot be revised into numeric scores', () => {
+  for (const id of ['R-004', 'R-006']) {
+    const review = newReview(id);
+    viewAll(review);
+    for (const cid of review.order) {
+      const attempt = Core.setCriterionAction(review, cid, { action: 'revise', score: 4, reasonCode: 'OTHER' });
+      assert.equal(attempt.ok, false, id + ':' + cid);
+      assert.match(attempt.error, /cannot be scored/);
+      assert.equal(review.criteria[cid].finalScore, null);
+      assert.equal(review.criteria[cid].action, null);
+      assert.ok(Core.setCriterionAction(review, cid, { action: 'flag', reasonCode: 'CANNOT_SCORE' }).ok);
+    }
+    assert.equal(Core.allowedDecisions(review).ACCEPT.ok, false);
+    assert.equal(Core.allowedDecisions(review).REVISE.ok, false);
+    assert.throws(() => Core.finalizeDecision(review, { decision: 'REVISE', reasonCode: 'SCORES_ADJUSTED' }, 0, 'T'), /cannot be scored/);
+    const record = Core.finalizeDecision(review, { decision: 'REJECT', reasonCode: 'UNRELIABLE_SUGGESTION' }, 0, 'T');
+    assert.ok(Object.values(record.finalScores).every((score) => score === null));
+  }
+});
+
+test('review: whitespace-only text cannot gain numeric scores even without a blank flag', () => {
+  const original = suggestionOf('R-001');
+  const review = Core.createReview({ ...responseOf('R-001'), text: ' \n\t ' }, {
+    ...original, flags: [], criteria: original.criteria.map((c) => ({ ...c, evidence: [] })),
+  });
+  for (const cid of review.order) {
+    assert.equal(Core.setCriterionAction(review, cid, { action: 'accept' }).ok, false);
+    assert.equal(Core.setCriterionAction(review, cid, { action: 'revise', score: 4, reasonCode: 'OTHER' }).ok, false);
+  }
+});
+
+test('review: final decision guard rejects scored actions on an unscorable response', () => {
+  const review = newReview('R-004');
+  // Model a stale or incorrectly restored UI state that bypassed the action guard.
+  for (const cid of review.order) {
+    Object.assign(review.criteria[cid], { action: 'revised', finalScore: 4, reasonCode: 'OTHER' });
+  }
+  assert.equal(Core.allowedDecisions(review).REVISE.ok, false);
+  assert.throws(() => Core.finalizeDecision(review, { decision: 'REVISE', reasonCode: 'SCORES_ADJUSTED' }, 0, 'T'), /cannot be scored/);
+});
