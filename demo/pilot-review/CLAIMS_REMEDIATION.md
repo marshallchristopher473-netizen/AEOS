@@ -1,0 +1,37 @@
+# Static demo claims-integrity repair
+
+Status: builder checks pass; independent browser re-verification pending. Do not publish on this record alone.
+
+Source: PR #54 at 6ec4db7595b9334e408c32b20f09f66c8ca9811f.
+Replacement base: main at b9c68aa3e6fe35f676da04c10683bfdda12a9eed.
+
+## Findings addressed
+
+- F1: removed the manual-baseline form, baseline storage, assisted/manual comparison and difference calculation. The remaining timing field is demoClickThroughMedianSec. Both dashboard and export identify prewritten/mock interaction time. Export schema v2 includes DEMO_CLICKTHROUGH_NOT_GRADING_TIME and retains DEMO_SYNTHETIC_NOT_EVIDENCE.
+- F2: button.link and .decision-option have a 28px minimum height; labels use inline-flex. Actual 390px rendered dimensions remain an independent browser check.
+- F3: this candidate carries only demo/pilot-review/** and .github/workflows/pilot-demo.yml. It excludes #54's dependency port, frontend files and P0 workflow edit. It does not rewrite the old branch.
+- F4: CSV serializer escapes comma, quotes, CR and LF; the export allowlist remains aggregate-only.
+
+No changes to fixture content, CSP, network capabilities, auth, persistence, migrations, RLS or feature flags. This does not approve AEOS P0 or P-TER-01.
+
+## Builder verification
+
+Node v24.22.1; syntax checks pass for all five scripts, including both test files. Node tests: 30 passed, 0 failed, 0 skipped. Existing evidence/decision/blank/injection/audit/export tests remain; new coverage exercises the original 600-second/4.1-second case, rejects legacy timing fields in v2, retains unmeasured null values, checks CSV escaping and executes app.js with a minimal test DOM.
+
+The renderer contract uses a test DOM. It is not a browser, layout, screen-reader or mobile-device test.
+
+The browser available in this session could not connect to the local test server (ERR_CONNECTION_REFUSED). No attempt was made to route around that boundary. Earlier /tmp harness paths from another environment were not available here. No independent browser pass is claimed.
+
+## Independent re-verification
+
+Use the replacement PR's exact full head SHA and a fresh clean worktree. Re-run syntax and Node tests. Re-run the saved browser harness if accessible, updating its timing assertions to require:
+1. No manual-baseline input, comparison or numeric time-difference field.
+2. Dashboard timing described as active demo interaction over prewritten mock suggestions, not grading time or time saved.
+3. JSON/CSV schema v2 with demoClickThroughMedianSec, DEMO_CLICKTHROUGH_NOT_GRADING_TIME and DEMO_SYNTHETIC_NOT_EVIDENCE; no legacy baseline/difference/assisted time values.
+4. Link buttons and decision labels measured at least 24px high at a 390px viewport.
+5. All prior evidence, accept/revise/reject, reason, reset/reload, privacy, CSP/network and aggregate-only export behavior preserved.
+
+Run a complete source diff against main and confirm only the demo directory and its own workflow changed. Record CI results separately from builder tests. The inherited frontend/dependency gate on old main must not be fixed by expanding this demo candidate.
+
+Return DEMO READY FOR DEPLOYMENT, DEMO REJECTED or DEMO BLOCKED for that exact SHA. A builder pass alone does not change the original independent rejection.
+
