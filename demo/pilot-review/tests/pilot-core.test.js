@@ -376,3 +376,26 @@ test('exports: aggregates only, with no response text, quotes, pseudonyms or IDs
   assert.ok(csv.startsWith('metric,value\n'));
   assert.equal(csv.trim().split('\n').length, Object.keys(agg).length + 1);
 });
+
+test('claims: the baseline delta is self-describing and asserts no time saved', () => {
+  const d = Core.computeDashboard({ suggestions: Fx.suggestions, decisions: decideAll(), manualBaselineSec: 600 });
+  const agg = Core.aggregatesForExport(d, '2026-10-24T00:00:00.000Z');
+
+  // The delta is named for what it measures, and its caveat travels with it,
+  // so a single detached CSV row still cannot read as grading time saved.
+  assert.ok('demoClickThroughDeltaSec' in agg, 'delta must be named for what it measures');
+  assert.ok(!('baselineDifferenceSec' in agg), 'the ambiguous field name must not come back');
+  assert.equal(agg.baselineCaveat, 'DEMO_CLICKTHROUGH_NOT_GRADING_TIME');
+  assert.equal(agg.schema, 'aeos.pilot-demo.aggregates.v2');
+
+  // "pilot result" is reserved for real pilot evidence and must appear nowhere.
+  const exported = JSON.stringify(agg) + Core.toCSV(agg);
+  assert.ok(!/pilot result/i.test(exported), 'export must not use the reserved term "pilot result"');
+  assert.ok(!/pilot result/i.test(d.baseline.label), 'label must not use the reserved term "pilot result"');
+  assert.ok(!/\bsaved\b/i.test(exported), 'export must not contain a time-saved claim');
+
+  // The label has to say what the assisted number is not.
+  assert.match(d.baseline.label, /not AI-assisted grading time/i);
+  assert.match(d.baseline.label, /not time saved/i);
+  assert.match(d.baseline.label, /Not pilot evidence/);
+});
