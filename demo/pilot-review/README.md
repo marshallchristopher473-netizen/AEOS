@@ -70,6 +70,11 @@ CI runs both on every push and PR that touches `demo/pilot-review/`
    - Blank/whitespace-only and OFF_TOPIC responses are unscorable in this demo.
      Each criterion must be flagged; ACCEPT and numeric REVISE are blocked in
      both action and final-decision guards. Rejection records only null scores.
+   - A fixture criterion with no score also stays unscored (R-005 Conventions).
+     Its numeric controls are disabled; flag it, inspect the other criteria and
+     REJECT without scores. This bounded demo does not support replacing a
+     fixture's abstention with a new human score. It is not a policy for a future
+     live system or the separate P-TER-01 study rubric.
 6. **Active time** counts only while the review is open in a visible tab, and
    stops 60 s after the last input. Reading time up to that limit counts.
    It is labelled **demo interaction time over prewritten mock suggestions**,

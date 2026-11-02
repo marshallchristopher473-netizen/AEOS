@@ -18,6 +18,17 @@ syntax checks and 34 Node tests pass, zero failed/skipped. The original 30-test
 result below is historical and did not establish this boundary. The new exact
 candidate must receive fresh independent verification before publication.
 
+A second independent check at 1756d35d0a96b2bcec34828bc3f54f0edb7aca9c found
+that the partially insufficient R-005 still allowed its unscored Conventions
+criterion to receive a numeric revision. The bounded demo now preserves every
+fixture null/undefined score: both numeric action guards and final-decision
+guards block scoring, including stale criterion state, and the UI disables
+that criterion's numeric controls. Flagging and reasoned rejection remain.
+Three further tests exercise the null criterion, stale finalization and its UI.
+These are demo constraints, not an approved live abstention/override policy.
+Latest builder validation: all five syntax checks and 37 Node tests pass,
+zero failed/skipped. Fresh independent acceptance is still required.
+
 Source: PR #54 at 6ec4db7595b9334e408c32b20f09f66c8ca9811f.
 Replacement base: main at b9c68aa3e6fe35f676da04c10683bfdda12a9eed.
 

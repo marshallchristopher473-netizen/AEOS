@@ -70,6 +70,23 @@ test('dashboard UI: runs with v2 timing and offers no manual-baseline comparison
 });
 
 
+test('partially insufficient response UI: only the null criterion numeric controls are disabled', () => {
+  const root = renderDemo();
+  descendants(root).find((n) => n.tag === 'button' && n.textContent === 'Response queue').events.click();
+  const row = descendants(root).find((n) => n.tag === 'tr' && n.textContent.startsWith('R-005'));
+  descendants(row).find((n) => n.tag === 'button').events.click();
+  const cards = descendants(root).filter((n) => n.tag === 'article');
+  assert.equal(cards.length, 4);
+  for (const card of cards) {
+    const isUnscored = card.textContent.includes('Conventions');
+    const score = descendants(card).find((n) => n.tag === 'select' && (n.attributes['aria-label'] || '').startsWith('Revised score'));
+    const revise = descendants(card).find((n) => n.tag === 'button' && n.textContent === 'Revise');
+    assert.equal(Object.hasOwn(score.attributes, 'disabled'), isUnscored);
+    assert.equal(Object.hasOwn(revise.attributes, 'disabled'), isUnscored);
+  }
+  assert.match(root.textContent, /This criterion is not scored in the demo/);
+});
+
 test('blank response UI: numeric revision controls are disabled and rejection remains the path', () => {
   const root = renderDemo();
   descendants(root).find((n) => n.tag === 'button' && n.textContent === 'Response queue').events.click();

@@ -359,14 +359,15 @@
     const ai = suggestion.criteria.find((c) => c.criterionId === cid);
     const accept = Core.canAcceptCriterion(review, cid);
     const hasInvalid = crit.evidence.some((e) => !e.valid && !e.rejected);
+    const cannotScore = review.unscorable || crit.aiScore === null || crit.aiScore === undefined;
     const statusLabel = crit.action === null ? 'Pending'
       : crit.action === 'accepted' ? 'Accepted (' + crit.finalScore + ')'
       : crit.action === 'revised' ? 'Revised to ' + crit.finalScore + ' · ' + humanize(crit.reasonCode)
       : 'Flagged · ' + humanize(crit.reasonCode);
 
-    const scoreSelect = h('select', { 'aria-label': 'Revised score for ' + criterionNames.get(cid), disabled: locked || review.unscorable },
+    const scoreSelect = h('select', { 'aria-label': 'Revised score for ' + criterionNames.get(cid), disabled: locked || cannotScore },
       h('option', { value: '' }, 'Score…'), [0, 1, 2, 3, 4].map((n) => h('option', { value: String(n) }, String(n))));
-    const reviseReason = select(Core.CRITERION_REVISE_REASONS, { 'aria-label': 'Revision reason', disabled: locked || review.unscorable });
+    const reviseReason = select(Core.CRITERION_REVISE_REASONS, { 'aria-label': 'Revision reason', disabled: locked || cannotScore });
     const flagReason = select(Core.CRITERION_FLAG_REASONS, { 'aria-label': 'Flag reason' });
 
     return h('article', { class: 'card criterion ' + (crit.action ? 'done' : '') },
@@ -398,7 +399,7 @@
         !accept.ok ? h('span', { class: 'hint' }, accept.reason) : null,
         h('div', { class: 'inline-form' },
           scoreSelect, reviseReason,
-          h('button', { type: 'button', disabled: hasInvalid || review.unscorable, onclick: () => criterionAction(review, cid, {
+          h('button', { type: 'button', disabled: hasInvalid || cannotScore, onclick: () => criterionAction(review, cid, {
             action: 'revise',
             score: scoreSelect.value === '' ? null : Number(scoreSelect.value),
             reasonCode: reviseReason.value,

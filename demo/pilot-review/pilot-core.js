@@ -248,7 +248,7 @@
       return { ok: false, reason: 'This response cannot be scored in the demo. Flag each criterion and reject without scores.' };
     }
     if (crit.aiScore === null || crit.aiScore === undefined) {
-      return { ok: false, reason: 'No AI score to accept. Revise or flag instead.' };
+      return { ok: false, reason: 'This criterion is not scored in the demo. Flag it and reject without scores.' };
     }
     if (crit.evidence.some((e) => !e.valid && !e.rejected)) {
       return { ok: false, reason: 'INVALID EVIDENCE LINK must be explicitly rejected first.' };
@@ -281,6 +281,9 @@
     if (action === 'revise') {
       if (review.unscorable) {
         return { ok: false, error: 'This response cannot be scored in the demo. Flag each criterion and reject without scores.' };
+      }
+      if (crit.aiScore === null || crit.aiScore === undefined) {
+        return { ok: false, error: 'This criterion is not scored in the demo. Flag it and reject without scores.' };
       }
       if (!isValidScore(input.score)) {
         return { ok: false, error: 'Revised score must be a whole number from ' + SCORE_MIN + ' to ' + SCORE_MAX + '.' };
@@ -338,6 +341,10 @@
     }
 
     const crits = review.order.map((id) => review.criteria[id]);
+    if (crits.some((c) => c.aiScore === null || c.aiScore === undefined)) {
+      const noScore = { ok: false, reason: 'An unscored criterion must stay unscored in the demo. Reject without scores.' };
+      return { ACCEPT: noScore, REVISE: noScore, REJECT: { ok: true, reason: null } };
+    }
     const allAccepted = crits.every((c) => c.action === 'accepted');
     const allScored = crits.every((c) => c.action === 'accepted' || c.action === 'revised');
     const anyRevised = crits.some((c) => c.action === 'revised');

@@ -35,6 +35,40 @@ function acceptAll(review) {
   }
 }
 
+test('review: partially insufficient R-005 keeps its null criterion unscored', () => {
+  const review = newReview('R-005');
+  assert.equal(review.unscorable, false);
+  viewAll(review);
+  for (const cid of review.order) {
+    if (cid === 'conventions') {
+      assert.equal(review.criteria[cid].aiScore, null);
+      assert.equal(Core.setCriterionAction(review, cid, { action: 'accept' }).ok, false);
+      for (const score of [0, 4]) {
+        assert.equal(Core.setCriterionAction(review, cid, { action: 'revise', score, reasonCode: 'OTHER' }).ok, false);
+      }
+      assert.equal(review.criteria[cid].action, null);
+      assert.equal(review.criteria[cid].finalScore, null);
+      assert.ok(Core.setCriterionAction(review, cid, { action: 'flag', reasonCode: 'CANNOT_SCORE' }).ok);
+    } else {
+      assert.ok(Core.setCriterionAction(review, cid, { action: 'accept' }).ok);
+    }
+  }
+  assert.equal(Core.allowedDecisions(review).REVISE.ok, false);
+  const record = Core.finalizeDecision(review, { decision: 'REJECT', reasonCode: 'UNRELIABLE_SUGGESTION' }, 0, 'T');
+  assert.ok(Object.values(record.finalScores).every((score) => score === null));
+});
+
+test('review: null criterion prevents numeric finalization even with stale scored actions', () => {
+  const review = newReview('R-005');
+  viewAll(review);
+  for (const cid of review.order) {
+    Object.assign(review.criteria[cid], { action: 'revised', finalScore: 4, reasonCode: 'OTHER' });
+  }
+  assert.equal(Core.allowedDecisions(review).ACCEPT.ok, false);
+  assert.equal(Core.allowedDecisions(review).REVISE.ok, false);
+  assert.throws(() => Core.finalizeDecision(review, { decision: 'REVISE', reasonCode: 'SCORES_ADJUSTED' }, 0, 'T'), /must stay unscored/);
+});
+
 // ------------------------------------------------------------------ fixtures
 
 test('fixtures: 12 synthetic responses, each with one matching suggestion', () => {
