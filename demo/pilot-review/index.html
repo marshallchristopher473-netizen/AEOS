@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- DEMO mode: no network. connect-src 'none' blocks fetch/XHR/WebSocket/beacon. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <meta name="robots" content="noindex">
+  <title>AEOS Pilot Review Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="demo-banner" role="banner">
+    <strong>DEMO MODE · NOT FOR PRODUCTION</strong>
+    <span>Synthetic data · mock evaluator · nothing is saved, sent or published · refresh resets everything</span>
+  </header>
+  <main id="app" aria-live="polite">
+    <noscript>This demo needs JavaScript.</noscript>
+  </main>
+  <script src="pilot-core.js"></script>
+  <script src="fixtures.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
