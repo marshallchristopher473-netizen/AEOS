@@ -570,7 +570,8 @@
         manualMedianSec: manual,
         assistedMedianSec: medianActiveSec,
         differenceSec: manual !== null && medianActiveSec !== null ? Math.round((manual - medianActiveSec) * 10) / 10 : null,
-        label: 'Observed in a DEMO session on synthetic data. Not pilot evidence.',
+        label: 'The assisted number is demo click-through time over prewritten suggestions, not AI-assisted grading time. ' +
+          'The gap between these two numbers is not time saved. Observed in a DEMO session on synthetic data. Not pilot evidence.',
       },
     };
   }
@@ -581,7 +582,7 @@
   function aggregatesForExport(dashboard, generatedAt) {
     const g = dashboard.guardrails;
     return {
-      schema: 'aeos.pilot-demo.aggregates.v1',
+      schema: 'aeos.pilot-demo.aggregates.v2',
       mode: MODE,
       synthetic: true,
       generatedAt: generatedAt,
@@ -601,7 +602,10 @@
       injectionFullCredit: g.injectionFullCredit,
       unscorableAccepted: g.unscorableAccepted,
       manualBaselineMedianSec: dashboard.baseline.manualMedianSec,
-      baselineDifferenceSec: dashboard.baseline.differenceSec,
+      // Named for what it actually measures. A detached row must not read as
+      // grading time saved, so the caveat travels in the export itself.
+      demoClickThroughDeltaSec: dashboard.baseline.differenceSec,
+      baselineCaveat: 'DEMO_CLICKTHROUGH_NOT_GRADING_TIME',
       evidenceStatus: 'DEMO_SYNTHETIC_NOT_EVIDENCE',
     };
   }

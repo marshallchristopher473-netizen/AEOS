@@ -502,8 +502,9 @@
             render();
           } }, 'Compare')),
         b.differenceSec === null ? h('p', { class: 'meta' }, 'Needs a manual baseline and at least one decision.')
-          : h('p', null, h('strong', null, 'Observed pilot result (DEMO): '), 'manual ' + b.manualMedianSec + ' s vs assisted ' + b.assistedMedianSec +
-            ' s, a difference of ' + b.differenceSec + ' s per response. ', h('em', null, b.label))),
+          : h('p', null, h('strong', null, 'DEMO observation (synthetic, not a pilot): '),
+            'your manual median ' + b.manualMedianSec + ' s · demo click-through median ' + b.assistedMedianSec + ' s. ',
+            h('em', null, b.label))),
       h('div', { class: 'card' }, h('h2', null, 'Export aggregates'),
         h('p', { class: 'meta' }, 'Exports contain counts, rates and medians only: no response text, quotes, pseudonyms or response IDs.'),
         h('div', { class: 'inline-form' },

@@ -73,6 +73,13 @@ CI runs both on every push and PR that touches `demo/pilot-review/`
    durations only. Unknown fields are dropped and free text is refused.
 8. **Exports** (JSON/CSV) hold aggregates only: no response text, quotes,
    pseudonyms or response IDs. Every export is labelled `DEMO_SYNTHETIC_NOT_EVIDENCE`.
+9. **No time-saving claim.** The baseline card compares your manual median
+   against demo *click-through* time over prewritten suggestions. That is not
+   AI-assisted grading time, and the gap between the two is not time saved.
+   The export names the field `demoClickThroughDeltaSec` and carries
+   `baselineCaveat: DEMO_CLICKTHROUGH_NOT_GRADING_TIME`, so a single detached
+   row still cannot be read as a saving. "Pilot result" is reserved for real
+   pilot evidence and appears nowhere in this demo.
 
 ## Synthetic queue
 

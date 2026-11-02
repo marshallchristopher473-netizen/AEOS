@@ -43,7 +43,8 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.5; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.danger { border-color: var(--danger); color: var(--danger); }
-button.link { border: none; background: none; color: var(--muted); text-decoration: underline; padding: 0 0.25rem; }
+/* min-height keeps the inline control on the WCAG 2.5.8 (AA) 24px target floor. */
+button.link { border: none; background: none; color: var(--muted); text-decoration: underline; padding: 0 0.25rem; min-height: 24px; vertical-align: middle; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--mark-focus); outline-offset: 1px; }
 
 .demo-banner {
@@ -144,6 +145,8 @@ button.quote.viewed { background: var(--ok-bg); border-color: #9fd3b2; }
 .progress { font-weight: 600; color: var(--warn); }
 .progress.ok { color: var(--ok); }
 .decision-options { display: flex; gap: 0.75rem; }
+/* The label is the real click target for its radio, so it carries the 24px floor. */
+.decision-option { display: inline-flex; align-items: center; min-height: 24px; }
 .decision-option.disabled { color: var(--muted); }
 .timer { color: var(--muted); }
 
