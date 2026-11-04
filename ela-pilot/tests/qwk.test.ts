@@ -1,17 +1,27 @@
+// tests/qwk.test.ts
 import { describe, it, expect } from 'vitest';
 import { quadraticWeightedKappa } from '../src/lib/qwk';
 
+describe('qwk', () => {
+  it('matches the sklearn reference value', () => {
+    // sklearn.metrics.cohen_kappa_score([1,2,3,3],[1,2,3,2], weights='quadratic') ≈ 0.8
+    const k = quadraticWeightedKappa([1, 2, 3, 3], [1, 2, 3, 2], 1, 3);
+    expect(k).toBeCloseTo(0.8, 2);
+  });
+  it('returns 1 on perfect agreement', () => {
+    expect(quadraticWeightedKappa([1, 2, 3], [1, 2, 3], 1, 3)).toBe(1);
+  });
+});
+
 /**
+ * Additional coverage beyond the acceptance fixture above.
+ *
  * Reference values cross-checked against an independent implementation of
- * `sklearn.metrics.cohen_kappa_score(a, b, weights='quadratic', labels=range(min, max+1))`.
+ * `cohen_kappa_score(a, b, weights='quadratic', labels=range(min, max+1))`.
  */
 describe('quadraticWeightedKappa — reference fixtures', () => {
-  it("matches the brief's acceptance fixture (check C)", () => {
-    expect(quadraticWeightedKappa([1, 2, 3, 3], [1, 2, 3, 2], 1, 3)).toBeCloseTo(0.8, 10);
-  });
-
-  it('returns 1 for perfect agreement with spread', () => {
-    expect(quadraticWeightedKappa([1, 2, 3, 4], [1, 2, 3, 4], 1, 4)).toBeCloseTo(1, 10);
+  it('hits the acceptance fixture exactly, not merely to 2dp', () => {
+    expect(quadraticWeightedKappa([1, 2, 3, 3], [1, 2, 3, 2], 1, 3)!).toBeCloseTo(0.8, 10);
   });
 
   it('is negative when disagreement is worse than chance', () => {
@@ -61,6 +71,10 @@ describe('quadraticWeightedKappa — reference fixtures', () => {
  * which is exactly the case accept-everything on uniformly-scored responses
  * produces. `evaluateKill` then separates "too early to measure" from "flat at
  * a sample size where that is itself a finding".
+ *
+ * Note the contrast with "returns 1 on perfect agreement" above: that case has
+ * rating variance and genuinely agrees, so 1 is the honest answer. Agreement
+ * without variance is not the same thing and must not share its value.
  */
 describe('quadraticWeightedKappa — degenerate marginal', () => {
   it('returns null when both raters are constant and equal', () => {
