@@ -170,6 +170,12 @@ Read this before putting the pilot in front of anyone.
 - **Every review-page load appends two audit entries** (`response_loaded`,
   `review_started`). The chain is intentionally noisy; a reload re-starts the
   per-criterion clock.
+- **Audit payloads accept only JSON-primitive values.** `canonicalJson` flattens
+  a `Date` to `{}` and coerces `NaN`/`Infinity` to `null`. The hash chain still
+  verifies — it is a fidelity trap, not an integrity one — but `audit_log` is
+  append-only, so a degraded entry cannot be corrected. Convert dates with
+  `.toISOString()` before calling `appendAudit`. See CLAUDE.md, "Audit payload
+  hazards".
 - **Metrics are meaningless at small n.** With a handful of decisions, QWK swings
   wildly — the trend chart says so, and nothing here should be quoted as a result.
 

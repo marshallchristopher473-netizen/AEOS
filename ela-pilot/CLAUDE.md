@@ -89,6 +89,29 @@ Where the brief left a judgement call, this is what was decided and why.
 | QWK when undefined | Returns `null`, never 0 or 1. If a rater used one rating throughout, expected disagreement is 0 and kappa is 0/0. The dashboard shows "n/a" so a reader cannot mistake it for a measurement. |
 | Calibration score granularity | `calibration_sessions.manual_score` is one integer, so calibration is holistic. The AI's holistic score is the weight-weighted mean of its per-criterion drafts mapped onto the rubric's overall scale. |
 | Rate denominators | Any rate with a zero denominator is `null`, not 0 — "nothing reviewed yet" and "nothing went wrong" must not look the same. |
+| Audit payload value types | Only strings, finite numbers, booleans, `null`, arrays and plain objects. See "Audit payload hazards" below — `canonicalJson` silently coerces anything else. |
+
+## Audit payload hazards
+
+`canonicalJson` rebuilds every object as a plain object before `JSON.stringify`
+runs. That is what makes it deterministic, and it has three consequences worth
+knowing, all pinned in `tests/canonical.test.ts`:
+
+| Input | Serializes as | Why |
+| --- | --- | --- |
+| `new Date(...)` | `{}` | A Date has no own enumerable keys, so it is rebuilt as an empty plain object and its `toJSON` is never called. **Total loss of the value.** |
+| `NaN` / `Infinity` | `null` | Standard `JSON.stringify` behaviour. |
+| a function | dropped | Standard `JSON.stringify` behaviour. |
+| `1n` (bigint) | throws | Standard `JSON.stringify` behaviour. |
+
+None of these break the hash chain: output stays deterministic, and
+`verifyAuditChain` rehashes the *stored payload string*, so entries written this
+way still verify. They are data-fidelity traps — the entry verifies perfectly
+while recording less than the caller meant, and `audit_log` is append-only so it
+cannot be corrected afterwards.
+
+**Rule: convert dates with `.toISOString()` before calling `appendAudit`.** Every
+current call site already passes ISO strings (via `nowIso()`) or numbers.
 
 ## Deviations from the brief
 
