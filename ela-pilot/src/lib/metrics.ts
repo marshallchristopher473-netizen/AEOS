@@ -29,8 +29,17 @@ export type Metrics = {
     accepted: number;
     scoredResponses: number;
   };
-  /** AI draft vs. teacher final, pooled over all decisions. Null when undefined. */
+  /** AI draft vs. teacher final, pooled over all decisions. Null before any decision. */
   qwk: number | null;
+  /**
+   * True when every AI score and every final score were the same single value.
+   * `quadraticWeightedKappa` resolves that 0/0 case to 1, so QWK reads 1.00 on
+   * a dataset carrying no agreement information at all — which is exactly what
+   * accept-everything on uniformly-scored responses produces. The kill
+   * criterion cannot trip on QWK while this is true, so it must be labelled
+   * wherever the number is shown.
+   */
+  qwkDegenerate: boolean;
   /** Same statistic computed within each criterion. */
   qwkByCriterion: Record<string, number | null>;
   acceptanceRate: number | null;
@@ -165,6 +174,13 @@ export function computeMetrics(
         )
       : null;
 
+  // No variance in either rating vector => QWK is 0/0, resolved to 1 upstream.
+  const qwkDegenerate =
+    decisions.length > 0 &&
+    new Set(decisions.map((d) => d.ai_score)).size === 1 &&
+    new Set(decisions.map((d) => d.final_score)).size === 1 &&
+    decisions[0]!.ai_score === decisions[0]!.final_score;
+
   const qwkByCriterion: Record<string, number | null> = {};
   const byCriterion = new Map<string, DecisionRow[]>();
   for (const d of decisions) {
@@ -260,6 +276,7 @@ export function computeMetrics(
       scoredResponses,
     },
     qwk,
+    qwkDegenerate,
     qwkByCriterion,
     acceptanceRate,
     reviseRate,

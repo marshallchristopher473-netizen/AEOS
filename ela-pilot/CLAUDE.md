@@ -89,29 +89,48 @@ Where the brief left a judgement call, this is what was decided and why.
 | QWK when undefined | Returns `null`, never 0 or 1. If a rater used one rating throughout, expected disagreement is 0 and kappa is 0/0. The dashboard shows "n/a" so a reader cannot mistake it for a measurement. |
 | Calibration score granularity | `calibration_sessions.manual_score` is one integer, so calibration is holistic. The AI's holistic score is the weight-weighted mean of its per-criterion drafts mapped onto the rubric's overall scale. |
 | Rate denominators | Any rate with a zero denominator is `null`, not 0 — "nothing reviewed yet" and "nothing went wrong" must not look the same. |
-| Audit payload value types | Only strings, finite numbers, booleans, `null`, arrays and plain objects. See "Audit payload hazards" below — `canonicalJson` silently coerces anything else. |
+| Audit payload value types | Enforced twice: `appendAudit` takes `Record<string, JsonValue>`, and `canonicalJson` throws on anything non-representable. See "Audit payloads: two layers of defense". |
+| QWK degenerate marginal | `quadraticWeightedKappa` resolves the 0/0 case (both raters constant and equal) to `1`. `computeMetrics` exposes `qwkDegenerate` and the dashboard labels it "no score variance — not evidence", because that case is produced by accept-everything on uniformly-scored responses — the pattern the QWK kill criterion exists to catch. The threshold itself is unchanged. |
 
-## Audit payload hazards
+## Audit payloads: two layers of defense
 
-`canonicalJson` rebuilds every object as a plain object before `JSON.stringify`
-runs. That is what makes it deterministic, and it has three consequences worth
-knowing, all pinned in `tests/canonical.test.ts`:
+`audit_log` is append-only, so a payload written wrong cannot be backfilled or
+corrected. The only correction mechanism available is refusing to write it.
+A serializer that silently coerces is worse than one that throws, because the
+entry it produces is valid, permanent and wrong.
 
-| Input | Serializes as | Why |
-| --- | --- | --- |
-| `new Date(...)` | `{}` | A Date has no own enumerable keys, so it is rebuilt as an empty plain object and its `toJSON` is never called. **Total loss of the value.** |
-| `NaN` / `Infinity` | `null` | Standard `JSON.stringify` behaviour. |
-| a function | dropped | Standard `JSON.stringify` behaviour. |
-| `1n` (bigint) | throws | Standard `JSON.stringify` behaviour. |
+**Layer 1 — the type (primary).** `appendAudit` takes
+`payload: Record<string, JsonValue>`, where `JsonValue` is recursive (payloads
+already nest). A `Date`, `NaN`, a function or an `undefined` fails to compile.
+`undefined` is deliberately not in the union: write an explicit `null`.
 
-None of these break the hash chain: output stays deterministic, and
-`verifyAuditChain` rehashes the *stored payload string*, so entries written this
-way still verify. They are data-fidelity traps — the entry verifies perfectly
-while recording less than the caller meant, and `audit_log` is append-only so it
-cannot be corrected afterwards.
+**Layer 2 — the serializer (last line).** `canonicalJson` rejects, rather than
+coerces, anything it cannot represent faithfully — catching a JS caller, an
+`as` cast, or a value crossing an `unknown` boundary:
 
-**Rule: convert dates with `.toISOString()` before calling `appendAudit`.** Every
-current call site already passes ISO strings (via `nowIso()`) or numbers.
+| Input | Result |
+| --- | --- |
+| `new Date(...)`, `Map`, `Set`, class instance | throws `non-plain object (X)` |
+| `NaN` / `Infinity` | throws `non-finite number` |
+| `undefined` | throws `undefined is not JSON-representable` |
+| function, bigint | throws `… is not JSON-representable` |
+| plain object, incl. null-prototype | serialized, keys sorted |
+
+The `Object.getPrototypeOf` check is what makes layer 2 real. Without it, a
+rebuild-as-plain-object serializer turns a `Date` into `{}` — no own enumerable
+keys, so `toJSON` is never reached — losing the value entirely into a record
+that can never be fixed.
+
+For a value whose shape is not known statically (e.g. a Zod schema with
+`z.unknown()` fields), narrow it at the boundary with `assertJsonValue(v)`
+rather than loosening `appendAudit`. No current route needs it: every schema
+parses to concrete types.
+
+No migration was required. `verifyAuditChain` rehashes the *stored payload
+string* rather than re-serializing objects, so entries written before the change
+verify identically after it; and existing payloads (ISO strings, numbers) are
+byte-identical under the strict serializer anyway. The change only governs
+future writes, which is the point.
 
 ## Deviations from the brief
 

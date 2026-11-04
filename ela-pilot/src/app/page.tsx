@@ -138,8 +138,18 @@ export default function Dashboard() {
           <Metric
             label="QWK (AI draft vs final)"
             value={num(metrics.qwk)}
-            caption={`${metrics.counts.decisions} decisions`}
-            tone={metrics.qwk !== null && metrics.qwk < metrics.killCriteria.minQwk ? 'bad' : 'ok'}
+            caption={
+              metrics.qwkDegenerate
+                ? `${metrics.counts.decisions} decisions · no score variance — not evidence`
+                : `${metrics.counts.decisions} decisions`
+            }
+            tone={
+              metrics.qwkDegenerate
+                ? 'bad'
+                : metrics.qwk !== null && metrics.qwk < metrics.killCriteria.minQwk
+                  ? 'bad'
+                  : 'ok'
+            }
           />
           <Metric
             label="Unverified accept rate"

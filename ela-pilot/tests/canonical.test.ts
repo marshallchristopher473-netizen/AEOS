@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalJson } from '../src/lib/canonical';
+import { canonicalJson, assertJsonValue, type JsonValue } from '../src/lib/canonical';
 
 /**
- * `canonicalJson` is what the audit chain hashes, so what matters most is that
- * the same logical payload always serializes to the same string.
+ * `canonicalJson` is what the audit chain hashes, so two properties matter:
+ * the same logical payload must always serialize to the same string, and
+ * anything it cannot represent faithfully must throw rather than coerce.
+ *
+ * `audit_log` is append-only. A coerced entry would be valid, permanent and
+ * wrong, with no backfill available — so refusing the write is the only
+ * correction mechanism there is.
  */
 describe('canonicalJson — determinism', () => {
   it('sorts object keys', () => {
@@ -28,6 +33,12 @@ describe('canonicalJson — determinism', () => {
     expect(canonicalJson({ xs: [3, 1, 2] })).toBe('{"xs":[3,1,2]}');
   });
 
+  it('accepts null, booleans and nested records', () => {
+    expect(canonicalJson({ n: null, t: true, nested: { k: [1, 'a', false] } })).toBe(
+      '{"n":null,"nested":{"k":[1,"a",false]},"t":true}',
+    );
+  });
+
   it('round-trips the payload shapes the audit log actually writes', () => {
     const payload = {
       decisionId: 'dec_1',
@@ -43,49 +54,89 @@ describe('canonicalJson — determinism', () => {
   });
 });
 
-describe('canonicalJson — undefined handling', () => {
-  it('drops undefined object values but keeps null', () => {
-    expect(canonicalJson({ a: undefined, b: null, c: 1 })).toBe('{"b":null,"c":1}');
-  });
-
-  it('serializes undefined array entries as null', () => {
-    expect(canonicalJson({ xs: [1, undefined, 2] })).toBe('{"xs":[1,null,2]}');
-  });
-});
-
 /**
- * Documented coercions, pinned so they are discovered here rather than in an
- * immutable audit record.
+ * Runtime rejections.
  *
- * None of these break the hash chain — output stays deterministic, and
- * `verifyAuditChain` rehashes the stored payload string. They are data-fidelity
- * traps: the entry verifies perfectly while saying less than the caller meant.
- *
- * Rule for callers: put only strings, finite numbers, booleans, null, arrays
- * and plain objects into an audit payload. Convert dates with `.toISOString()`
- * BEFORE handing them to `appendAudit`.
+ * The `JsonValue` type blocks each of these at compile time — that is the
+ * primary defense, verified by the fact that these cases need a cast to even
+ * reach the serializer. These tests cover the last line: a JS caller, an `as`
+ * cast, or a value crossing an `unknown` boundary.
  */
-describe('canonicalJson — documented coercions (audit payload hazards)', () => {
-  it('flattens a Date to an empty object — pass ISO strings instead', () => {
-    // `sortKeys` rebuilds the Date as a plain object (a Date has no own
-    // enumerable keys), so JSON.stringify never gets to call its toJSON.
-    expect(canonicalJson({ at: new Date('2026-01-01T00:00:00.000Z') })).toBe('{"at":{}}');
-    // The safe form:
+const bypass = (v: unknown): JsonValue => v as JsonValue;
+
+describe('canonicalJson — rejects non-representable values', () => {
+  it('rejects a Date instead of flattening it to {}', () => {
+    // The specific trap this guards: a Date has no own enumerable keys, so a
+    // rebuild-as-plain-object serializer silently emits `{}` and loses the
+    // value entirely, into a record that can never be corrected.
+    expect(() => canonicalJson(bypass({ at: new Date('2026-01-01T00:00:00.000Z') }))).toThrow(
+      /non-plain object \(Date\)/,
+    );
+    // The supported form:
     expect(canonicalJson({ at: new Date('2026-01-01T00:00:00.000Z').toISOString() })).toBe(
       '{"at":"2026-01-01T00:00:00.000Z"}',
     );
   });
 
-  it('coerces non-finite numbers to null', () => {
-    expect(canonicalJson({ score: NaN })).toBe('{"score":null}');
-    expect(canonicalJson({ score: Infinity })).toBe('{"score":null}');
+  it('rejects other non-plain objects', () => {
+    expect(() => canonicalJson(bypass({ m: new Map([['a', 1]]) }))).toThrow(/non-plain object \(Map\)/);
+    expect(() => canonicalJson(bypass({ s: new Set([1]) }))).toThrow(/non-plain object \(Set\)/);
+    class Decision {
+      constructor(public score = 1) {}
+    }
+    expect(() => canonicalJson(bypass({ d: new Decision() }))).toThrow(
+      /non-plain object \(Decision\)/,
+    );
   });
 
-  it('drops function values', () => {
-    expect(canonicalJson({ fn: () => 1 })).toBe('{}');
+  it('accepts a null-prototype record', () => {
+    const bare = Object.create(null) as Record<string, JsonValue>;
+    bare.b = 1;
+    bare.a = 2;
+    expect(canonicalJson(bare)).toBe('{"a":2,"b":1}');
   });
 
-  it('throws on bigint rather than coercing it', () => {
-    expect(() => canonicalJson({ big: 1n })).toThrow(/BigInt/i);
+  it('rejects non-finite numbers instead of coercing them to null', () => {
+    expect(() => canonicalJson(bypass({ score: NaN }))).toThrow(/non-finite number/);
+    expect(() => canonicalJson(bypass({ score: Infinity }))).toThrow(/non-finite number/);
+    expect(() => canonicalJson(bypass({ score: -Infinity }))).toThrow(/non-finite number/);
+  });
+
+  it('rejects undefined instead of dropping it — write an explicit null', () => {
+    expect(() => canonicalJson(bypass({ a: undefined, c: 1 }))).toThrow(
+      /undefined is not JSON-representable/,
+    );
+    expect(() => canonicalJson(bypass({ xs: [1, undefined, 2] }))).toThrow(
+      /undefined is not JSON-representable/,
+    );
+    expect(canonicalJson({ a: null, c: 1 })).toBe('{"a":null,"c":1}');
+  });
+
+  it('rejects functions instead of dropping them', () => {
+    expect(() => canonicalJson(bypass({ fn: () => 1 }))).toThrow(
+      /function is not JSON-representable/,
+    );
+  });
+
+  it('rejects bigint', () => {
+    expect(() => canonicalJson(bypass({ big: 1n }))).toThrow(/bigint is not JSON-representable/);
+  });
+
+  it('rejects a non-representable value nested deep in the payload', () => {
+    expect(() =>
+      canonicalJson(bypass({ a: { b: { c: [{ d: new Date() }] } } })),
+    ).toThrow(/non-plain object \(Date\)/);
+  });
+});
+
+describe('assertJsonValue', () => {
+  it('passes representable values through', () => {
+    const v: unknown = { a: 1, b: [null, 'x', true] };
+    expect(() => assertJsonValue(v)).not.toThrow();
+  });
+
+  it('throws on anything the audit log could not faithfully record', () => {
+    expect(() => assertJsonValue({ at: new Date() })).toThrow(/non-plain object/);
+    expect(() => assertJsonValue({ n: NaN })).toThrow(/non-finite/);
   });
 });

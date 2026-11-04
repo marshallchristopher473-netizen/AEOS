@@ -90,6 +90,39 @@ describe('verifyAuditChain', () => {
   });
 });
 
+/**
+ * The boundary of the guarantee.
+ *
+ * A hash chain with no external anchor detects modification and naive
+ * insertion. It cannot detect a well-formed append at the tail, because the
+ * forged row IS the new tail and there is nothing outside the DB to disagree
+ * with it. Pinned here so the limitation is visible in the suite, not only in
+ * the README: "tamper-evident" must never be stated to a security reviewer
+ * without this caveat.
+ */
+describe('verifyAuditChain — known gap: unanchored tail append', () => {
+  it('cannot detect a forged row appended at the tail with a recomputed hash', () => {
+    appendAudit(db, 'teacher-a', 'response_loaded', { responseId: 'res_1' });
+    appendAudit(db, 'teacher-a', 'decision', { responseId: 'res_1', action: 'reject' });
+
+    // An attacker with DB write access reads the current tail and chains onto it.
+    const tail = db.prepare('SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1').get() as {
+      hash: string;
+    };
+    const ts = new Date().toISOString();
+    const payload = canonicalJson({ responseId: 'res_1', action: 'accept', forged: true });
+    const hash = createHash('sha256')
+      .update([tail.hash, ts, 'teacher-a', 'decision', payload].join('|'))
+      .digest('hex');
+    db.prepare(
+      'INSERT INTO audit_log (ts, actor, action, payload, prev_hash, hash) VALUES (?,?,?,?,?,?)',
+    ).run(ts, 'teacher-a', 'decision', payload, tail.hash, hash);
+
+    // Verifies cleanly. This is the documented limit, not a passing security test.
+    expect(verifyAuditChain(db)).toEqual({ ok: true });
+  });
+});
+
 describe('append-only enforcement (acceptance check A)', () => {
   it('rejects UPDATE on audit_log', () => {
     appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import { canonicalJson } from './canonical';
+import { canonicalJson, type JsonValue } from './canonical';
 
 const GENESIS = '0'.repeat(64);
 
@@ -18,7 +18,9 @@ export function appendAudit(
   db: Database.Database,
   actor: string,
   action: AuditAction,
-  payload: Record<string, unknown>,
+  // Recursive, not a primitives-only union: audit payloads already nest.
+  // `undefined` is deliberately absent — write an explicit `null`.
+  payload: Record<string, JsonValue>,
 ): { ts: string; hash: string } {
   const ts = new Date().toISOString();
   const prevRow = db

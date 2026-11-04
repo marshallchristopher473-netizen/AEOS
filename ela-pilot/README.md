@@ -122,10 +122,30 @@ sqlite3 pilot.db "UPDATE audit_log SET payload='{}' WHERE id=1"
 ```
 `DELETE` is blocked the same way. Because `INSERT` is permitted by design,
 `verifyAuditChain()` is what catches a forged row — it recomputes every hash and
-returns `{ok:false, brokenAt:<id>}`. Covered by `tests/audit.test.ts`.
+returns `{ok:false, brokenAt:<id>}`. Covered by `tests/audit.test.ts`, including
+a row that hashes correctly over its own fields but is spliced mid-chain.
 
 Note: a tamper test only means something once the log has rows. A fresh seed
 writes none, so open a review first (or run the test suite, which seeds its own).
+
+**What "tamper-evident" does and does not mean here** — state it this precisely
+to a security reviewer:
+
+- ✅ Catches **modification** of any existing entry (triggers block it; the chain
+  would also detect it).
+- ✅ Catches **naive insertion** — a row with a `prev_hash` that doesn't match
+  its predecessor breaks the chain.
+- ❌ Does **not** catch a **tail append** by someone with direct DB write access.
+  A forger who recomputes the hash against the current tail produces a chain
+  that verifies cleanly. There is no external anchor for `verifyAuditChain` to
+  disagree with, so by construction it cannot detect this.
+
+That is acceptable for this pilot's threat model — the goal is "a reviewer
+cannot quietly rewrite yesterday's decision", and that holds. It is **not**
+acceptable for a deployment where the DB writer is not trusted. The fix is
+external anchoring: publish the tail hash on a cadence to somewhere the DB
+writer does not control (a district-controlled log, a signed timestamp, a second
+store). That is a **prerequisite**, listed below — not a later feature.
 
 **B — Unverified evidence is caught and surfaced**
 
@@ -170,12 +190,22 @@ Read this before putting the pilot in front of anyone.
 - **Every review-page load appends two audit entries** (`response_loaded`,
   `review_started`). The chain is intentionally noisy; a reload re-starts the
   per-criterion clock.
-- **Audit payloads accept only JSON-primitive values.** `canonicalJson` flattens
-  a `Date` to `{}` and coerces `NaN`/`Infinity` to `null`. The hash chain still
-  verifies — it is a fidelity trap, not an integrity one — but `audit_log` is
-  append-only, so a degraded entry cannot be corrected. Convert dates with
-  `.toISOString()` before calling `appendAudit`. See CLAUDE.md, "Audit payload
-  hazards".
+- **The audit chain has no external anchor.** A tail append by someone with
+  direct DB write access verifies cleanly — see acceptance check A above. This
+  is a **prerequisite** for any deployment where the DB writer is not trusted,
+  ranked with tenant isolation and the Next 14 advisory, not a follow-up.
+- **Audit payloads are restricted to JSON-representable values**, enforced by
+  the `JsonValue` type on `appendAudit` and again by `canonicalJson`, which
+  throws rather than coerces. Convert dates with `.toISOString()` and write
+  explicit `null` rather than `undefined`. See CLAUDE.md, "Audit payloads: two
+  layers of defense".
+- **QWK reads 1.00 when there is no score variance.** If every AI score and
+  every final score are the same value, kappa is 0/0 and resolves to 1 — which
+  is what accept-everything on uniformly-scored responses produces, the very
+  pattern the QWK kill criterion should catch. The dashboard labels this case
+  ("no score variance — not evidence") via the `qwkDegenerate` flag, but the
+  threshold itself does not account for it. Do not quote a QWK of 1.00 without
+  checking that flag.
 - **Metrics are meaningless at small n.** With a handful of decisions, QWK swings
   wildly — the trend chart says so, and nothing here should be quoted as a result.
 
@@ -187,3 +217,14 @@ Not in scope for this build, but this is the gap between "it runs" and "it is ev
 2. A pre-registered hypothesis, success threshold and minimum sample size, set before data collection.
 3. A real model behind `SCORING_PROVIDER=openai`, with the prompt version pinned per run.
 4. Consent, data handling and a privacy review before any non-synthetic response.
+
+### Prerequisites before real data or an untrusted writer
+
+These gate deployment; none is a follow-up:
+
+| Gate | Why |
+| --- | --- |
+| External anchoring of the audit tail hash | Without it, "tamper-evident" does not cover a tail append by whoever can write to the DB |
+| Tenant isolation, encryption at rest, FERPA/COPPA handling, consent | No student work can be loaded until these exist |
+| Resolve the Next 14 advisory | Only published fix is Next 16; until then, localhost only |
+| Real authentication | The `reviewer` cookie is attribution, not authentication |
