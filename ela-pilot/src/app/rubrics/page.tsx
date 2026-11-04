@@ -1,6 +1,6 @@
 import { getDb } from '@db/client';
 import { listRubrics } from '@/lib/repo';
-import { parseRubric } from '@/lib/rubric';
+import { parseRubric } from '@/lib/rubric-schema';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

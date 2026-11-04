@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
-import { parseRubric, type Rubric } from './rubric';
+import type { Rubric } from './rubric';
+import { parseRubric } from './rubric-schema';
 import type { ScoreDraft } from './scoring';
 
 /**

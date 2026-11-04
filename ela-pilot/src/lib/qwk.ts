@@ -1,13 +1,22 @@
 /**
  * Quadratic weighted kappa for ordinal rubric scores.
- * Returns 1 when the marginal is degenerate (both raters constant and equal).
+ *
+ * Returns `null` when the marginal is degenerate (both raters constant and
+ * equal). That case contains no rating variance to compute kappa against, so
+ * kappa is undefined — not 1. Returning 1 would read as "perfect agreement" and
+ * let a flat sample clear a `qwk < threshold` kill criterion while carrying no
+ * agreement information at all. `sklearn.cohen_kappa_score` returns nan here;
+ * the standard is not to invent a value.
+ *
+ * Callers distinguish "undefined because the sample is tiny" from "undefined at
+ * a sample size where flatness is itself a finding" — see `evaluateKill`.
  */
 export function quadraticWeightedKappa(
   a: number[],
   b: number[],
   minRating: number,
   maxRating: number,
-): number {
+): number | null {
   if (a.length !== b.length) throw new Error('qwk: length mismatch');
   if (a.length === 0) throw new Error('qwk: empty input');
 
@@ -37,6 +46,6 @@ export function quadraticWeightedKappa(
       den += W[i][j] * E;
     }
   }
-  if (den === 0) return 1;
+  if (den === 0) return null;
   return 1 - num / den;
 }

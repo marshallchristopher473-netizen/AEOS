@@ -15,20 +15,20 @@ describe('quadraticWeightedKappa — reference fixtures', () => {
   });
 
   it('is negative when disagreement is worse than chance', () => {
-    expect(quadraticWeightedKappa([1, 1, 4, 4], [4, 4, 1, 1], 1, 4)).toBeCloseTo(-1, 10);
+    expect(quadraticWeightedKappa([1, 1, 4, 4], [4, 4, 1, 1], 1, 4)!).toBeCloseTo(-1, 10);
   });
 
   it('penalises a far disagreement more than a near one', () => {
-    const near = quadraticWeightedKappa([1, 2, 3, 4], [1, 2, 3, 3], 1, 4);
-    const far = quadraticWeightedKappa([1, 2, 3, 4], [1, 2, 3, 1], 1, 4);
+    const near = quadraticWeightedKappa([1, 2, 3, 4], [1, 2, 3, 3], 1, 4)!;
+    const far = quadraticWeightedKappa([1, 2, 3, 4], [1, 2, 3, 1], 1, 4)!;
     expect(near).toBeGreaterThan(far);
   });
 
   it('is symmetric in its two rating vectors', () => {
     const a = [1, 2, 2, 3, 4, 4];
     const b = [1, 3, 2, 3, 3, 4];
-    expect(quadraticWeightedKappa(a, b, 1, 4)).toBeCloseTo(
-      quadraticWeightedKappa(b, a, 1, 4),
+    expect(quadraticWeightedKappa(a, b, 1, 4)!).toBeCloseTo(
+      quadraticWeightedKappa(b, a, 1, 4)!,
       10,
     );
   });
@@ -36,38 +36,43 @@ describe('quadraticWeightedKappa — reference fixtures', () => {
   it('is invariant to widening the declared scale', () => {
     // The (k-1)^2 weight normaliser cancels between numerator and denominator,
     // so padding the scale with unused rating levels must not move the metric.
-    const narrow = quadraticWeightedKappa([1, 2, 2, 3], [1, 2, 3, 3], 1, 3);
-    const wide = quadraticWeightedKappa([1, 2, 2, 3], [1, 2, 3, 3], 1, 6);
+    const narrow = quadraticWeightedKappa([1, 2, 2, 3], [1, 2, 3, 3], 1, 3)!;
+    const wide = quadraticWeightedKappa([1, 2, 2, 3], [1, 2, 3, 3], 1, 6)!;
     expect(narrow).toBeCloseTo(0.8, 10);
     expect(wide).toBeCloseTo(narrow, 10);
   });
 
   it('returns 0 when both raters are constant but disagree', () => {
-    expect(quadraticWeightedKappa([1, 1, 1], [3, 3, 3], 1, 4)).toBeCloseTo(0, 10);
+    expect(quadraticWeightedKappa([1, 1, 1], [3, 3, 3], 1, 4)!).toBeCloseTo(0, 10);
+  });
+
+  it('returns exactly 0 for one disagreement against an otherwise constant rater', () => {
+    // The realistic pilot path out of the degenerate case: accept three, revise
+    // one. Kappa is defined again and reports the real signal.
+    expect(quadraticWeightedKappa([1, 1, 1, 1], [1, 1, 1, 2], 1, 4)!).toBeCloseTo(0, 10);
   });
 });
 
 /**
- * The degenerate marginal.
+ * The degenerate marginal returns null — kappa is undefined, not 1.
  *
- * When both raters used one rating for every item and it was the same rating,
- * expected disagreement is 0 and kappa is 0/0. This implementation resolves
- * that to 1.
- *
- * Consequence for the pilot: QWK feeds a kill criterion (`qwk < 0.50`). A
- * reviewer who accepts every draft on a set of responses the model scored
- * identically produces exactly this case — so QWK reads 1.00 and the criterion
- * cannot trip on the very pattern it exists to catch. `computeMetrics` flags
- * the condition as `qwkDegenerate` and the dashboard labels it, so the number
- * is not read as evidence.
+ * A flat sample carries no agreement information. Reporting 1 would read as
+ * "perfect agreement" and let it clear a `qwk < threshold` kill criterion,
+ * which is exactly the case accept-everything on uniformly-scored responses
+ * produces. `evaluateKill` then separates "too early to measure" from "flat at
+ * a sample size where that is itself a finding".
  */
 describe('quadraticWeightedKappa — degenerate marginal', () => {
-  it('returns 1 when both raters are constant and equal', () => {
-    expect(quadraticWeightedKappa([3, 3, 3], [3, 3, 3], 1, 4)).toBe(1);
+  it('returns null when both raters are constant and equal', () => {
+    expect(quadraticWeightedKappa([3, 3, 3], [3, 3, 3], 1, 4)).toBeNull();
   });
 
-  it('returns 1 for a single item that both raters agreed on', () => {
-    expect(quadraticWeightedKappa([2], [2], 1, 4)).toBe(1);
+  it('returns null for a single item that both raters agreed on', () => {
+    expect(quadraticWeightedKappa([2], [2], 1, 4)).toBeNull();
+  });
+
+  it('is defined again as soon as one rating differs', () => {
+    expect(quadraticWeightedKappa([3, 3, 3], [3, 3, 2], 1, 4)).not.toBeNull();
   });
 });
 

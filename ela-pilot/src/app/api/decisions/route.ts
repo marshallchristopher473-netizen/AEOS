@@ -5,7 +5,7 @@ import { handle, readJson, notFound, badRequest, conflict, ApiError } from '@/li
 import { requireReviewer } from '@/lib/reviewer';
 import { appendAudit } from '@/lib/audit';
 import { verifyQuote } from '@/lib/evidence';
-import { findCriterion, isScoreInScale } from '@/lib/rubric';
+import { findCriterion, isScoreInScale } from '@/lib/rubric-schema';
 import { computeMetrics } from '@/lib/metrics';
 import { newId, nowIso } from '@/lib/ids';
 import {

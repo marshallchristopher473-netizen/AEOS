@@ -86,8 +86,10 @@ pilot has actually run with real reviewers and enough decisions to be meaningful
 
 | Metric | Definition |
 | --- | --- |
-| `qwk` | Quadratic weighted kappa, AI draft vs. teacher final, pooled over all decisions. `null` when undefined. |
-| `qwkByCriterion` | The same, within each criterion. |
+| `qwk` | Quadratic weighted kappa, AI draft vs. teacher final, pooled over all decisions. `null` before any decision, and `null` when the sample is flat (no rating variance — kappa undefined, never reported as 1). |
+| `qwkN` | Decisions behind `qwk`. Distinguishes "too early to measure" from "flat sample". |
+| `qwkDegenerate` | `qwk === null && qwkN > 0` — a view of the null, for the dashboard. |
+| `qwkByCriterion` | The same statistic, within each criterion. |
 | `acceptanceRate` / `reviseRate` / `rejectRate` / `flagRate` | Share of decisions by action. |
 | `medianReviewSeconds` | Median `decided_at − started_at`, per criterion. Derived server-side. |
 | `evidenceVerificationRate` | Accepted decisions preceded by an `evidence_viewed` event on the same response. |
@@ -99,15 +101,39 @@ A rate with a zero denominator is `null`, never `0`.
 
 ### Kill criteria
 
-| Threshold | Default |
-| --- | --- |
-| `qwk` below | `0.50` |
-| `unverifiedAcceptRate` above | `0.20` |
+| Threshold | Default | Trips when |
+| --- | --- | --- |
+| `minQwk` | `0.50` | QWK is defined and below it |
+| `maxUnverifiedAcceptRate` | `0.20` | above it |
+| `minQwkSampleSize` | `10` | QWK is **undefined at or above this n** |
 
-When either trips, the dashboard and review page show a red banner and **Accept
-is disabled server-side** (HTTP 423) until a reviewer acknowledges that specific
-set of violations. Revise, Reject and Flag stay available — the point is to stop
-rubber-stamping, not to stop reviewing.
+All three are pre-registered: fix them before data collection and do not tune
+them to fit the n a run produces.
+
+When a criterion trips, the dashboard and review page show a red banner and
+**Accept is disabled server-side** (HTTP 423) until a reviewer acknowledges that
+specific set of violations. Revise, Reject and Flag stay available.
+
+**Undefined QWK is split by sample size rather than treated as one case.** Below
+the floor it is reported as *unmeasured* — amber, non-pausing — because a
+handful of decisions that happened to agree is what small samples look like, and
+pausing there is a false positive. False positives are what teach a team to
+switch a kill switch off. At or above the floor, a flat sample is itself a
+finding: the rubric, the model's range, or reviewer behaviour needs
+investigating, and it pauses.
+
+Worked example on the seeded data — accepting S-019's four all-`1` drafts:
+
+```
+accept 3 verified criteria → qwk=null  n=3  paused=false  unmeasured=['QWK (n=3 < 10)']
+revise 1 criterion          → qwk=0.00  n=4  paused=true   violations=['QWK 0.00 < 0.5']
+```
+
+**QWK is not the rubber-stamping detector — `evidenceVerificationRate` is.** A
+reviewer who accepts 100% having verified 100% of evidence is fine; one who
+accepts 90% having verified 10% is the failure, and QWK cannot separate those.
+The undefined-QWK violation means "this run has nothing to say". Two
+instruments, two failure modes.
 
 ## Acceptance checks
 
@@ -199,13 +225,10 @@ Read this before putting the pilot in front of anyone.
   throws rather than coerces. Convert dates with `.toISOString()` and write
   explicit `null` rather than `undefined`. See CLAUDE.md, "Audit payloads: two
   layers of defense".
-- **QWK reads 1.00 when there is no score variance.** If every AI score and
-  every final score are the same value, kappa is 0/0 and resolves to 1 — which
-  is what accept-everything on uniformly-scored responses produces, the very
-  pattern the QWK kill criterion should catch. The dashboard labels this case
-  ("no score variance — not evidence") via the `qwkDegenerate` flag, but the
-  threshold itself does not account for it. Do not quote a QWK of 1.00 without
-  checking that flag.
+- **An unmeasured criterion is not a passed criterion.** A `null` QWK below the
+  sample-size floor shows as amber "not yet measurable" and does not pause.
+  That is deliberate, but it means an early pilot is running with one of its two
+  kill criteria inactive. Do not read a clear banner at n=3 as a safety result.
 - **Metrics are meaningless at small n.** With a handful of decisions, QWK swings
   wildly — the trend chart says so, and nothing here should be quoted as a result.
 
@@ -214,7 +237,10 @@ Read this before putting the pilot in front of anyone.
 Not in scope for this build, but this is the gap between "it runs" and "it is evidence":
 
 1. A second human rater, so teacher-vs-teacher agreement gives QWK a baseline to beat.
-2. A pre-registered hypothesis, success threshold and minimum sample size, set before data collection.
+2. A pre-registered hypothesis, success threshold and minimum sample size, set before data
+   collection — including `minQwkSampleSize`, which is a threshold like the others. Note that a
+   second reviewer landing ~12 decisions total sits barely over the default floor of 10; agree
+   the number before they start rather than after seeing the data.
 3. A real model behind `SCORING_PROVIDER=openai`, with the prompt version pinned per run.
 4. Consent, data handling and a privacy review before any non-synthetic response.
 

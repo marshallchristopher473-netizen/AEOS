@@ -29,15 +29,19 @@ export type Metrics = {
     accepted: number;
     scoredResponses: number;
   };
-  /** AI draft vs. teacher final, pooled over all decisions. Null before any decision. */
-  qwk: number | null;
   /**
-   * True when every AI score and every final score were the same single value.
-   * `quadraticWeightedKappa` resolves that 0/0 case to 1, so QWK reads 1.00 on
-   * a dataset carrying no agreement information at all — which is exactly what
-   * accept-everything on uniformly-scored responses produces. The kill
-   * criterion cannot trip on QWK while this is true, so it must be labelled
-   * wherever the number is shown.
+   * AI draft vs. teacher final, pooled over all decisions.
+   * Null before any decision, and null when the sample has no rating variance
+   * (kappa undefined — see `quadraticWeightedKappa`).
+   */
+  qwk: number | null;
+  /** Decisions behind `qwk`. Needed to tell "too early" from "flat sample". */
+  qwkN: number;
+  /**
+   * A view of the null, not a parallel source of truth: true when QWK is
+   * undefined despite having decisions, i.e. every AI score and every final
+   * score were the same value. Kept because it is cheaper to read on the
+   * dashboard than re-deriving the condition.
    */
   qwkDegenerate: boolean;
   /** Same statistic computed within each criterion. */
@@ -174,12 +178,9 @@ export function computeMetrics(
         )
       : null;
 
-  // No variance in either rating vector => QWK is 0/0, resolved to 1 upstream.
-  const qwkDegenerate =
-    decisions.length > 0 &&
-    new Set(decisions.map((d) => d.ai_score)).size === 1 &&
-    new Set(decisions.map((d) => d.final_score)).size === 1 &&
-    decisions[0]!.ai_score === decisions[0]!.final_score;
+  const qwkN = decisions.length;
+  // Undefined kappa despite having decisions => the sample is flat.
+  const qwkDegenerate = qwk === null && qwkN > 0;
 
   const qwkByCriterion: Record<string, number | null> = {};
   const byCriterion = new Map<string, DecisionRow[]>();
@@ -266,7 +267,7 @@ export function computeMetrics(
   }).length;
   const auditCompleteness = rate(complete, total);
 
-  const kill = evaluateKill({ qwk, unverifiedAcceptRate }, criteria);
+  const kill = evaluateKill({ qwk, qwkN, unverifiedAcceptRate }, criteria);
 
   return {
     counts: {
@@ -276,6 +277,7 @@ export function computeMetrics(
       scoredResponses,
     },
     qwk,
+    qwkN,
     qwkDegenerate,
     qwkByCriterion,
     acceptanceRate,

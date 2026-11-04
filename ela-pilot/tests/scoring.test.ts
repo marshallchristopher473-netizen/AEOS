@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { runScoring } from '../src/lib/scoring';
 import { verifyQuote } from '../src/lib/evidence';
-import { rubricSchema, type Rubric } from '../src/lib/rubric';
+import type { Rubric } from '../src/lib/rubric';
+import { rubricSchema } from '../src/lib/rubric-schema';
 
 const rubric: Rubric = rubricSchema.parse({
   id: 'rubric_arg_g8',

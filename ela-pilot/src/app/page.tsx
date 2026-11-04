@@ -89,12 +89,29 @@ export default function Dashboard() {
             </p>
           )}
         </div>
+      ) : metrics.kill.unmeasured.length > 0 ? (
+        // Not "clear": at least one criterion could not be evaluated, so the
+        // banner must not enumerate it as satisfied.
+        <div className="rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-700">
+          No kill criteria tripped, but not all could be evaluated — see below. Unverified accept
+          rate is within {(metrics.killCriteria.maxUnverifiedAcceptRate * 100).toFixed(0)}%.
+        </div>
       ) : (
         <div className="rounded-md border border-green-700/30 bg-green-50 p-3 text-sm text-green-900">
           Kill criteria clear — QWK ≥ {metrics.killCriteria.minQwk} and unverified accept rate ≤{' '}
           {(metrics.killCriteria.maxUnverifiedAcceptRate * 100).toFixed(0)}%.
         </div>
       )}
+
+      {/* Criteria that could not be evaluated yet. Reported, never pausing —
+          a criterion nobody can measure must not look like one that passed. */}
+      {metrics.kill.unmeasured.length > 0 ? (
+        <div className="rounded-md border border-amber-600/40 bg-amber-50 p-3 text-sm text-amber-900">
+          <strong>Not yet measurable:</strong> {metrics.kill.unmeasured.join(' · ')}. This is not a
+          pass — there is not enough data to evaluate it. The sample-size floor (
+          {metrics.killCriteria.minQwkSampleSize}) is pre-registered; do not tune it to fit the data.
+        </div>
+      ) : null}
 
       {/* Reviewer selection (the pilot's whole "auth" surface). */}
       <section className="card">
@@ -140,13 +157,13 @@ export default function Dashboard() {
             value={num(metrics.qwk)}
             caption={
               metrics.qwkDegenerate
-                ? `${metrics.counts.decisions} decisions · no score variance — not evidence`
-                : `${metrics.counts.decisions} decisions`
+                ? `n=${metrics.qwkN} · undefined: no rating variance`
+                : `${metrics.qwkN} decisions`
             }
             tone={
-              metrics.qwkDegenerate
-                ? 'bad'
-                : metrics.qwk !== null && metrics.qwk < metrics.killCriteria.minQwk
+              metrics.qwk === null
+                ? 'neutral'
+                : metrics.qwk < metrics.killCriteria.minQwk
                   ? 'bad'
                   : 'ok'
             }

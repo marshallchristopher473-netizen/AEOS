@@ -4,7 +4,7 @@ import { handle, readJson, notFound } from '@/lib/http';
 import { requireReviewer } from '@/lib/reviewer';
 import { appendAudit } from '@/lib/audit';
 import { verifyQuote } from '@/lib/evidence';
-import { findCriterion } from '@/lib/rubric';
+import { findCriterion } from '@/lib/rubric-schema';
 import {
   getResponse,
   latestScoringRun,
