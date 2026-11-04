@@ -1,25 +1,61 @@
+// tests/audit.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import type Database from 'better-sqlite3';
-import { openDb } from '../db/client';
 import { appendAudit, verifyAuditChain } from '../src/lib/audit';
 import { canonicalJson } from '../src/lib/canonical';
 
 const GENESIS = '0'.repeat(64);
 
 let db: Database.Database;
-
 beforeEach(() => {
-  db = openDb(':memory:');
+  db = new Database(':memory:');
+  db.exec(readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8'));
 });
 
 afterEach(() => {
   db.close();
 });
 
+describe('audit', () => {
+  it('chains entries', () => {
+    appendAudit(db, 't1', 'review_started', { responseId: 'r1' });
+    appendAudit(db, 't1', 'decision', { responseId: 'r1', criterionId: 'claim', final: 3 });
+    expect(verifyAuditChain(db)).toEqual({ ok: true });
+  });
+
+  it('detects tampering', () => {
+    appendAudit(db, 't1', 'decision', { x: 1 });
+    appendAudit(db, 't1', 'decision', { x: 2 });
+    // Forge a row. INSERT is permitted by the schema; DELETE is NOT — the
+    // append-only trigger blocks it (see "rejects DELETE at the DB level"), so
+    // an attacker cannot truncate first. The hash chain is what catches the
+    // insert: prev_hash '0' does not match the real predecessor's hash.
+    db.prepare(
+      "INSERT INTO audit_log (ts, actor, action, payload, prev_hash, hash) VALUES ('x','t1','decision','{}','0','0')",
+    ).run();
+    const r = verifyAuditChain(db);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects UPDATE at the DB level', () => {
+    appendAudit(db, 't1', 'decision', { x: 1 });
+    expect(() => db.prepare("UPDATE audit_log SET payload='{}' WHERE id=1").run()).toThrow(
+      /append-only/,
+    );
+  });
+
+  it('rejects DELETE at the DB level', () => {
+    appendAudit(db, 't1', 'decision', { x: 1 });
+    expect(() => db.exec('DELETE FROM audit_log WHERE id = 1')).toThrow(/append-only/);
+    expect(() => db.exec('DELETE FROM audit_log')).toThrow(/append-only/);
+  });
+});
+
 describe('appendAudit', () => {
   it('chains the first entry to the genesis hash', () => {
-    const { hash } = appendAudit(db, 'reviewer@example.org', 'review_started', { responseId: 'res_1' });
+    const { hash } = appendAudit(db, 'teacher-a', 'review_started', { responseId: 'res_1' });
     const row = db.prepare('SELECT * FROM audit_log').get() as { prev_hash: string; hash: string };
     expect(row.prev_hash).toBe(GENESIS);
     expect(row.hash).toBe(hash);
@@ -32,9 +68,9 @@ describe('appendAudit', () => {
       .prepare('SELECT prev_hash, hash FROM audit_log ORDER BY id')
       .all() as Array<{ prev_hash: string; hash: string }>;
 
-    expect(rows[0].hash).toBe(a.hash);
-    expect(rows[1].prev_hash).toBe(a.hash);
-    expect(rows[1].hash).toBe(b.hash);
+    expect(rows[0]!.hash).toBe(a.hash);
+    expect(rows[1]!.prev_hash).toBe(a.hash);
+    expect(rows[1]!.hash).toBe(b.hash);
   });
 
   it('stores the payload canonically so key order cannot change the hash', () => {
@@ -57,9 +93,8 @@ describe('verifyAuditChain', () => {
     expect(verifyAuditChain(db)).toEqual({ ok: true });
   });
 
-  it('detects a forged row whose hash does not match its content', () => {
+  it('names the first broken row', () => {
     appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });
-    // INSERT is permitted by the schema; the hash chain is what catches it.
     db.prepare(
       'INSERT INTO audit_log (ts, actor, action, payload, prev_hash, hash) VALUES (?,?,?,?,?,?)',
     ).run('2026-01-01T00:00:00.000Z', 'attacker', 'decision', '{"action":"accept"}', GENESIS, 'deadbeef');
@@ -73,8 +108,8 @@ describe('verifyAuditChain', () => {
     appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });
     appendAudit(db, 'r1', 'decision', { responseId: 'res_1' });
 
-    // Forge a row that hashes correctly over its own fields but claims GENESIS
-    // as its predecessor, i.e. an attempt to rewrite history mid-chain.
+    // Hashes correctly over its own fields, but claims GENESIS as its
+    // predecessor — an attempt to rewrite history mid-chain.
     const ts = '2026-01-01T00:00:00.000Z';
     const payload = canonicalJson({ action: 'accept', forged: true });
     const hash = createHash('sha256')
@@ -88,6 +123,16 @@ describe('verifyAuditChain', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.brokenAt).toBe(3);
   });
+
+  it('leaves the chain verifiable after a blocked tamper attempt', () => {
+    appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });
+    try {
+      db.prepare("UPDATE audit_log SET payload='{}' WHERE id=1").run();
+    } catch {
+      /* expected */
+    }
+    expect(verifyAuditChain(db)).toEqual({ ok: true });
+  });
 });
 
 /**
@@ -99,6 +144,10 @@ describe('verifyAuditChain', () => {
  * with it. Pinned here so the limitation is visible in the suite, not only in
  * the README: "tamper-evident" must never be stated to a security reviewer
  * without this caveat.
+ *
+ * This test asserts `ok === true`. Adding tail anchoring would flip it, which
+ * forces whoever does that to update this assertion and the README table in
+ * the same commit — the gap cannot quietly close or quietly persist.
  */
 describe('verifyAuditChain — known gap: unanchored tail append', () => {
   it('cannot detect a forged row appended at the tail with a recomputed hash', () => {
@@ -119,32 +168,6 @@ describe('verifyAuditChain — known gap: unanchored tail append', () => {
     ).run(ts, 'teacher-a', 'decision', payload, tail.hash, hash);
 
     // Verifies cleanly. This is the documented limit, not a passing security test.
-    expect(verifyAuditChain(db)).toEqual({ ok: true });
-  });
-});
-
-describe('append-only enforcement (acceptance check A)', () => {
-  it('rejects UPDATE on audit_log', () => {
-    appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });
-    expect(() => db.prepare("UPDATE audit_log SET payload='{}' WHERE id=1").run()).toThrow(
-      /audit_log is append-only/,
-    );
-  });
-
-  it('rejects DELETE on audit_log', () => {
-    appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });
-    expect(() => db.prepare('DELETE FROM audit_log WHERE id=1').run()).toThrow(
-      /audit_log is append-only/,
-    );
-  });
-
-  it('leaves the chain verifiable after a blocked tamper attempt', () => {
-    appendAudit(db, 'r1', 'response_loaded', { responseId: 'res_1' });
-    try {
-      db.prepare("UPDATE audit_log SET payload='{}' WHERE id=1").run();
-    } catch {
-      /* expected */
-    }
     expect(verifyAuditChain(db)).toEqual({ ok: true });
   });
 });
