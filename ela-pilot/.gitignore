@@ -1,0 +1,18 @@
+# SQLite pilot database (regenerate with `npm run seed`)
+pilot.db
+pilot.db-wal
+pilot.db-shm
+
+# Local verification screenshots
+.screenshots/
+
+# Next.js
+.next/
+next-env.d.ts
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
