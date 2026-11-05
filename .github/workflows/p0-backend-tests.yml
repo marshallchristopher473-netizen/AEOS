@@ -141,10 +141,15 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Audit frontend dependency vulnerabilities
-        working-directory: frontend
-        run: npm audit --audit-level=low
-
+      # Correctness checks run BEFORE the audit.
+      #
+      # The audit used to run first, and because a failing step aborts the job,
+      # the four steps below were skipped on every run while it was red — so
+      # nobody could see whether the frontend still linted, type-checked or
+      # built. Fail-fast normally puts cheap checks first, but that logic
+      # inverts here: `npm audit` is cheap and advisory, while the build is
+      # expensive and load-bearing. A noisy non-correctness check must not stand
+      # in front of the checks that catch real regressions.
       - name: Verify frontend dependency tree
         working-directory: frontend
         run: npm ls --all
@@ -162,3 +167,10 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      # Last: its result stays visible at the tail of the job instead of
+      # masking everything above it. This step is still red on `main` today
+      # (known dependency advisories); making it green is a separate change.
+      - name: Audit frontend dependency vulnerabilities
+        working-directory: frontend
+        run: npm audit --audit-level=low
