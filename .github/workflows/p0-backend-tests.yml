@@ -168,21 +168,11 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      # Dependency advisories, split into a report and a gate.
-      #
-      # The report runs FIRST so that a tripped gate cannot skip it. A failing
-      # step aborts the job, so putting the gate first would hide the full
-      # advisory list at exactly the moment someone is working out why the gate
-      # went red -- the same masking that #68 removed, one step apart.
-      #
-      # `|| true` is load-bearing here: bare `npm audit` defaults to
-      # --audit-level=low and exits 1 on any advisory. Discarding that exit code
-      # is what makes this a report rather than a second gate.
-      - name: Audit dependencies (report only, never fails)
-        working-directory: frontend
-        run: npm audit || true
-
-      # The gate. Full tree, high and above.
+      # Dependency advisories. One step: `--audit-level` sets the EXIT CODE,
+      # not the verbosity. Every advisory at every severity is still printed in
+      # full; the threshold only decides which ones fail the job. So a separate
+      # "report" step would duplicate this output rather than reveal anything,
+      # and sub-threshold advisories stay visible in the log either way.
       #
       # Deliberately NOT `--omit=dev`. Excluding dev dependencies would match a
       # "what ships to users" threat model, but the risk being gated here is
@@ -192,9 +182,9 @@ jobs:
       # same claim, so the gate covers the whole tree.
       #
       # `high` rather than `low` because a moderate advisory in lint tooling is
-      # worth knowing about -- the report above prints it -- but is not worth
-      # blocking a merge on. A gate that is red for reasons nobody intends to
-      # act on trains people to ignore red, which costs more than it protects.
-      - name: Audit dependencies (blocking, high and above)
+      # worth knowing about -- it is printed below -- but is not worth blocking
+      # a merge on. A gate that is red for reasons nobody intends to act on
+      # trains people to ignore red, which costs more than it protects.
+      - name: Audit dependencies (fails on high+, prints all advisories)
         working-directory: frontend
         run: npm audit --audit-level=high
