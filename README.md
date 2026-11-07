@@ -75,3 +75,14 @@ Pilot → Validation → Revenue
 3. Add the same values to GitHub or Codespaces secrets if you want CI/CD or remote development to access them.
 4. Configure Vercel environment variables to match the production values used by the deployed app.
 
+## Continuous integration
+
+### `npm audit` thresholds
+
+`npm audit --audit-level=X` affects only the **exit code**. All advisories are
+printed regardless of the threshold — it decides which ones fail the job, not
+which ones you see.
+
+If you want to add a separate report step, ask what it reports that the gate
+does not. In this repo the answer is nothing: the two steps emit identical
+output, so the gate is one step.
