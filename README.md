@@ -86,3 +86,9 @@ which ones you see.
 If you want to add a separate report step, ask what it reports that the gate
 does not. In this repo the answer is nothing: the two steps emit identical
 output, so the gate is one step.
+
+### Full policy
+
+[`docs/CI_AND_BRANCH_POLICY.md`](docs/CI_AND_BRANCH_POLICY.md) covers what each
+check gates, the branch-protection checklist (not yet applied), and the known
+structural gaps.
