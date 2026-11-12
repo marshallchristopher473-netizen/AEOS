@@ -82,6 +82,7 @@ MIGRATIONS = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_primary_key_defaults.sql",
 )
 
 pytestmark = pytest.mark.skipif(
