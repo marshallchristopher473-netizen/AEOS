@@ -71,6 +71,7 @@ MIGRATION_FILES = (
     "002_tenant_rls.sql",
     "003_fk_relationship_hardening.sql",
     "004_org_lifecycle_and_write_authority.sql",
+    "005_primary_key_defaults.sql",
 )
 
 # Target suites. DB-backed mutations must be checked against the enforcement

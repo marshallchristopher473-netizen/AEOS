@@ -33,7 +33,7 @@ Every mutant therefore passes a validity precheck before any test runs:
 | Target | Precheck |
 | --- | --- |
 | Python (`*.py`) | `compileall` the tree, then import `app.main` |
-| SQL migration (`*.sql`) | apply shim + migrations 001–004 to a scratch database; every statement must succeed |
+| SQL migration (`*.sql`) | apply shim + migrations 001–005 to a scratch database; every statement must succeed |
 | Frontend (`*.ts`) | textual substitution only; no build step in this harness |
 
 Each mutant is then run against the smallest relevant security subset **and**

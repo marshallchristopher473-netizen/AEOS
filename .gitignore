@@ -48,3 +48,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+# Local-only end-to-end harness state (keys, logs, PostgREST binary)
+backend/tests/e2e/.work/

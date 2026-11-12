@@ -1,6 +1,36 @@
+import re
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "supabase" / "migrations"
+
+
+def _tables_with_generated_id() -> frozenset:
+    """Tables whose `id` the committed migrations default server-side.
+
+    The fake must not be more forgiving than PostgreSQL. It previously assigned
+    an id to every insert, which hid the fact that no table had an id default and
+    every create endpoint failed against a real database (P0-01). Reading the
+    migrations keeps the fake honest: drop a default and the API tests fail.
+    """
+    pattern = re.compile(
+        r"ALTER\s+TABLE\s+public\.(\w+)\s+ALTER\s+COLUMN\s+id\s+SET\s+DEFAULT\s+gen_random_uuid\(\)",
+        re.IGNORECASE,
+    )
+    tables = set()
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        tables.update(pattern.findall(path.read_text()))
+    return frozenset(tables)
+
+
+TABLES_WITH_GENERATED_ID = _tables_with_generated_id()
+
+
+class FakeNotNullViolation(Exception):
+    """Stands in for PostgREST APIError 23502 on an insert without an id."""
 
 
 ORG_A = "11111111-1111-4111-8111-111111111111"
@@ -63,7 +93,13 @@ class FakeQuery:
 
         if self.operation == "insert":
             row = deepcopy(self.payload or {})
-            row.setdefault("id", self.client.next_id())
+            if "id" not in row:
+                if self.table not in TABLES_WITH_GENERATED_ID:
+                    raise FakeNotNullViolation(
+                        f'null value in column "id" of relation "{self.table}" '
+                        "violates not-null constraint"
+                    )
+                row["id"] = self.client.next_id()
             self.client.tables.setdefault(self.table, []).append(row)
             return FakeResponse([deepcopy(row)])
 
