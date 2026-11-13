@@ -612,11 +612,13 @@ function setDef(k, v) { S.definition[k] = asString(v, 2000); settle() }
    reloading the tab within the debounce window silently reverted their typing
    to the last saved value — and could restore a cleared gating field along
    with the verified status that depended on it. */
+/* Returns what it demoted, so a caller that can report it is able to. */
 function flushSettle() {
-  if (settleTimer === null) return;
+  if (settleTimer === null) return [];
   clearTimeout(settleTimer); settleTimer = null;
-  revalidate(S);
+  var d = revalidate(S);
   save();
+  return d;
 }
 if (window.addEventListener) {
   window.addEventListener('pagehide', flushSettle);
@@ -709,9 +711,25 @@ function dl(name, text, type) {
   var a = document.createElement('a'), url = URL.createObjectURL(new Blob([text], { type: type }));
   a.href = url; a.download = name; a.click(); setTimeout(function () { URL.revokeObjectURL(url) }, 1000);
 }
+/* An export is the one artifact that LEAVES the device, so it must never carry
+   a status whose basis a pending edit has already removed. Clearing a draft
+   reference and exporting inside the debounce window produced a summary reading
+   status=verified, reference="" — and no later validation can correct a file
+   that has already been downloaded. Flush first, every time. */
+function flushBeforeExport() {
+  var d = flushSettle().concat(revalidate(S));
+  if (d.length) {
+    save();
+    announce('Before exporting, ' + d.length + ' item(s) were demoted because their conditions no longer hold: ' +
+      d.map(function (x) { return x.what }).join(', ') + '. The exported file reflects the corrected state.');
+    render();
+  }
+}
 /* The marker lets a restore recognise its own backups without guessing. */
-function exportData() { dl('AEOS_PBIP_Section_A_Backup_' + stamp() + '.json', JSON.stringify(Object.assign({ app: BACKUP_MARK, v: 1 }, S), null, 2), 'application/json') }
-function exportText() { dl('AEOS_PBIP_Section_A_Summary_' + stamp() + '.txt', summaryText(S), 'text/plain') }
+function exportData() { flushBeforeExport(); dl('AEOS_PBIP_Section_A_Backup_' + stamp() + '.json', JSON.stringify(Object.assign({ app: BACKUP_MARK, v: 1 }, S), null, 2), 'application/json') }
+function exportText() { flushBeforeExport(); dl('AEOS_PBIP_Section_A_Summary_' + stamp() + '.txt', summaryText(S), 'text/plain') }
+/* exportRaw deliberately does NOT flush: it is the recovery panel's "give me
+   exactly what is on disk" escape hatch, used when render() has already failed. */
 function exportRaw() { var raw = ''; try { raw = localStorage.getItem(KEY) || '' } catch (e) { } dl('AEOS_PBIP_Section_A_Raw_' + stamp() + '.json', raw, 'application/json') }
 
 /* Atomic: nothing is persisted until the imported state has actually drawn. */

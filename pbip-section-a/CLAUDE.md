@@ -72,10 +72,15 @@ Section A evidence they actually have. It generates **no** case data and holds
    defence at the boundary alone was not enough — an unmatched `<option>` makes
    the browser display the first one, which is `verified`.
 
-9. **A debounced write must have an exit flush.** `settle()` defers the save by
-   400ms; `flushSettle()` runs it on `pagehide` and on `visibilitychange` to
-   hidden. Without that, closing the tab mid-edit reverts the typing — and can
-   restore a cleared gating field along with the status that rested on it.
+9. **A debounce is a window where state and display disagree, so flush at every
+   exit from it.** `settle()` defers the save by 400ms. `flushSettle()` runs on
+   `pagehide` and `visibilitychange`→hidden, and `flushBeforeExport()` runs
+   before both exports. Without the first, closing the tab mid-edit reverts the
+   typing and can restore a cleared gating field with the status that rested on
+   it; without the second, a downloaded file asserts a status whose basis the
+   user just removed — and a file cannot be corrected after it leaves.
+   `exportRaw()` is the deliberate exception: it exists to dump exactly what is
+   on disk when render has already failed.
 
 10. **A blocker carries its own destination.** `gateBlock()` returns
    `{ why, where }` in ONE walk; `gateFailure()` and `actionPage()` are thin

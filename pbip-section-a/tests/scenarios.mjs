@@ -39,7 +39,7 @@ function boot(stored, defer) {
   const ctx = {
     structuredClone, JSON, Object, Array, String, Number, Math, isFinite, parseInt, RegExp, Date, Promise,
     console, URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
-    Blob: class { constructor(p) { ctx.__lastBlob = String(p[0]) } },
+    Blob: class { constructor(p) { ctx.__lastBlob = String(p[0]); ctx.__blob = String(p[0]) } },
     // defer=true queues timers instead of running them, so the debounce
     // genuinely stays pending and the page-exit flush can be tested.
     setTimeout: (f) => { if (defer) { timers.push(f); return timers.length } f(); return 0 },
@@ -316,6 +316,39 @@ await section('20. clearing a gating field survives the tab closing too', async 
   const saved = JSON.parse(store.get('aeos_pbi_section_a'))
   check('the cleared field is persisted', saved.definition.onset === '')
   check('and A1 did not survive on disk', saved.criteria.A1 !== 'verified', 'A1 on disk: ' + saved.criteria.A1)
+})
+
+
+await section('21. an export must never carry a status its basis no longer supports', async () => {
+  const { ctx, fire } = boot(undefined, true)
+  ctx.go('completion')
+  ctx.setNested('writing', 'reference', 'PBIP_A_draft_v1')
+  fire('pagehide')
+  ctx.setNested('writing', 'status', 'verified')
+  check('writing verified with a reference', ctx.__S().writing.status === 'verified')
+  // Clear the reference and export IMMEDIATELY, inside the debounce window.
+  ctx.setNested('writing', 'reference', '')
+  ctx.exportText()
+  const t = ctx.__blob || ''
+  const stale = /"status": "verified"/.test(t) && /"reference": ""/.test(t)
+  check('the summary does not claim verified with a blank reference', !stale)
+  check('the exported state was corrected', ctx.__S().writing.status !== 'verified', 'status=' + ctx.__S().writing.status)
+  const said = ctx.document.getElementById('announce').textContent || ''
+  check('the user is told what was demoted', /demoted/i.test(said), 'said=' + said.slice(0, 80))
+})
+
+await section('22. the JSON backup gets the same flush', async () => {
+  const { ctx, fire } = boot(undefined, true)
+  for (const k of ['team', 'reuse', 'baseline', 'instructor']) ctx.setPerm(k, 'verified')
+  for (const k of ['action', 'onset', 'offset', 'exclusions', 'rule']) ctx.setDef(k, 'x')
+  fire('pagehide')
+  ctx.setCriterion('A1', 'verified')
+  check('A1 verified', ctx.__S().criteria.A1 === 'verified')
+  ctx.setDef('onset', '')          // clear a field A1 rests on, then export at once
+  ctx.exportData()
+  const t = ctx.__blob || ''
+  check('the backup does not record A1 as verified', !/"A1": "verified"/.test(t))
+  check('in-memory state was corrected too', ctx.__S().criteria.A1 !== 'verified')
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)

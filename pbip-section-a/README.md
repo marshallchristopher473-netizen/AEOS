@@ -22,7 +22,7 @@ yourself.
 
 ```bash
 node --test tests/logic.test.mjs   # 50 regression tests, no npm install needed
-node tests/scenarios.mjs           # 54 end-to-end checks against a stubbed DOM
+node tests/scenarios.mjs           # 61 end-to-end checks against a stubbed DOM
 ```
 
 ---
@@ -230,6 +230,17 @@ computed by two separate walks over the same conditions. Each individual fix was
 correct and none of them addressed that. The structural fix is golden rule 2
 applied to routing: one definition, one walk, one answer.
 
+A sixth round found the debounce reaching the exports:
+
+| Severity | Defect | Fix |
+| --- | --- | --- |
+| P2 | **An export inside the 400 ms debounce window serialized the new text with the old statuses.** Clearing a verified draft reference and exporting at once produced a summary reading `status=verified, reference=""` — and no later validation can correct a file already downloaded | `flushBeforeExport()` settles and re-validates before either export, and tells the user what was demoted. `exportRaw()` deliberately does not flush: it is the recovery panel's "give me exactly what is on disk" escape hatch |
+
+Both this and the page-exit flush are the same hazard: a debounce is a window in
+which recorded state and displayed state disagree, and anything that *leaves* the
+app during that window carries the disagreement with it. The exports are the
+worst case, because the file outlives the session.
+
 ### Does the suite actually fail?
 
 A suite that passes against the broken original would prove nothing. The same
@@ -237,8 +248,8 @@ scenario harness, unchanged:
 
 | Target | Result |
 | --- | --- |
-| Original prototype | **24 passed, 25 failed** |
-| Current build | **54 passed, 0 failed** |
+| Original prototype | **27 passed, 29 failed** |
+| Current build | **61 passed, 0 failed** |
 | `tests/logic.test.mjs` | **50 passed, 0 failed** |
 
 ---
