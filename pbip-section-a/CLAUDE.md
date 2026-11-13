@@ -77,12 +77,13 @@ Section A evidence they actually have. It generates **no** case data and holds
    hidden. Without that, closing the tab mid-edit reverts the typing — and can
    restore a cleared gating field along with the status that rested on it.
 
-10. **The next action must lead somewhere the blocker can be fixed.**
-   `actionPage()` decides that from the blocker, not from the criterion's name,
-   and asks "is anything still blocking?" FIRST so the rule covers every
-   criterion at once. Routing W to the completion page, which cannot set
-   `S.criteria.W`, left the same advice on screen for ever; writing that fix
-   per-criterion then left the identical dead end for A1. Fix the class.
+10. **A blocker carries its own destination.** `gateBlock()` returns
+   `{ why, where }` in ONE walk; `gateFailure()` and `actionPage()` are thin
+   views of it. Never re-derive the destination by re-walking the conditions —
+   that produced three separate dead ends (W and A1 pointing at pages with no
+   readiness control, and the conditional family requirement, which is not in
+   `CRITERION_PERMS`, pointing at the evidence index, which has no permission
+   controls). This is rule 2 applied to routing: one definition, one answer.
 
 11. **Any dictionary keyed by user text is `Object.create(null)`.** On a plain
    `{}` the key `__proto__` hits the inherited setter instead of creating an own

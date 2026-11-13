@@ -21,7 +21,7 @@ step, no dependencies. It works from `file://`, from a USB stick, or emailed to
 yourself.
 
 ```bash
-node --test tests/logic.test.mjs   # 48 regression tests, no npm install needed
+node --test tests/logic.test.mjs   # 50 regression tests, no npm install needed
 node tests/scenarios.mjs           # 54 end-to-end checks against a stubbed DOM
 ```
 
@@ -218,6 +218,18 @@ A1 dead end were the same defect, and the fix for W was written per-criterion
 rather than as a rule. Fixing the instance instead of the class left its twin
 in the very function written to fix it.
 
+A fifth round then found a *third* instance, which finally identified the real
+cause:
+
+| Severity | Defect | Fix |
+| --- | --- | --- |
+| P2 | **The conditional family-pathway blocker routed to the evidence index**, which has no permission controls. That requirement lives in the gate function but not in `CRITERION_PERMS`, so anything re-deriving the destination missed it | `gateBlock()` returns `{ why, where }` — one walk producing both the reason and the page it can be acted on. `gateFailure()` and `actionPage()` are now thin views of that single answer and cannot drift |
+
+Three dead ends reached review because the reason and the destination were
+computed by two separate walks over the same conditions. Each individual fix was
+correct and none of them addressed that. The structural fix is golden rule 2
+applied to routing: one definition, one walk, one answer.
+
 ### Does the suite actually fail?
 
 A suite that passes against the broken original would prove nothing. The same
@@ -227,7 +239,7 @@ scenario harness, unchanged:
 | --- | --- |
 | Original prototype | **24 passed, 25 failed** |
 | Current build | **54 passed, 0 failed** |
-| `tests/logic.test.mjs` | **48 passed, 0 failed** |
+| `tests/logic.test.mjs` | **50 passed, 0 failed** |
 
 ---
 

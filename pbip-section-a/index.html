@@ -180,33 +180,43 @@ function verifiedKindCount(S) {
 
 var CRITERION_PERMS = { A2: ['reuse'], A3: ['reuse', 'baseline', 'instructor'], A4: ['reuse'], A5: ['reuse', 'baseline', 'instructor'] };
 
-function gateFailure(S, k) {
+/* Returns null when nothing blocks k, otherwise { why, where }: the reason AND
+   the page on which that reason can be acted on.
+   Every blocker carries its own destination because deriving the destination
+   SEPARATELY — re-walking the conditions in a second function — let the two
+   drift apart three times: A1 and W pointed at pages holding no readiness
+   control, and the conditional family requirement, which lives only here and
+   not in CRITERION_PERMS, sent the user to the evidence index, which has no
+   permission controls at all. One walk, one answer. */
+function gateBlock(S, k) {
   var i, missing;
   if (k === 'A1') {
     missing = [];
     for (i = 0; i < A1_REQUIRED.length; i++) if (!S.definition[A1_REQUIRED[i]].trim()) missing.push(A1_REQUIRED[i]);
-    return missing.length ? 'The measurement definition is incomplete — still blank: ' + missing.join(', ') + '.' : null;
+    return missing.length ? { why: 'The measurement definition is incomplete — still blank: ' + missing.join(', ') + '.', where: 'definition' } : null;
   }
-  if (k === 'W') return S.writing.reference.trim() ? null : 'A completed, de-identified draft reference is required first.';
+  if (k === 'W') return S.writing.reference.trim() ? null : { why: 'A completed, de-identified draft reference is required first.', where: 'completion' };
   var needs = CRITERION_PERMS[k] || [];
-  for (i = 0; i < needs.length; i++) if (S.permissions[needs[i]] !== 'verified') return PERM_LABEL[needs[i]] + ' is not verified.';
+  for (i = 0; i < needs.length; i++) if (S.permissions[needs[i]] !== 'verified') return { why: PERM_LABEL[needs[i]] + ' is not verified.', where: 'permissions' };
   if (k === 'A2' || k === 'A4') {
     for (i = 0; i < S.evidence.length; i++) {
       if (S.evidence[i].kind === FAMILY_KIND && S.permissions.family !== 'verified')
-        return 'A family-sourced reference is indexed, so ' + PERM_LABEL.family + ' must be verified.';
+        return { why: 'A family-sourced reference is indexed, so ' + PERM_LABEL.family + ' must be verified.', where: 'permissions' };
     }
   }
   if (k === 'A3') {
     var days = qualifyingBaselineDays(S);
-    if (days < MIN_BASELINE_DAYS) return 'A3 needs ' + MIN_BASELINE_DAYS + ' verified baseline references on DIFFERENT days, same context, ' + MIN_MINS + '–' + MAX_MINS + ' minutes each. Distinct qualifying days so far: ' + days + '.';
+    if (days < MIN_BASELINE_DAYS) return { why: 'A3 needs ' + MIN_BASELINE_DAYS + ' verified baseline references on DIFFERENT days, same context, ' + MIN_MINS + '–' + MAX_MINS + ' minutes each. Distinct qualifying days so far: ' + days + '.', where: 'evidence' };
   }
   if (k === 'A4') {
     var kinds = verifiedKindCount(S);
-    if (kinds < MIN_A4_KINDS) return 'Multiple-source synthesis needs verified references of at least ' + MIN_A4_KINDS + ' different kinds. Currently ' + kinds + '.';
+    if (kinds < MIN_A4_KINDS) return { why: 'Multiple-source synthesis needs verified references of at least ' + MIN_A4_KINDS + ' different kinds. Currently ' + kinds + '.', where: 'evidence' };
   }
-  if (k === 'A5' && S.criteria.A3 !== 'verified') return 'A5 rests on baseline evidence, so A3 must be verified first.';
+  if (k === 'A5' && S.criteria.A3 !== 'verified') return { why: 'A5 rests on baseline evidence, so A3 must be verified first.', where: 'evidence' };
   return null;
 }
+
+function gateFailure(S, k) { var b = gateBlock(S, k); return b ? b.why : null }
 
 function evidenceGateFailure(S, e) {
   if (S.permissions.reuse !== 'verified') return PERM_LABEL.reuse + ' is not verified.';
@@ -281,17 +291,12 @@ function nextAction(S) {
    completion page once its draft reference already exists was a dead end: that
    page sets S.writing.status, never S.criteria.W, so following the advice left
    W unresolved and the same next action on screen for ever. */
+/* Nothing blocking means the only thing left is to SET it, and the readiness
+   controls live on one page. Otherwise the blocker already knows where it is
+   fixed — this must never re-derive that. */
 function actionPage(S, k) {
-  /* Nothing blocking means the only thing left is to SET it, and the readiness
-     controls live on one page. Asking this first covers every criterion at
-     once; answering it per-criterion is how A1 kept pointing at Measurement,
-     which can edit the definition but cannot set A1. */
-  if (!gateFailure(S, k)) return 'criteria';
-  if (k === 'A1') return 'definition';
-  if (k === 'W') return 'completion';
-  var needs = CRITERION_PERMS[k] || [];
-  for (var i = 0; i < needs.length; i++) if (S.permissions[needs[i]] !== 'verified') return 'permissions';
-  return 'evidence';
+  var b = gateBlock(S, k);
+  return b ? b.where : 'criteria';
 }
 
 /* --- identifier screen: advisory only, never a gate, never a guarantee --- */

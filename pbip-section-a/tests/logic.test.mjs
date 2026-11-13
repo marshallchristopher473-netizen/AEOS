@@ -31,7 +31,7 @@ const EXPORTS = [
   'MEASURES', 'EVIDENCE_KINDS', 'DAY_LABELS', 'CONTEXTS', 'CRITERIA', 'CRITERIA_IDS',
   'MIN_MINS', 'MAX_MINS', 'MIN_BASELINE_DAYS',
   'asString', 'oneOf', 'asMinutes', 'initialState', 'normalize',
-  'qualifyingBaselineDays', 'verifiedKindCount', 'gateFailure', 'evidenceGateFailure',
+  'qualifyingBaselineDays', 'verifiedKindCount', 'gateBlock', 'gateFailure', 'evidenceGateFailure',
   'permGateFailure', 'revalidate', 'nextAction', 'actionPage', 'screenText', 'screenState',
   'verifiedCount', 'blockedCount', 'summaryText',
   'MAX_ROWS', 'BACKUP_MARK', 'looksLikeBackup',
@@ -236,6 +236,53 @@ test('every criterion whose gate passes routes to the page that can set it', () 
   assert.equal(L.actionPage(S, 'A2'), 'permissions')
   S.permissions.reuse = 'verified'
   assert.equal(L.actionPage(S, 'A3'), 'evidence', 'remaining blocker is evidential')
+  assert.equal(L.actionPage(S, 'A5'), 'evidence', 'A5 rests on A3')
+})
+
+test('the conditional family blocker routes to the permission gates', () => {
+  // This requirement lives only in gateBlock, not in CRITERION_PERMS, so any
+  // function that re-derives the destination misses it and sends the user to
+  // the evidence index — which has no permission controls at all.
+  const S = L.normalize({
+    permissions: { team: 'verified', reuse: 'verified', baseline: 'verified', instructor: 'verified' },
+    criteria: {}, definition: {},
+    evidence: [{ kind: 'Family input via approved channel', code: 'F-1', day: '', mins: '', context: 'unresolved', status: 'unresolved' }],
+  })
+  for (const k of L.A1_REQUIRED) S.definition[k] = 'x'
+  for (const k of ['A2', 'A4']) {
+    assert.match(L.gateFailure(S, k), /family/i)
+    assert.equal(L.actionPage(S, k), 'permissions', `${k}'s family blocker is fixed on the permissions page`)
+  }
+  S.permissions.family = 'verified'
+  assert.equal(L.gateFailure(S, 'A2'), null)
+  assert.equal(L.actionPage(S, 'A2'), 'criteria')
+})
+
+test('every blocker names a page, and the reason and page come from one walk', () => {
+  // gateFailure and actionPage must be two views of ONE decision. If they are
+  // ever computed separately they can disagree, which is how three dead ends
+  // reached review.
+  const states = [
+    L.normalize({}),
+    L.normalize({ permissions: { team: 'verified', reuse: 'verified', baseline: 'verified', instructor: 'verified' }, criteria: {}, definition: {} }),
+  ]
+  const PAGES = ['definition', 'permissions', 'evidence', 'completion', 'criteria']
+  for (const S of states) {
+    for (const k of L.CRITERIA_IDS) {
+      const b = L.gateBlock(S, k)
+      const why = L.gateFailure(S, k)
+      const where = L.actionPage(S, k)
+      assert.ok(PAGES.includes(where), `${k} routes to a real page, got ${where}`)
+      if (b === null) {
+        assert.equal(why, null)
+        assert.equal(where, 'criteria', `${k} unblocked must route to the readiness controls`)
+      } else {
+        assert.equal(why, b.why, `${k}: gateFailure must be gateBlock's reason`)
+        assert.equal(where, b.where, `${k}: actionPage must be gateBlock's page`)
+        assert.notEqual(where, 'criteria', `${k} blocked must not route to the page that only sets statuses`)
+      }
+    }
+  }
 })
 
 test('normalize maps the legacy "Other distinct day" label', () => {
