@@ -17,8 +17,8 @@ const blocks = [...HTML.matchAll(/<script(?: id="[^"]*")?>([\s\S]*?)<\/script>/g
 // Expose the live state object for assertions; `S` is a var inside the script.
 const SRC = blocks.join('\n;\n') + '\n;globalThis.__S=function(){return S};'
 
-function boot(stored) {
-  const els = new Map(), store = new Map(), alerts = [], confirms = []
+function boot(stored, defer) {
+  const els = new Map(), store = new Map(), alerts = [], confirms = [], handlers = {}, timers = []
   if (stored !== undefined) store.set('aeos_pbi_section_a', stored)
   // A real browser DESTROYS and recreates children when innerHTML is assigned.
   // The stub must too: otherwise a stale element keeps its old value and a test
@@ -40,16 +40,23 @@ function boot(stored) {
     structuredClone, JSON, Object, Array, String, Number, Math, isFinite, parseInt, RegExp, Date, Promise,
     console, URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
     Blob: class { constructor(p) { ctx.__lastBlob = String(p[0]) } },
-    setTimeout: (f) => { f(); return 1 }, clearTimeout() {},
+    // defer=true queues timers instead of running them, so the debounce
+    // genuinely stays pending and the page-exit flush can be tested.
+    setTimeout: (f) => { if (defer) { timers.push(f); return timers.length } f(); return 0 },
+    clearTimeout: (id) => { if (defer && id) timers[id - 1] = null },
     alert: m => alerts.push(m), confirm: m => { confirms.push(m); return true },
     localStorage: {
       getItem: k => (store.has(k) ? store.get(k) : null),
       setItem: (k, v) => store.set(k, v),
       removeItem: k => store.delete(k),
     },
-    window: { scrollTo() {} },
+    window: {
+      scrollTo() {},
+      addEventListener(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn) },
+    },
     document: {
       getElementById(id) { if (!els.has(id)) els.set(id, mk(id)); return els.get(id) },
+      visibilityState: 'visible',
       querySelector: () => null,
       createElement: () => ({ click() {}, set href(_) {}, set download(_) {} }),
     },
@@ -57,7 +64,9 @@ function boot(stored) {
   ctx.globalThis = ctx
   vm.createContext(ctx)
   const err = (() => { try { vm.runInContext(SRC, ctx); return null } catch (e) { return e } })()
-  return { ctx, els, store, alerts, confirms, bootError: err }
+  const fire = (ev) => (handlers[ev] || []).forEach(f => f())
+  const runTimers = () => { const t = timers.filter(Boolean); timers.length = 0; t.forEach(f => f()) }
+  return { ctx, els, store, alerts, confirms, handlers, fire, timers, runTimers, bootError: err }
 }
 
 let pass = 0, fail = 0
@@ -249,6 +258,64 @@ await section('16. collection caps are enforced where entries are added', async 
   check('nothing is lost on reload', ctx2.__S().closeouts.length === n, 'after reload=' + ctx2.__S().closeouts.length)
   const said = ctx.document.getElementById('announce').textContent || ''
   check('the refusal is explained', /maximum/i.test(said), 'said=' + said.slice(0, 70))
+})
+
+
+await section('17. the next action for W must lead to a control that sets W', async () => {
+  const { ctx } = boot(undefined)
+  for (const k of ['team', 'reuse', 'baseline', 'instructor']) ctx.setPerm(k, 'verified')
+  for (const k of ['action', 'onset', 'offset', 'exclusions', 'rule']) ctx.setDef(k, 'x')
+  ctx.setNested('writing', 'reference', 'PBIP_A_draft_v1')
+  const S = ctx.__S()
+  S.evidence = [
+    { kind: 'Existing school FBA baseline', code: 'A', day: 'Day 1', mins: '20', context: 'yes', status: 'verified' },
+    { kind: 'Existing school FBA baseline', code: 'B', day: 'Day 2', mins: '20', context: 'yes', status: 'verified' },
+    { kind: 'Existing record review', code: 'C', day: '', mins: '', context: 'unresolved', status: 'verified' },
+  ]
+  for (const k of ['A1', 'A2', 'A3', 'A4', 'A5']) ctx.setCriterion(k, 'verified')
+  const a = ctx.nextAction(ctx.__S())
+  check('the open criterion is W', /Resolve W/.test(a[0]), a[0])
+  check('it routes to a page that can set W', a[2] === 'criteria', 'routes to ' + a[2])
+  ctx.go(a[2])
+  check('that page offers the W control', /setCriterion\('W'/.test(ctx.document.getElementById('view').innerHTML))
+  ctx.setCriterion('W', 'verified')
+  check('following the advice actually resolves W', ctx.__S().criteria.W === 'verified')
+  check('and the app reaches its terminal state', /All six criteria/.test(ctx.nextAction(ctx.__S())[0]))
+})
+
+await section('18. with no draft reference yet, W routes to where you enter one', async () => {
+  const { ctx } = boot(undefined)
+  for (const k of ['team', 'reuse', 'baseline', 'instructor']) ctx.setPerm(k, 'verified')
+  for (const k of ['action', 'onset', 'offset', 'exclusions', 'rule']) ctx.setDef(k, 'x')
+  check('W routes to completion while its reference is blank', ctx.actionPage(ctx.__S(), 'W') === 'completion')
+  ctx.setNested('writing', 'reference', 'PBIP_A_draft_v1')
+  check('and to criteria once it exists', ctx.actionPage(ctx.__S(), 'W') === 'criteria')
+})
+
+await section('19. a pending edit is flushed when the page goes away', async () => {
+  const { ctx, store, fire } = boot(undefined, true)
+  for (const k of ['action', 'onset', 'offset', 'exclusions', 'rule']) ctx.setDef(k, 'original text')
+  fire('pagehide')
+  check('the first edit is on disk', JSON.parse(store.get('aeos_pbi_section_a')).definition.action === 'original text')
+  ctx.setDef('action', 'REPLACEMENT the user typed')
+  check('still pending, not yet saved', JSON.parse(store.get('aeos_pbi_section_a')).definition.action === 'original text')
+  fire('pagehide')   // the tab closes
+  const onDisk = JSON.parse(store.get('aeos_pbi_section_a')).definition.action
+  check('the edit survives the tab closing', onDisk === 'REPLACEMENT the user typed', 'on disk: ' + JSON.stringify(onDisk))
+})
+
+await section('20. clearing a gating field survives the tab closing too', async () => {
+  const { ctx, store, fire } = boot(undefined, true)
+  for (const k of ['team', 'reuse', 'baseline', 'instructor']) ctx.setPerm(k, 'verified')
+  for (const k of ['action', 'onset', 'offset', 'exclusions', 'rule']) ctx.setDef(k, 'x')
+  fire('pagehide')
+  ctx.setCriterion('A1', 'verified')
+  check('A1 verified', ctx.__S().criteria.A1 === 'verified')
+  ctx.setDef('onset', '')        // user clears a field A1 rests on, then closes the tab
+  fire('pagehide')
+  const saved = JSON.parse(store.get('aeos_pbi_section_a'))
+  check('the cleared field is persisted', saved.definition.onset === '')
+  check('and A1 did not survive on disk', saved.criteria.A1 !== 'verified', 'A1 on disk: ' + saved.criteria.A1)
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)

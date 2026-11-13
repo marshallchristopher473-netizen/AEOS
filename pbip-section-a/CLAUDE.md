@@ -72,12 +72,22 @@ Section A evidence they actually have. It generates **no** case data and holds
    defence at the boundary alone was not enough — an unmatched `<option>` makes
    the browser display the first one, which is `verified`.
 
-9. **Persist only what has drawn.** Import renders the candidate state before
+9. **A debounced write must have an exit flush.** `settle()` defers the save by
+   400ms; `flushSettle()` runs it on `pagehide` and on `visibilitychange` to
+   hidden. Without that, closing the tab mid-edit reverts the typing — and can
+   restore a cleared gating field along with the status that rested on it.
+
+10. **The next action must lead somewhere the blocker can be fixed.**
+   `actionPage()` decides that from the blocker, not from the criterion's name.
+   Routing W to the completion page, which cannot set `S.criteria.W`, left the
+   same advice on screen for ever no matter what the user did.
+
+11. **Persist only what has drawn.** Import renders the candidate state before
    saving it, and restores the previous value and the previous storage entry if
    it cannot. `render()` never leaves the view blank: a throw shows the recovery
    panel so the user can export and reset.
 
-10. **Destructive actions are confirmed and named.** Removal says which item, and
+12. **Destructive actions are confirmed and named.** Removal says which item, and
    warns that dependent criteria may be demoted.
 
 ## Domain model

@@ -22,7 +22,7 @@ yourself.
 
 ```bash
 node --test tests/logic.test.mjs   # 46 regression tests, no npm install needed
-node tests/scenarios.mjs           # 41 end-to-end checks against a stubbed DOM
+node tests/scenarios.mjs           # 54 end-to-end checks against a stubbed DOM
 ```
 
 ---
@@ -195,6 +195,17 @@ instead of recreating them on `innerHTML` assignment, so the select read empty
 rather than showing its real default. A real-browser check caught it. The stub
 now destroys and recreates children the way a browser does.
 
+A third round found two more:
+
+| Severity | Defect | Fix |
+| --- | --- | --- |
+| P2 | **The next action for W led to a dead end.** It routed to *Completion & submission*, which sets `S.writing.status` and has no control for `S.criteria.W`. Following the advice left W unresolved, the dashboard stuck at 5/6, and the same next action on screen indefinitely | `actionPage()` routes each criterion to the page where its blocker can actually be fixed — W to completion while its draft reference is blank, to rubric gaps once it exists |
+| P2 | **A debounced edit was lost if the tab closed within 400 ms.** Worse, clearing a gating field could revert on reload *together with* the verified status that rested on it | `flushSettle()` on `pagehide` and on `visibilitychange` → hidden, which revalidates and persists synchronously |
+
+The stub gained deferred timers and lifecycle events so the debounce genuinely
+stays pending in tests — with timers running synchronously, the flush could not
+have been tested at all.
+
 ### Does the suite actually fail?
 
 A suite that passes against the broken original would prove nothing. The same
@@ -202,8 +213,8 @@ scenario harness, unchanged:
 
 | Target | Result |
 | --- | --- |
-| Original prototype | **20 passed, 21 failed** |
-| Current build | **41 passed, 0 failed** |
+| Original prototype | **24 passed, 25 failed** |
+| Current build | **54 passed, 0 failed** |
 | `tests/logic.test.mjs` | **46 passed, 0 failed** |
 
 ---

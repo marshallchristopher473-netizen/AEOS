@@ -270,7 +270,19 @@ function nextAction(S) {
   for (var i = 0; i < CRITERIA_IDS.length; i++) if (S.criteria[CRITERIA_IDS[i]] !== 'verified') open.push(CRITERIA_IDS[i]);
   if (!open.length) return ['All six criteria are marked verified', 'Nothing in this tracker is outstanding. These statuses are your own notes and not an instructor grade — confirm the current Blackboard rubric and the submission channel before relying on them.', 'completion'];
   var k = open[0], c = CRITERIA.filter(function (x) { return x.id === k })[0];
-  return ['Resolve ' + k + ' — ' + c.name, gateFailure(S, k) || 'Use approved evidence references only; do not create additional timed observations.', k === 'W' ? 'completion' : 'criteria'];
+  return ['Resolve ' + k + ' — ' + c.name, gateFailure(S, k) || 'Use approved evidence references only; do not create additional timed observations.', actionPage(S, k)];
+}
+
+/* Send the user where they can actually ACT on the blocker. Routing W to the
+   completion page once its draft reference already exists was a dead end: that
+   page sets S.writing.status, never S.criteria.W, so following the advice left
+   W unresolved and the same next action on screen for ever. */
+function actionPage(S, k) {
+  if (k === 'A1') return 'definition';
+  if (k === 'W') return gateFailure(S, 'W') ? 'completion' : 'criteria';
+  var needs = CRITERION_PERMS[k] || [];
+  for (var i = 0; i < needs.length; i++) if (S.permissions[needs[i]] !== 'verified') return 'permissions';
+  return gateFailure(S, k) ? 'evidence' : 'criteria';
 }
 
 /* --- identifier screen: advisory only, never a gate, never a guarantee --- */
@@ -581,6 +593,23 @@ function settle() {
   }, 400);
 }
 function setDef(k, v) { S.definition[k] = asString(v, 2000); settle() }
+
+/* A debounced edit that never settles is an edit the user loses. Closing or
+   reloading the tab within the debounce window silently reverted their typing
+   to the last saved value — and could restore a cleared gating field along
+   with the verified status that depended on it. */
+function flushSettle() {
+  if (settleTimer === null) return;
+  clearTimeout(settleTimer); settleTimer = null;
+  revalidate(S);
+  save();
+}
+if (window.addEventListener) {
+  window.addEventListener('pagehide', flushSettle);
+  window.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') flushSettle();
+  });
+}
 function setDefNow(k, v) { focusKey = 'def-' + k; commit(function () { S.definition[k] = oneOf(v, MEASURES, S.definition[k]); return '' }) }
 function setNested(o, k, v) {
   focusKey = (o === 'writing' ? 'w-' : 's-') + (k === 'reference' ? 'ref' : k === 'receipt' ? 'rec' : k === 'destination' ? 'dest' : 'status');
