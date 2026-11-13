@@ -62,9 +62,17 @@ const baselineRef = (code, day, mins = 20) => ({
 // The logic block must stay pure, or this suite stops being able to load it.
 // ---------------------------------------------------------------------------
 test('logic block touches no DOM or storage API', () => {
-  const src = HTML.match(/<script id="aeos-logic">([\s\S]*?)<\/script>/)[1]
-  for (const forbidden of ['document', 'localStorage', 'window', 'alert']) {
-    assert.ok(!src.includes(forbidden), `logic block must not reference ${forbidden}`)
+  // Strip comments before checking: this is a check on CODE, not prose. A bare
+  // substring match fires on an English word like "the 15-30 window" in a
+  // comment, and a test that cries wolf is one someone eventually deletes.
+  // Block comments only, plus whole-line // comments, so regex literals in the
+  // identifier screen are left intact.
+  const code = HTML.match(/<script id="aeos-logic">([\s\S]*?)<\/script>/)[1]
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ')
+  for (const forbidden of ['document', 'localStorage', 'window', 'alert', 'fetch', 'XMLHttpRequest']) {
+    assert.ok(!new RegExp('\\b' + forbidden + '\\b').test(code),
+      `logic block must not reference ${forbidden}`)
   }
 })
 
@@ -113,7 +121,7 @@ test('normalize coerces evidence rows and drops duplicate codes', () => {
   const S = L.normalize({
     permissions: {}, criteria: {}, definition: {},
     evidence: [
-      { kind: 'bogus', code: 'A-1', day: 'Day 9', mins: '999', context: 'maybe', status: 'excellent' },
+      { kind: 'Existing school FBA baseline', code: 'A-1', day: 'Day 9', mins: '999', context: 'maybe', status: 'excellent' },
       { kind: 'Existing record review', code: 'A-1' },
       null, 'nope', { code: '' },
     ],
@@ -127,8 +135,75 @@ test('normalize coerces evidence rows and drops duplicate codes', () => {
   assert.equal(e.status, 'unresolved')
 })
 
+test('asMinutes accepts only whole minutes, never by truncation', () => {
+  for (const ok of [['20', '20'], ['15', '15'], [' 30 ', '30'], [30, '30'], ['120', '120'], ['1', '1']])
+    assert.equal(L.asMinutes(ok[0]), ok[1], `should accept ${JSON.stringify(ok[0])}`)
+  // parseInt() would turn these into 30, 14 and 1 respectively.
+  for (const bad of ['30.9', 30.9, '14.2', '1e3', '-5', '0', '121', '', 'abc', null, undefined, {}])
+    assert.equal(L.asMinutes(bad), '', `should reject ${JSON.stringify(bad)}`)
+})
+
+test('a 30.9-minute reference cannot be truncated into the A3 window', () => {
+  const S = L.normalize({
+    permissions: { team: 'verified', reuse: 'verified', baseline: 'verified', instructor: 'verified' },
+    criteria: {}, definition: {},
+    evidence: [
+      { kind: 'Existing school FBA baseline', code: 'A', day: 'Day 1', mins: '30.9', context: 'yes', status: 'verified' },
+      { kind: 'Existing school FBA baseline', code: 'B', day: 'Day 2', mins: '30.9', context: 'yes', status: 'verified' },
+    ],
+  })
+  assert.deepEqual(S.evidence.map(e => e.mins), ['', ''], 'an unreadable duration is not a duration')
+  assert.equal(L.qualifyingBaselineDays(S), 0)
+  assert.match(L.gateFailure(S, 'A3'), /DIFFERENT days/)
+})
+
+test('an unrecognised evidence kind is dropped, never defaulted to the baseline kind', () => {
+  assert.equal(L.EVIDENCE_KINDS[0], 'Existing school FBA baseline',
+    'the first kind is the privileged one, which is why defaulting to it is unsafe')
+  const S = L.normalize({
+    permissions: { team: 'verified', reuse: 'verified', baseline: 'verified', instructor: 'verified' },
+    criteria: {}, definition: {},
+    evidence: [
+      { kind: 'totally bogus', code: 'X', day: 'Day 1', mins: '20', context: 'yes', status: 'verified' },
+      { code: 'Y', day: 'Day 2', mins: '20', context: 'yes', status: 'verified' },
+      { kind: 'Existing record review', code: 'Z' },
+    ],
+  })
+  assert.deepEqual(S.evidence.map(e => e.code), ['Z'], 'only the row naming a real source survives')
+  assert.equal(L.qualifyingBaselineDays(S), 0)
+  assert.match(L.gateFailure(S, 'A3'), /DIFFERENT days/)
+})
+
+test('revoking school-team coordination demotes reuse and everything under it', () => {
+  const S = L.normalize({
+    permissions: { team: 'verified', reuse: 'verified' }, criteria: { A2: 'verified' }, definition: {},
+  })
+  assert.deepEqual(L.revalidate(S), [], 'consistent while the whole chain holds')
+  S.permissions.team = 'unresolved'
+  const demoted = L.revalidate(S)
+  assert.equal(S.permissions.reuse, 'unresolved', 'a permission may not outlive its own prerequisite')
+  assert.equal(S.criteria.A2, 'unresolved', 'and the cascade must reach the criteria beneath it')
+  assert.ok(demoted.some(d => d.what.includes('Permission')))
+  assert.ok(demoted.some(d => d.what.includes('A2')))
+})
+
+test('a permission chain broken in an imported backup is repaired on load', () => {
+  const S = L.normalize({
+    permissions: { team: 'unresolved', reuse: 'verified', baseline: 'verified' },
+    criteria: { A2: 'verified' }, definition: {},
+    evidence: [{ kind: 'Existing school FBA baseline', code: 'A', day: 'Day 1', mins: '20', context: 'yes', status: 'verified' }],
+  })
+  L.revalidate(S)
+  assert.equal(S.permissions.reuse, 'unresolved')
+  assert.equal(S.criteria.A2, 'unresolved')
+  assert.equal(S.evidence[0].status, 'unresolved', 'evidence authorized by the revoked chain goes too')
+})
+
 test('normalize maps the legacy "Other distinct day" label', () => {
-  const S = L.normalize({ permissions: {}, criteria: {}, definition: {}, evidence: [{ code: 'X-1', day: 'Other distinct day' }] })
+  const S = L.normalize({
+    permissions: {}, criteria: {}, definition: {},
+    evidence: [{ kind: 'Existing school FBA baseline', code: 'X-1', day: 'Other distinct day' }],
+  })
   assert.equal(S.evidence[0].day, 'Day 3')
 })
 

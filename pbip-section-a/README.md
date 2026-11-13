@@ -164,6 +164,22 @@ Three findings did not survive verification and were **not** treated as defects:
   status being uneditable after creation was among them; it is nonetheless
   editable now, as an improvement rather than a fix.
 
+### Defects introduced by the hardening itself
+
+Automated review of the hardening commit found three, all reproduced by
+execution before being fixed. They were one mistake wearing three hats — **a
+fallback that failed open** — which is now golden rule 5 in `CLAUDE.md`.
+
+| Severity | Defect | Fix |
+| --- | --- | --- |
+| P1 | `permGateFailure()` ran only when the permission dropdown changed, so revoking school-team coordination left `reuse` — and A2 above it — reading verified. The hardening commit reintroduced the exact write-once defect it existed to remove | Permissions are swept by `revalidate()` alongside criteria and evidence |
+| P2 | `asMinutes()` used `parseInt`, so a `30.9`-minute observation truncated to `30` and entered the qualifying window; `1e3` became `1` | Whole minutes only, by pattern, never by truncation. A duration that cannot be read exactly is not a duration |
+| P2 | An unrecognised evidence `kind` defaulted to `EVIDENCE_KINDS[0]` — the **baseline** kind — inventing baseline evidence from a row that never named a source | Rows whose kind cannot be read are dropped, as codeless and duplicate rows are |
+
+The purity test was also tightened: it compared raw source text, so the word
+"window" in a *comment* failed it. It now strips comments and matches whole
+identifiers, and additionally forbids `fetch` and `XMLHttpRequest`.
+
 ### Does the suite actually fail?
 
 A suite that passes against the broken original would prove nothing. The same
@@ -173,7 +189,7 @@ scenario harness, unchanged:
 | --- | --- |
 | Original prototype | **11 passed, 17 failed** |
 | Current build | **28 passed, 0 failed** |
-| `tests/logic.test.mjs` | **38 passed, 0 failed** |
+| `tests/logic.test.mjs` | **43 passed, 0 failed** |
 
 ---
 

@@ -43,9 +43,14 @@ var CRITERIA_IDS = CRITERIA.map(function (c) { return c.id });
 /* --- coercion helpers: every external value passes through one of these --- */
 function asString(v, max) { return typeof v === 'string' ? v.slice(0, max) : '' }
 function oneOf(v, allowed, fallback) { return allowed.indexOf(v) >= 0 ? v : fallback }
+/* Whole minutes only, and never by truncation. parseInt() would turn "30.9"
+   into 30 — pulling a duration that is OUTSIDE the 15-30 window INTO it — and
+   "1e3" into 1. A duration we cannot read exactly is not a duration. */
 function asMinutes(v) {
-  var n = parseInt(v, 10);
-  return (isFinite(n) && n >= 1 && n <= 120) ? String(n) : '';
+  var s = typeof v === 'number' ? String(v) : (typeof v === 'string' ? v.trim() : '');
+  if (!/^[0-9]{1,3}$/.test(s)) return '';
+  var n = Number(s);
+  return (n >= 1 && n <= 120) ? String(n) : '';
 }
 
 function initialState() {
@@ -85,11 +90,16 @@ function normalize(raw) {
     if (!e || typeof e !== 'object') continue;
     var code = asString(e.code, 40).trim();
     if (!code || Object.prototype.hasOwnProperty.call(seen, code)) continue;
+    /* An unrecognised kind must not fall back to EVIDENCE_KINDS[0] — that is
+       the baseline kind, so defaulting would INVENT baseline evidence out of a
+       row that never named a source. A row whose kind we cannot read is a row
+       we cannot represent, so it is dropped, as codeless and duplicate rows are. */
+    if (EVIDENCE_KINDS.indexOf(e.kind) < 0) continue;
     seen[code] = 1;
     /* legacy label from the first prototype */
     var day = e.day === 'Other distinct day' ? 'Day 3' : e.day;
     S.evidence.push({
-      kind: oneOf(e.kind, EVIDENCE_KINDS, EVIDENCE_KINDS[0]), code: code,
+      kind: e.kind, code: code,
       day: oneOf(day, DAY_LABELS, ''), mins: asMinutes(e.mins),
       context: oneOf(e.context, CONTEXTS, 'unresolved'), status: oneOf(e.status, STATUS, 'unresolved')
     });
@@ -197,6 +207,16 @@ function revalidate(S) {
   var demoted = [], pass, changed, i, k, why;
   for (pass = 0; pass < 8; pass++) {
     changed = false;
+    /* Permissions first: they have prerequisites of their own, and a gate that
+       is only enforced when the dropdown changes is exactly the defect this
+       whole sweep exists to remove. */
+    for (i = 0; i < PERM_KEYS.length; i++) {
+      k = PERM_KEYS[i];
+      if (Object.prototype.hasOwnProperty.call(LOCKED, k)) continue;
+      if (S.permissions[k] !== 'verified') continue;
+      why = permGateFailure(S, k, 'verified');
+      if (why) { demoted.push({ what: 'Permission: ' + PERM_LABEL[k], why: why }); S.permissions[k] = 'unresolved'; changed = true }
+    }
     for (i = 0; i < S.evidence.length; i++) {
       if (S.evidence[i].status !== 'verified') continue;
       why = evidenceGateFailure(S, S.evidence[i]);
@@ -425,7 +445,7 @@ function draw() {
       '<div class="grid"><label>Type<select id="kind">' + opts(EVIDENCE_KINDS, EVIDENCE_KINDS[0]) + '</select></label>' +
       '<label>Nonidentifying reference code<input id="code" placeholder="INDEX-01" maxlength="40"></label>' +
       '<label>Distinct-day label <span class="tiny muted">(baseline references need two different days)</span><select id="day">' + opts(DAY_LABELS, '') + '</select></label>' +
-      '<label>Existing duration in minutes, if known<input id="mins" type="number" min="1" max="120"></label>' +
+      '<label>Existing duration in minutes, if known <span class="tiny muted">(whole minutes)</span><input id="mins" type="number" min="1" max="120" step="1"></label>' +
       '<label>Same context confirmed?<select id="context">' + opts(CONTEXTS, 'unresolved') + '</select></label>' +
       '<label>Reference status<select id="evstatus">' + sel('unresolved') + '</select></label></div>' +
       '<button class="primary" onclick="addEvidence()">Add reference</button></div>' +

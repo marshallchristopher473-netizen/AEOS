@@ -42,22 +42,42 @@ Section A evidence they actually have. It generates **no** case data and holds
    a wholesale assign on import; that asymmetry was the root of three separate
    critical defects.
 
-5. **Never assert what has not been checked.** No "no raw data", no "metadata
+5. **Every fallback must fail closed.** A default is a decision made on the
+   user's behalf, so it may never land on the more privileged value. Three
+   review findings on the hardening commit were all this same mistake:
+   - an unreadable duration defaulted *into* the qualifying 15–30 window,
+     because `parseInt("30.9")` is `30` (and `parseInt("1e3")` is `1`);
+   - an unrecognised evidence `kind` defaulted to `EVIDENCE_KINDS[0]`, which is
+     the **baseline** kind — inventing baseline evidence from a row that never
+     named a source;
+   - an unmatched status rendered as the first `<option>`, which was `verified`.
+
+   When a value cannot be read exactly, drop it or mark it unresolved. Never
+   round, truncate, or pick index `[0]` of a list whose first entry carries
+   authority.
+
+6. **A prerequisite is a gate, so it is also continuous.** `permGateFailure()`
+   is swept by `revalidate()` alongside criteria and evidence. Adding a
+   set-time-only check is how the hardening commit briefly reintroduced the very
+   write-once defect it existed to remove: revoking school-team coordination
+   left `reuse` — and A2 above it — reading verified.
+
+7. **Never assert what has not been checked.** No "no raw data", no "metadata
    only", no de-identification claim that code did not verify. Where the app
    reports a screen result, it also says a screen is not a guarantee. This rule
    outranks reassuring copy.
 
-6. **Nothing unescaped reaches markup.** Text goes through `E()`; statuses go
+8. **Nothing unescaped reaches markup.** Text goes through `E()`; statuses go
    through the enum. Both `normalize()` and `badge()`/`sel()` coerce, because
    defence at the boundary alone was not enough — an unmatched `<option>` makes
    the browser display the first one, which is `verified`.
 
-7. **Persist only what has drawn.** Import renders the candidate state before
+9. **Persist only what has drawn.** Import renders the candidate state before
    saving it, and restores the previous value and the previous storage entry if
    it cannot. `render()` never leaves the view blank: a throw shows the recovery
    panel so the user can export and reset.
 
-8. **Destructive actions are confirmed and named.** Removal says which item, and
+10. **Destructive actions are confirmed and named.** Removal says which item, and
    warns that dependent criteria may be demoted.
 
 ## Domain model
