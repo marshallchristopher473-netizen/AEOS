@@ -103,7 +103,11 @@ function normalize(raw) {
   for (i = 0; i < DEF_KEYS.length; i++) { k = DEF_KEYS[i]; S.definition[k] = asString(def[k], 2000) }
   S.definition.measure = oneOf(def.measure, MEASURES, 'frequency');
 
-  var ev = Array.isArray(r.evidence) ? r.evidence : [], seen = {};
+  /* Null-prototype: on a plain {}, `seen['__proto__'] = 1` hits the inherited
+     setter instead of creating an own property, so hasOwnProperty stays false
+     and that one code escapes deduplication — two copies of a single reference
+     could then satisfy A3's two-distinct-days rule. */
+  var ev = Array.isArray(r.evidence) ? r.evidence : [], seen = Object.create(null);
   for (i = 0; i < ev.length && S.evidence.length < 200; i++) {
     e = ev[i];
     if (!e || typeof e !== 'object') continue;
@@ -152,7 +156,7 @@ function normalize(raw) {
 /* Distinct days, not row count. Two rows on "Day 1" are one day, and a row
    whose day is unknown cannot establish distinctness at all. */
 function qualifyingBaselineDays(S) {
-  var days = {}, n = 0;
+  var days = Object.create(null), n = 0;
   for (var i = 0; i < S.evidence.length; i++) {
     var e = S.evidence[i], m = parseInt(e.mins, 10);
     if (e.kind !== BASELINE_KIND || e.status !== 'verified' || e.context !== 'yes') continue;
@@ -163,7 +167,7 @@ function qualifyingBaselineDays(S) {
   return n;
 }
 function verifiedKindCount(S) {
-  var kinds = {}, n = 0;
+  var kinds = Object.create(null), n = 0;
   for (var i = 0; i < S.evidence.length; i++) {
     var e = S.evidence[i];
     if (e.status !== 'verified') continue;
@@ -278,11 +282,16 @@ function nextAction(S) {
    page sets S.writing.status, never S.criteria.W, so following the advice left
    W unresolved and the same next action on screen for ever. */
 function actionPage(S, k) {
+  /* Nothing blocking means the only thing left is to SET it, and the readiness
+     controls live on one page. Asking this first covers every criterion at
+     once; answering it per-criterion is how A1 kept pointing at Measurement,
+     which can edit the definition but cannot set A1. */
+  if (!gateFailure(S, k)) return 'criteria';
   if (k === 'A1') return 'definition';
-  if (k === 'W') return gateFailure(S, 'W') ? 'completion' : 'criteria';
+  if (k === 'W') return 'completion';
   var needs = CRITERION_PERMS[k] || [];
   for (var i = 0; i < needs.length; i++) if (S.permissions[needs[i]] !== 'verified') return 'permissions';
-  return gateFailure(S, k) ? 'evidence' : 'criteria';
+  return 'evidence';
 }
 
 /* --- identifier screen: advisory only, never a gate, never a guarantee --- */

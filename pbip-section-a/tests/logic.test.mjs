@@ -32,7 +32,7 @@ const EXPORTS = [
   'MIN_MINS', 'MAX_MINS', 'MIN_BASELINE_DAYS',
   'asString', 'oneOf', 'asMinutes', 'initialState', 'normalize',
   'qualifyingBaselineDays', 'verifiedKindCount', 'gateFailure', 'evidenceGateFailure',
-  'permGateFailure', 'revalidate', 'nextAction', 'screenText', 'screenState',
+  'permGateFailure', 'revalidate', 'nextAction', 'actionPage', 'screenText', 'screenState',
   'verifiedCount', 'blockedCount', 'summaryText',
   'MAX_ROWS', 'BACKUP_MARK', 'looksLikeBackup',
 ]
@@ -198,6 +198,44 @@ test('a permission chain broken in an imported backup is repaired on load', () =
   assert.equal(S.permissions.reuse, 'unresolved')
   assert.equal(S.criteria.A2, 'unresolved')
   assert.equal(S.evidence[0].status, 'unresolved', 'evidence authorized by the revoked chain goes too')
+})
+
+test('a prototype-named code cannot escape deduplication', () => {
+  // On a plain {}, seen['__proto__'] = 1 hits the inherited setter, so
+  // hasOwnProperty stays false and the duplicate check silently passes.
+  const base = (code, day) => ({ kind: 'Existing school FBA baseline', code, day, mins: '20', context: 'yes', status: 'verified' })
+  for (const code of ['__proto__', 'constructor', 'hasOwnProperty', 'toString']) {
+    const S = L.normalize({
+      permissions: { team: 'verified', reuse: 'verified', baseline: 'verified', instructor: 'verified' },
+      criteria: {}, definition: {},
+      evidence: [base(code, 'Day 1'), base(code, 'Day 2')],
+    })
+    assert.equal(S.evidence.length, 1, `duplicate "${code}" must collapse like any other`)
+    assert.equal(L.qualifyingBaselineDays(S), 1)
+    assert.match(L.gateFailure(S, 'A3'), /DIFFERENT days/,
+      `one reference named "${code}" must not satisfy two separate days`)
+  }
+})
+
+test('every criterion whose gate passes routes to the page that can set it', () => {
+  // A1 pointed at Measurement, which edits the definition but cannot set A1 —
+  // the same dead end as W, in the function written to fix W.
+  const S = L.normalize({ permissions: { team: 'verified', reuse: 'verified', baseline: 'verified', instructor: 'verified' }, criteria: {}, definition: {} })
+  assert.equal(L.actionPage(S, 'A1'), 'definition', 'incomplete definition -> Measurement')
+  for (const k of L.A1_REQUIRED) S.definition[k] = 'x'
+  assert.equal(L.actionPage(S, 'A1'), 'criteria', 'complete definition -> Rubric gaps')
+  assert.equal(L.nextAction(S)[2], 'criteria')
+
+  S.writing.reference = 'PBIP_A_draft_v1'
+  assert.equal(L.actionPage(S, 'W'), 'criteria')
+  S.writing.reference = ''
+  assert.equal(L.actionPage(S, 'W'), 'completion')
+
+  // And a blocked criterion still routes to where its blocker lives.
+  S.permissions.reuse = 'unresolved'
+  assert.equal(L.actionPage(S, 'A2'), 'permissions')
+  S.permissions.reuse = 'verified'
+  assert.equal(L.actionPage(S, 'A3'), 'evidence', 'remaining blocker is evidential')
 })
 
 test('normalize maps the legacy "Other distinct day" label', () => {

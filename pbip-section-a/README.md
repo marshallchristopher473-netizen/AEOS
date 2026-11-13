@@ -21,7 +21,7 @@ step, no dependencies. It works from `file://`, from a USB stick, or emailed to
 yourself.
 
 ```bash
-node --test tests/logic.test.mjs   # 46 regression tests, no npm install needed
+node --test tests/logic.test.mjs   # 48 regression tests, no npm install needed
 node tests/scenarios.mjs           # 54 end-to-end checks against a stubbed DOM
 ```
 
@@ -206,6 +206,18 @@ The stub gained deferred timers and lifecycle events so the debounce genuinely
 stays pending in tests — with timers running synchronously, the flush could not
 have been tested at all.
 
+A fourth round found two more:
+
+| Severity | Defect | Fix |
+| --- | --- | --- |
+| P2 | **`__proto__` as a reference code escaped deduplication.** On a plain `{}`, `seen['__proto__'] = 1` hits the inherited setter rather than creating an own property, so `hasOwnProperty` stayed false. Two copies of one reference survived and satisfied A3's two-distinct-days rule, where any ordinary duplicate code collapses to one | `Object.create(null)` for the dedup set, and for the day and kind tallies |
+| P2 | **A1's next action was the same dead end as W.** `actionPage()` returned `definition` unconditionally, so once the definition was complete the advice pointed at Measurement, which edits the definition but cannot set `S.criteria.A1` | The gate is now checked **first** for every criterion — if nothing blocks it, the destination is the page holding the readiness controls |
+
+The second is worth noting against the round before it: the W dead end and the
+A1 dead end were the same defect, and the fix for W was written per-criterion
+rather than as a rule. Fixing the instance instead of the class left its twin
+in the very function written to fix it.
+
 ### Does the suite actually fail?
 
 A suite that passes against the broken original would prove nothing. The same
@@ -215,7 +227,7 @@ scenario harness, unchanged:
 | --- | --- |
 | Original prototype | **24 passed, 25 failed** |
 | Current build | **54 passed, 0 failed** |
-| `tests/logic.test.mjs` | **46 passed, 0 failed** |
+| `tests/logic.test.mjs` | **48 passed, 0 failed** |
 
 ---
 

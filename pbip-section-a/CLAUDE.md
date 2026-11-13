@@ -78,16 +78,23 @@ Section A evidence they actually have. It generates **no** case data and holds
    restore a cleared gating field along with the status that rested on it.
 
 10. **The next action must lead somewhere the blocker can be fixed.**
-   `actionPage()` decides that from the blocker, not from the criterion's name.
-   Routing W to the completion page, which cannot set `S.criteria.W`, left the
-   same advice on screen for ever no matter what the user did.
+   `actionPage()` decides that from the blocker, not from the criterion's name,
+   and asks "is anything still blocking?" FIRST so the rule covers every
+   criterion at once. Routing W to the completion page, which cannot set
+   `S.criteria.W`, left the same advice on screen for ever; writing that fix
+   per-criterion then left the identical dead end for A1. Fix the class.
 
-11. **Persist only what has drawn.** Import renders the candidate state before
+11. **Any dictionary keyed by user text is `Object.create(null)`.** On a plain
+   `{}` the key `__proto__` hits the inherited setter instead of creating an own
+   property, so a reference code of that name escaped deduplication entirely and
+   two copies of one reference satisfied A3's two-distinct-days rule.
+
+12. **Persist only what has drawn.** Import renders the candidate state before
    saving it, and restores the previous value and the previous storage entry if
    it cannot. `render()` never leaves the view blank: a throw shows the recovery
    panel so the user can export and reset.
 
-12. **Destructive actions are confirmed and named.** Removal says which item, and
+13. **Destructive actions are confirmed and named.** Removal says which item, and
    warns that dependent criteria may be demoted.
 
 ## Domain model
