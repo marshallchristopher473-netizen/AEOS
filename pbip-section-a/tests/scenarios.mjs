@@ -20,7 +20,22 @@ const SRC = blocks.join('\n;\n') + '\n;globalThis.__S=function(){return S};'
 function boot(stored) {
   const els = new Map(), store = new Map(), alerts = [], confirms = []
   if (stored !== undefined) store.set('aeos_pbi_section_a', stored)
-  const mk = () => ({ innerHTML: '', value: '', textContent: '', files: [], focus() {} })
+  // A real browser DESTROYS and recreates children when innerHTML is assigned.
+  // The stub must too: otherwise a stale element keeps its old value and a test
+  // can pass while the behaviour it names is broken.
+  const STABLE = new Set(['tabs', 'view', 'announce'])
+  const mk = (id) => {
+    const el = { value: '', textContent: '', files: [], focus() {} }
+    let html = ''
+    Object.defineProperty(el, 'innerHTML', {
+      get: () => html,
+      set: (v) => {
+        html = v
+        if (id === 'view') for (const k of [...els.keys()]) if (!STABLE.has(k)) els.delete(k)
+      },
+    })
+    return el
+  }
   const ctx = {
     structuredClone, JSON, Object, Array, String, Number, Math, isFinite, parseInt, RegExp, Date, Promise,
     console, URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
@@ -34,7 +49,7 @@ function boot(stored) {
     },
     window: { scrollTo() {} },
     document: {
-      getElementById(id) { if (!els.has(id)) els.set(id, mk()); return els.get(id) },
+      getElementById(id) { if (!els.has(id)) els.set(id, mk(id)); return els.get(id) },
       querySelector: () => null,
       createElement: () => ({ click() {}, set href(_) {}, set download(_) {} }),
     },
@@ -178,6 +193,62 @@ await section('12. destructive removal is confirmed', async () => {
   ctx.removeEvidence(0)
   check('removal asked for confirmation', confirms.length === 1, 'confirms=' + confirms.length)
   check('reference removed after confirming', ctx.__S().evidence.length === 0)
+})
+
+
+await section('13. a cleared Type select must not become baseline evidence', async () => {
+  const { ctx } = boot(undefined)
+  for (const k of ['team', 'reuse', 'baseline', 'instructor']) ctx.setPerm(k, 'verified')
+  ctx.go('evidence')
+  const set = (id, v) => { ctx.document.getElementById(id).value = v }
+  set('kind', 'Existing record review'); set('code', 'R-1')
+  ctx.addEvidence()
+  check('first reference added', ctx.__S().evidence.length === 1)
+  // The user fills the next two WITHOUT reselecting Type, as the form just reset itself.
+  set('code', 'R-2'); set('day', 'Day 1'); set('mins', '20'); set('context', 'yes'); set('evstatus', 'verified')
+  ctx.addEvidence()
+  set('code', 'R-3'); set('day', 'Day 2'); set('mins', '20'); set('context', 'yes'); set('evstatus', 'verified')
+  ctx.addEvidence()
+  const invented = ctx.__S().evidence.filter(e => e.kind === 'Existing school FBA baseline')
+  check('no baseline evidence was invented', invented.length === 0, 'kinds=' + JSON.stringify(ctx.__S().evidence.map(e => e.kind)))
+  ctx.setCriterion('A3', 'verified')
+  check('A3 stays blocked', ctx.__S().criteria.A3 !== 'verified', 'A3=' + ctx.__S().criteria.A3)
+})
+
+await section('14. an unrelated JSON file must not replace saved work', async () => {
+  const { ctx, store } = boot(undefined)
+  ctx.go('completion')
+  ctx.document.getElementById('closeout').value = 'Completed the definition; next verify reuse'
+  ctx.addCloseout()
+  check('closeout saved', ctx.__S().closeouts.length === 1)
+  ctx.go('sources')
+  await ctx.importData({ text: async () => JSON.stringify({ name: 'unrelated-package', version: '1.0.0' }) })
+  check('work survives a wrong-file import', ctx.__S().closeouts.length === 1, 'closeouts=' + ctx.__S().closeouts.length)
+  check('storage untouched', String(store.get('aeos_pbi_section_a')).includes('Completed the definition'))
+  const said = ctx.document.getElementById('announce').textContent || ''
+  check('user is told it was NOT restored', /not restored/i.test(said), 'said=' + said.slice(0, 70))
+})
+
+await section('15. a real backup still restores', async () => {
+  const { ctx } = boot(undefined)
+  ctx.go('sources')
+  await ctx.importData({ text: async () => JSON.stringify({ app: 'aeos-pbip-section-a', v: 1, permissions: { team: 'verified' }, criteria: {}, definition: {}, closeouts: ['restored entry'] }) })
+  check('marked backup is accepted', ctx.__S().closeouts.includes('restored entry'))
+  check('its permissions came through', ctx.__S().permissions.team === 'verified')
+})
+
+await section('16. collection caps are enforced where entries are added', async () => {
+  const { ctx, store } = boot(undefined)
+  ctx.go('completion')
+  for (let i = 1; i <= 205; i++) { ctx.document.getElementById('closeout').value = 'closeout ' + i; ctx.addCloseout() }
+  const n = ctx.__S().closeouts.length
+  check('add refuses past the cap', n === 200, 'in memory=' + n)
+  const saved = JSON.parse(store.get('aeos_pbi_section_a'))
+  check('storage matches memory', saved.closeouts.length === n, 'in storage=' + saved.closeouts.length)
+  const { ctx: ctx2 } = boot(store.get('aeos_pbi_section_a'))
+  check('nothing is lost on reload', ctx2.__S().closeouts.length === n, 'after reload=' + ctx2.__S().closeouts.length)
+  const said = ctx.document.getElementById('announce').textContent || ''
+  check('the refusal is explained', /maximum/i.test(said), 'said=' + said.slice(0, 70))
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)

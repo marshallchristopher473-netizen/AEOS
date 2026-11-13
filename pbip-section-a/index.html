@@ -29,6 +29,25 @@ var FAMILY_KIND = 'Family input via approved channel';
 var DAY_LABELS = ['', 'Day 1', 'Day 2', 'Day 3'];
 var CONTEXTS = ['unresolved', 'yes', 'no'];
 var MIN_MINS = 15, MAX_MINS = 30, MIN_BASELINE_DAYS = 2, MIN_A4_KINDS = 2;
+/* normalize() enforces this cap, so the add handlers must enforce it too —
+   otherwise entries are accepted, saved, and silently lost on the next load. */
+var MAX_ROWS = 200;
+var BACKUP_MARK = 'aeos-pbip-section-a';
+var BACKUP_KEYS = ['permissions', 'criteria', 'definition', 'evidence', 'decisions', 'closeouts', 'writing', 'submission'];
+
+/* Any JSON object would otherwise normalize to a valid-but-empty state, render
+   cleanly, and replace the user's work while reporting "Restored." Selecting
+   the wrong file in a file picker is an ordinary mistake, not an exotic one. */
+function looksLikeBackup(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  if (raw.app === BACKUP_MARK) return true;
+  var n = 0;
+  for (var i = 0; i < BACKUP_KEYS.length; i++) {
+    var v = raw[BACKUP_KEYS[i]];
+    if (v !== null && typeof v === 'object') n++;
+  }
+  return n >= 3;
+}
 
 var CRITERIA = [
   { id: 'A1', name: 'Observable target behavior', need: 'Define one observable and measurable behavior, start/stop, exclusions and educational impact.', gap: 'Case-specific observed impact; actual target definition' },
@@ -373,11 +392,19 @@ function captureTransient() {
 }
 function restoreTransient(o) {
   var el;
-  for (var k in o) { el = document.getElementById(k); if (el) el.value = o[k] }
+  for (var k in o) {
+    if (pendingReset.indexOf(k) >= 0) continue;
+    el = document.getElementById(k); if (el) el.value = o[k];
+  }
+  pendingReset = [];
 }
-function clearTransient(ids) {
-  for (var i = 0; i < ids.length; i++) { var el = document.getElementById(ids[i]); if (el) el.value = '' }
-}
+/* Do NOT blank these by assignment: setting a <select> to '' leaves it on no
+   option at all, and restoreTransient would then carry that empty value across
+   the redraw. The next add would read '' and fall back to the first kind — the
+   baseline one. Instead, skip restoring them so the freshly drawn form keeps
+   its own template defaults. */
+var pendingReset = [];
+function clearTransient(ids) { pendingReset = pendingReset.concat(ids) }
 
 function draw() {
   var carried = captureTransient();
@@ -442,7 +469,11 @@ function draw() {
 
   if (page === 'evidence') {
     html = '<div class="panel"><h2>Non-identifying evidence reference index</h2><p>Store only abstract source references, not raw school records. No dates, names, school IDs, observation narratives, family statements or identifying links. Codes are screened for obvious identifiers, which is not a guarantee.</p>' + noticeHtml +
-      '<div class="grid"><label>Type<select id="kind">' + opts(EVIDENCE_KINDS, EVIDENCE_KINDS[0]) + '</select></label>' +
+      /* No kind is preselected. The first option would otherwise be the
+         BASELINE kind, so a user who never touches this control would file
+         baseline evidence by default — the same fail-open mistake as the
+         enum fallback, one layer up. addEvidence() refuses the blank. */
+      '<div class="grid"><label>Type<select id="kind"><option value="" selected>Choose a source type…</option>' + opts(EVIDENCE_KINDS, null) + '</select></label>' +
       '<label>Nonidentifying reference code<input id="code" placeholder="INDEX-01" maxlength="40"></label>' +
       '<label>Distinct-day label <span class="tiny muted">(baseline references need two different days)</span><select id="day">' + opts(DAY_LABELS, '') + '</select></label>' +
       '<label>Existing duration in minutes, if known <span class="tiny muted">(whole minutes)</span><input id="mins" type="number" min="1" max="120" step="1"></label>' +
@@ -574,8 +605,11 @@ function setDecision(i, v) { focusKey = 'dec-' + i; commit(function () { if (S.d
 function val(id) { var el = document.getElementById(id); return el ? String(el.value).trim() : '' }
 function addEvidence() {
   commit(function () {
-    var e = { kind: oneOf(val('kind'), EVIDENCE_KINDS, EVIDENCE_KINDS[0]), code: val('code').slice(0, 40), day: oneOf(val('day'), DAY_LABELS, ''), mins: asMinutes(val('mins')), context: oneOf(val('context'), CONTEXTS, 'unresolved'), status: oneOf(val('evstatus'), STATUS, 'unresolved') };
+    var e = { kind: val('kind'), code: val('code').slice(0, 40), day: oneOf(val('day'), DAY_LABELS, ''), mins: asMinutes(val('mins')), context: oneOf(val('context'), CONTEXTS, 'unresolved'), status: oneOf(val('evstatus'), STATUS, 'unresolved') };
     if (!e.code) return 'Not added. Enter a non-identifying reference code.';
+    /* No fallback: an unchosen type must not become the baseline kind. */
+    if (EVIDENCE_KINDS.indexOf(e.kind) < 0) return 'Not added. Choose a source type first.';
+    if (S.evidence.length >= MAX_ROWS) return 'Not added. The index already holds ' + MAX_ROWS + ' references, which is the maximum this app can store.';
     for (var i = 0; i < S.evidence.length; i++) if (S.evidence[i].code === e.code) return 'Not added. That reference code is already indexed.';
     var note = '';
     if (e.status === 'verified') {
@@ -598,6 +632,7 @@ function addDecision() {
   commit(function () {
     var q = val('question').slice(0, 160), n = val('decisionnext').slice(0, 220);
     if (!q || !n) return 'Not added. Enter both fields.';
+    if (S.decisions.length >= MAX_ROWS) return 'Not added. The decision log already holds ' + MAX_ROWS + ' entries, which is the maximum this app can store.';
     S.decisions.push({ question: q, next: n, status: 'unresolved' });
     clearTransient(['question', 'decisionnext']);
     var fl = screenText(q + ' ' + n);
@@ -613,6 +648,7 @@ function addCloseout() {
   commit(function () {
     var x = val('closeout').slice(0, 220);
     if (!x) return 'Not added. Enter one completed step and one next step.';
+    if (S.closeouts.length >= MAX_ROWS) return 'Not added. There are already ' + MAX_ROWS + ' closeouts, which is the maximum this app can store. Remove some first.';
     S.closeouts.push(x);
     clearTransient(['closeout']);
     var fl = screenText(x);
@@ -630,7 +666,8 @@ function dl(name, text, type) {
   var a = document.createElement('a'), url = URL.createObjectURL(new Blob([text], { type: type }));
   a.href = url; a.download = name; a.click(); setTimeout(function () { URL.revokeObjectURL(url) }, 1000);
 }
-function exportData() { dl('AEOS_PBIP_Section_A_Backup_' + stamp() + '.json', JSON.stringify(S, null, 2), 'application/json') }
+/* The marker lets a restore recognise its own backups without guessing. */
+function exportData() { dl('AEOS_PBIP_Section_A_Backup_' + stamp() + '.json', JSON.stringify(Object.assign({ app: BACKUP_MARK, v: 1 }, S), null, 2), 'application/json') }
 function exportText() { dl('AEOS_PBIP_Section_A_Summary_' + stamp() + '.txt', summaryText(S), 'text/plain') }
 function exportRaw() { var raw = ''; try { raw = localStorage.getItem(KEY) || '' } catch (e) { } dl('AEOS_PBIP_Section_A_Raw_' + stamp() + '.json', raw, 'application/json') }
 
@@ -642,7 +679,7 @@ function importData(f) {
   f.text().then(function (txt) {
     var parsed;
     try { parsed = JSON.parse(txt) } catch (e) { announce('Not restored. That file is not valid JSON; your saved data is unchanged.'); render(); return }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { announce('Not restored. That file is not an app backup; your saved data is unchanged.'); render(); return }
+    if (!looksLikeBackup(parsed)) { announce('Not restored. That file does not look like a PBIP Section A backup, so your saved data is unchanged. Export a backup from this app to see the expected shape.'); render(); return }
     S = normalize(parsed);
     var demoted = revalidate(S);
     try {

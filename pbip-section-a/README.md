@@ -21,7 +21,8 @@ step, no dependencies. It works from `file://`, from a USB stick, or emailed to
 yourself.
 
 ```bash
-node --test tests/logic.test.mjs   # 38 regression tests, no npm install needed
+node --test tests/logic.test.mjs   # 46 regression tests, no npm install needed
+node tests/scenarios.mjs           # 41 end-to-end checks against a stubbed DOM
 ```
 
 ---
@@ -180,6 +181,20 @@ The purity test was also tightened: it compared raw source text, so the word
 "window" in a *comment* failed it. It now strips comments and matches whole
 identifiers, and additionally forbids `fetch` and `XMLHttpRequest`.
 
+A second review round found three more, two of them data loss:
+
+| Severity | Defect | Fix |
+| --- | --- | --- |
+| P2 | **Baseline evidence could be filed without choosing a source type.** After a successful add the form resets, and the Type `<select>`'s first option is the *baseline* kind. A user filling the next reference without touching Type silently filed baseline evidence; two of those on different days verified A3 — through ordinary UI use, no crafted import | The control now opens on "Choose a source type…" with nothing preselected, and `addEvidence()` refuses a blank kind |
+| P2 | **Any JSON object was accepted as a backup.** Selecting the wrong file — a `package.json`, say — normalized to an empty state, rendered cleanly, replaced the user's work and reported "Restored." | `looksLikeBackup()` requires the app's own marker or at least three recognisable top-level keys; exports now carry `app`/`v` |
+| P2 | **The 200-row cap was enforced in `normalize()` but not where rows are added.** Entry 201 was accepted and saved, then silently dropped on the next load | The add handlers refuse at the same boundary and say why |
+
+The first of those is worth dwelling on: the stub-DOM scenario test for it
+**passed while the bug was still live**, because the stub reused element objects
+instead of recreating them on `innerHTML` assignment, so the select read empty
+rather than showing its real default. A real-browser check caught it. The stub
+now destroys and recreates children the way a browser does.
+
 ### Does the suite actually fail?
 
 A suite that passes against the broken original would prove nothing. The same
@@ -187,9 +202,9 @@ scenario harness, unchanged:
 
 | Target | Result |
 | --- | --- |
-| Original prototype | **11 passed, 17 failed** |
-| Current build | **28 passed, 0 failed** |
-| `tests/logic.test.mjs` | **43 passed, 0 failed** |
+| Original prototype | **20 passed, 21 failed** |
+| Current build | **41 passed, 0 failed** |
+| `tests/logic.test.mjs` | **46 passed, 0 failed** |
 
 ---
 

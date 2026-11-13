@@ -34,6 +34,7 @@ const EXPORTS = [
   'qualifyingBaselineDays', 'verifiedKindCount', 'gateFailure', 'evidenceGateFailure',
   'permGateFailure', 'revalidate', 'nextAction', 'screenText', 'screenState',
   'verifiedCount', 'blockedCount', 'summaryText',
+  'MAX_ROWS', 'BACKUP_MARK', 'looksLikeBackup',
 ]
 
 function logicSource() {
@@ -205,6 +206,34 @@ test('normalize maps the legacy "Other distinct day" label', () => {
     evidence: [{ kind: 'Existing school FBA baseline', code: 'X-1', day: 'Other distinct day' }],
   })
   assert.equal(S.evidence[0].day, 'Day 3')
+})
+
+test('an unrelated JSON file is not mistaken for a backup', () => {
+  // A valid-but-unrelated object would normalize to an empty state, render
+  // cleanly, and replace the user's work while reporting "Restored."
+  for (const notABackup of [
+    { name: 'unrelated-package', version: '1.0.0' },
+    {}, null, undefined, [], 'text', 42,
+    { permissions: 'not an object', criteria: 'nope' },
+  ]) assert.equal(L.looksLikeBackup(notABackup), false, `should reject ${JSON.stringify(notABackup)}`)
+})
+
+test('real backups are recognised, including hand-trimmed and marked ones', () => {
+  assert.equal(L.looksLikeBackup({ app: L.BACKUP_MARK }), true, 'the explicit marker is enough')
+  assert.equal(L.looksLikeBackup({ permissions: {}, criteria: {}, definition: {} }), true,
+    'a legacy or hand-trimmed export is still accepted')
+  assert.equal(L.looksLikeBackup(L.initialState()), true, 'anything this app exports round-trips')
+  assert.equal(L.looksLikeBackup({ permissions: {}, criteria: {} }), false,
+    'two keys is below the threshold')
+})
+
+test('normalize caps collections at MAX_ROWS', () => {
+  const many = Array.from({ length: L.MAX_ROWS + 25 }, (_, i) => `closeout ${i + 1}`)
+  const S = L.normalize({ permissions: {}, criteria: {}, definition: {}, closeouts: many })
+  assert.equal(S.closeouts.length, L.MAX_ROWS)
+  // The add handlers must refuse at the same boundary, or entries are accepted,
+  // saved, and silently dropped on the next load.
+  assert.ok(L.MAX_ROWS > 0)
 })
 
 test('normalize is idempotent', () => {
