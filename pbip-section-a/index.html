@@ -1,12 +1,652 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AEOS • SPED 607 PBIP Section A</title><style>:root{font:15px system-ui;color:#233a34;background:#f5f8f6}*{box-sizing:border-box}body{margin:0}header{background:#204f46;color:white;padding:22px 5%}header h1{margin:4px 0;font-size:24px}header p{margin:4px 0;color:#d4e8df}.wrap{max-width:1200px;margin:auto;padding:22px}.tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px}button{cursor:pointer;border:1px solid #a8c5b9;border-radius:8px;padding:10px 13px;background:white;color:#21574a;font-weight:650}button.active,button.primary{background:#246252;color:white}.panel{background:white;border:1px solid #dbe6df;border-radius:12px;padding:20px;margin:0 0 16px}.alert{border-left:5px solid #c2812d;background:#fff5e3;padding:14px 17px;border-radius:7px;margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:white;border:1px solid #dbe6df;border-radius:10px;padding:18px}.stat strong{display:block;font-size:25px;margin:8px 0}.muted,small{color:#708379}.tag{font-size:11px;border-radius:20px;padding:5px 8px;font-weight:700;background:#eaece9}.verified{background:#e2f4e7;color:#25683b}.blocked{background:#fbe6e2;color:#983f34}.unresolved{background:#efefed;color:#626862}.tentative{background:#fff0d5;color:#855e21}.in-progress{background:#e7edff;color:#365e9c}h2{font-size:21px;margin:0 0 9px}h3{font-size:16px;margin:0 0 10px}p,li{line-height:1.55}label{display:block;margin:10px 0;font-size:13px;font-weight:650}input,textarea,select{display:block;width:100%;padding:10px;margin-top:5px;border:1px solid #c7d7cd;border-radius:7px;font:inherit;background:white;color:#243e34}textarea{min-height:80px}ul{padding-left:22px}.row{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:13px 0;border-bottom:1px solid #edf1ed}.row select{max-width:170px}.row p{margin:5px 0}.gap{color:#865a24}a{color:#1f6755}.foot{color:#708379;padding:20px 0}.tiny{font-size:12px}.next{background:#e9f3ed;border:1px solid #c9dfd0}.source{border-bottom:1px solid #edf1ed;padding:10px 0}.hide{display:none}@media(max-width:750px){.grid,.stats{grid-template-columns:1fr}.row{align-items:flex-start;flex-direction:column}.row select{max-width:none}}</style><header><small style="color:#b9e2cf">AEOS / MAT WORKSPACE</small><h1>PBIP Section A • Evidence Readiness</h1><p>SPED 607 · Student A · Due Tuesday, November 17, 2026</p></header><div class="wrap"><div class="alert"><b>Permission boundary — enforced.</b> Authorized: completing existing school FBA forms. <b>Not authorized:</b> additional timed coursework observations. Never enter identifying student information, raw FBA records, actual family details, or school-confidential data into this app. It is a planning and reference index only.</div><nav class="tabs" id="tabs"></nav><div id="view"></div><div class="foot">Browser-local prototype. Saving occurs on this device only; export a de-identified backup. An alias is not a data-use authorization.</div></div><script>
-const status=['verified','in progress','blocked','unresolved','tentative'];const names={'verified':'Verified','in progress':'In progress','blocked':'Blocked','unresolved':'Unresolved','tentative':'Tentative'};const req=[['A1','Observable target behavior','Define one observable and measurable behavior, start/stop, exclusions and educational impact.','Case-specific observed impact; actual target definition'],['A2','Justification','Explain educational significance using developmental/disability considerations and relevant cultural/family context without stereotyping.','Approved case context and appropriate family information'],['A3','Baseline data','Two separate days, same context, 15–30 minutes each; method and dated/timed original raw sheets.','Qualifying authorized school records and instructor acceptance; additional coursework observations blocked'],['A4','Multiple-source synthesis','Compare baseline, record review, family information and other approved methods or interviews.','Approved access and corroborated findings'],['A5','Functional hypothesis','Use evidence to support a tentative function and compare competing explanations.','Approved baseline and ABC/multiple-source evidence'],['W','Professional writing','Narrative, defined acronyms, clear citations, authorized attachments, proofreading.','Finished de-identified narrative and submission instructions']];const docs=[['Section A assignment template and working rubric','https://docs.google.com/document/d/1fbG7riMa3EX_Ag7lf1_QVgyoVIwlxN_j/edit'],['Revised PBIP plan — no formal mentor','https://docs.google.com/document/d/1EI5bUAev6-cr3bI4a6WvKP8Gx09TGD5AxPS88VwQyAY/edit'],['SPED 607 syllabus','https://docs.google.com/document/d/1pFFzMmetXl4Yyu3_qd807sxMirt3KGgJ/edit'],['Fictional behavior practice page — NOT case evidence','https://docs.google.com/document/d/1WRhI8r8T4sdnVZUmEjFkVLQNVL8_gfYlwGM4apcyiIY/edit']];const initial={permissions:{existing:'verified',additional:'blocked',mentor:'verified',reuse:'unresolved',baseline:'unresolved',instructor:'unresolved',family:'unresolved',team:'unresolved'},criteria:{A1:'unresolved',A2:'unresolved',A3:'blocked',A4:'unresolved',A5:'blocked',W:'unresolved'},definition:{setting:'',action:'',onset:'',offset:'',exclusions:'',measure:'frequency',rule:'',impact:''},evidence:[],decisions:[],writing:{status:'unresolved',reference:''},submission:{status:'unresolved',receipt:'',destination:'unresolved'},closeouts:[]};let S;try{S=Object.assign(structuredClone(initial),JSON.parse(localStorage.getItem('aeos_pbi_section_a')||'{}'))}catch{S=structuredClone(initial)};for(let k of ['permissions','criteria','definition','writing','submission'])S[k]=Object.assign({},initial[k],S[k]);S.permissions.existing='verified';S.permissions.additional='blocked';S.permissions.mentor='verified';let page='dashboard';const pages=[['dashboard','Next action'],['criteria','Rubric gaps'],['permissions','Permission gates'],['definition','Measurement'],['evidence','Evidence index'],['coordination','Coordination'],['completion','Completion & submission'],['sources','Sources & export']];const E=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const badge=s=>`<span class="tag ${s.replace(' ','-')}">${names[s]}</span>`;const sel=(v)=>status.map(s=>`<option value="${s}" ${v===s?'selected':''}>${names[s]}</option>`).join('');function save(){S.permissions.existing='verified';S.permissions.additional='blocked';S.permissions.mentor='verified';try{localStorage.setItem('aeos_pbi_section_a',JSON.stringify(S))}catch{alert('Local save failed; export a backup.')}}function next(){if(S.permissions.reuse!=='verified')return ['Verify school coursework-reuse permission','Ask the school FBA lead what existing records may be referenced for the assignment, and what must remain in approved school storage.','permissions'];if(S.permissions.baseline!=='verified'||S.permissions.instructor!=='verified')return ['Ask Dr. Johnson about baseline equivalence','Can existing authorized FBA forms meet the two-day, 15–30-minute same-context requirement? What permitted alternative applies if not?','coordination'];if(!S.definition.action.trim())return ['Draft an observable behavior definition','Write what another observer would see or hear, with no student identifiers.','definition'];return ['Resolve the next unverified rubric criterion','Use approved evidence references only; do not create additional timed observations.','criteria']}
-function render(){document.getElementById('tabs').innerHTML=pages.map(([id,n])=>`<button class="${page===id?'active':''}" onclick="go('${id}')">${n}</button>`).join('');let html='';if(page==='dashboard'){let a=next();html=`<div class="stats"><div class="stat">Criteria verified<strong>${Object.values(S.criteria).filter(x=>x==='verified').length}/6</strong><small>Not an instructor grade</small></div><div class="stat">Blocked criteria<strong>${Object.values(S.criteria).filter(x=>x==='blocked').length}</strong></div><div class="stat">Indexed references<strong>${S.evidence.length}</strong><small>Metadata only</small></div><div class="stat">Submission proof<strong>${E(names[S.submission.status])}</strong></div></div><div class="panel next"><small>SMALLEST NEXT ACTION · 5–10 MINUTES</small><h2>${a[0]}</h2><p>${a[1]}</p><button class="primary" onclick="go('${a[2]}')">Open workspace</button></div><div class="grid"><div class="panel"><h3>Known boundaries</h3><p>Existing school FBA forms ${badge('verified')}<br><br>Additional timed observations ${badge('blocked')}<br><br>Coursework reuse ${badge(S.permissions.reuse)}</p></div><div class="panel"><h3>Separate evidence lanes</h3><p>Reading a source ≠ collecting baseline. Completing a draft ≠ submitting. Indexing a school record ≠ authorization to share it.</p></div></div>`}
-if(page==='criteria')html=`<div class="panel"><h2>Criterion-level evidence gaps</h2><p class="muted">Working Section A template uses six 0–3 criteria; verify the actual current Blackboard rubric. Status is not a grade.</p></div><div class="grid">${req.map(([id,n,need,gap])=>`<div class="panel"><small>${id}</small><h3>${n}</h3><p>${need}</p><p class="gap"><b>Gap:</b> ${gap}</p><label>Readiness<select onchange="setCriterion('${id}',this.value)">${sel(S.criteria[id])}</select></label></div>`).join('')}</div>`;
-if(page==='permissions')html=`<div class="panel"><h2>Permission & eligibility gates</h2><p>Statuses are your tracking notes, not grants of permission. Formal mentor appointment was waived by Dr. Johnson; school coordination remains necessary.</p>${[['existing','Existing school FBA forms','Authorized existing school duties only.',1],['additional','Additional timed coursework observations','Blocked; do not conduct or schedule them.',1],['mentor','No formal mentor required','Instructor clarification November 7; does not verify any school-team sign-off.',1],['reuse','School authorization for coursework reuse','Separate written approval needed.',0],['team','School-team coordination','Identify an appropriate FBA lead or administrator; do not invent verification.',0],['instructor','Instructor case acceptance','Ask whether the proposed case/evidence route is acceptable.',0],['baseline','Existing baseline equivalence','Instructor must confirm two-day, 15–30-minute, same-context equivalence.',0],['family','Family information pathway','Use only existing information through an approved school process.',0]].map(([k,n,d,lock])=>`<div class="row"><div><b>${n}</b><p class="muted tiny">${d}</p></div>${lock?badge(S.permissions[k]):`<select onchange="setPerm('${k}',this.value)">${sel(S.permissions[k])}</select>`}</div>`).join('')}</div>`;
-if(page==='definition')html=`<div class="panel"><h2>Operational measurement definition</h2><p>Draft only. Nothing below establishes an actual observation or behavior function.</p><div class="grid">${[['setting','Generic setting / activity'],['action','Directly visible or audible behavior'],['onset','Event start rule'],['offset','Event end rule'],['exclusions','Nonexamples, accommodations and exclusions'],['rule','Counting or timing rule'],['impact','Documented educational impact (leave blank until supported)']].map(([k,n])=>`<label>${n}<textarea data-def="${k}" oninput="setDef('${k}',this.value)">${E(S.definition[k])}</textarea></label>`).join('')}<label>Measurement type<select onchange="setDef('measure',this.value)">${['frequency','duration','latency','interval'].map(x=>`<option ${S.definition.measure===x?'selected':''}>${x}</option>`).join('')}</select></label></div><p class="muted">Quality check: Can two observers use the same definition? Are start/end boundaries, exclusions and opportunities explicit? Is the measurement unit appropriate?</p></div>`;
-if(page==='evidence')html=`<div class="panel"><h2>Non-identifying evidence reference index</h2><p>Store only abstract source references, not raw school records. No dates, names, school IDs, observation narratives, family statements or identifying links.</p><div class="grid"><label>Type<select id="kind"><option>Existing school FBA baseline</option><option>Existing record review</option><option>Teacher input via approved channel</option><option>Family input via approved channel</option><option>Existing behavior checklist</option></select></label><label>Nonidentifying reference code<input id="code" placeholder="INDEX-01" maxlength="40"></label><label>Distinct-day label<select id="day"><option value="">Unknown / not applicable</option><option>Day 1</option><option>Day 2</option><option>Other distinct day</option></select></label><label>Existing duration in minutes, if known<input id="mins" type="number" min="1" max="120"></label><label>Same context confirmed?<select id="context"><option>unresolved</option><option>yes</option><option>no</option></select></label><label>Reference status<select id="evstatus">${sel('unresolved')}</select></label></div><button class="primary" onclick="addEvidence()">Add reference</button></div><div class="panel"><h3>References (${S.evidence.length})</h3>${S.evidence.length?S.evidence.map((e,i)=>`<div class="row"><div><b>${E(e.kind)} · ${E(e.code)}</b><p class="tiny">${E(e.day||'day unresolved')} · ${E(e.mins||'?')} min · context ${E(e.context)}</p></div>${badge(e.status)} <button onclick="removeEvidence(${i})">Remove</button></div>`).join(''):'<p class="muted">No actual case evidence indexed.</p>'}<p class="gap">Two metadata entries do not prove qualifying baseline observations. Original dated and timed school forms must remain in approved storage and their coursework eligibility must be confirmed.</p></div>`;
-if(page==='coordination')html=`<div class="grid"><div class="panel"><h3>School FBA lead</h3><p>May I use a de-identified reference to existing school FBA records for coursework? Which records and transfer channels are approved? I am not authorized to conduct additional timed observations.</p></div><div class="panel"><h3>Dr. Johnson</h3><p>Do existing authorized FBA records satisfy the two-day, same-context, 15–30-minute baseline requirement? If not, what permitted alternative applies?</p></div></div><div class="panel"><h2>Decision log</h2>${S.decisions.map((d,i)=>`<div class="row"><div><b>${E(d.question)}</b><p>${E(d.next)}</p></div><select onchange="S.decisions[${i}].status=this.value;save();render()">${sel(d.status)}</select></div>`).join('')}<label>Unresolved question<input id="question" maxlength="160"></label><label>Next authorized verification step<input id="decisionnext" maxlength="220"></label><button class="primary" onclick="addDecision()">Add decision</button></div>`;
-if(page==='completion')html=`<div class="grid"><div class="panel"><h3>Lane 1: Readings</h3><p>Reading notes and fictional examples are learning resources, not Student A baseline evidence.</p></div><div class="panel"><h3>Lane 2: Section A artifact</h3><label>Writing status<select onchange="setNested('writing','status',this.value)">${sel(S.writing.status)}</select></label><label>Nonidentifying draft reference<input value="${E(S.writing.reference)}" oninput="setNested('writing','reference',this.value)" placeholder="PBIP_A_draft_v1"></label></div><div class="panel"><h3>Lane 3: Submission</h3><label>Submission status<select onchange="setNested('submission','status',this.value)">${sel(S.submission.status)}</select></label><label>Submission destination verified?<select onchange="setNested('submission','destination',this.value)">${sel(S.submission.destination)}</select></label><label>Receipt reference (no student details)<input value="${E(S.submission.receipt)}" oninput="setNested('submission','receipt',this.value)" placeholder="Not yet submitted"></label><p class="muted tiny">Verify Section A channel in Blackboard. Syllabus identifies Watermark SLL for the final PBIP signature assessment.</p></div></div><div class="panel"><h3>Session closeout</h3><label>One completed step and one next step<input id="closeout" maxlength="220" placeholder="Completed __; next verify __"></label><button class="primary" onclick="addCloseout()">Save closeout</button>${S.closeouts.slice(-5).reverse().map(x=>`<p class="tiny">${E(x)}</p>`).join('')}</div>`;
-if(page==='sources')html=`<div class="panel"><h2>Source documents</h2>${docs.map(([name,url])=>`<div class="source"><a href="${url}" target="_blank" rel="noopener">${E(name)} ↗</a></div>`).join('')}<p class="muted">The planning rubric is not proof of instructor scoring. Current Blackboard instructions and school permission remain external verification gates.</p></div><div class="panel"><h3>Backup your work</h3><p>Export contains only what you entered. Keep it de-identified; do not import school records.</p><button class="primary" onclick="exportData()">Export JSON</button> <button onclick="exportText()">Export readable summary</button> <label>Restore from previous app export<input type="file" accept="application/json" onchange="importData(this.files[0])"></label></div>`;
-document.getElementById('view').innerHTML=html;}
-function go(p){page=p;render();window.scrollTo(0,0)}function setPerm(k,v){S.permissions[k]=v;save();render()}function setDef(k,v){S.definition[k]=v;save()}function setNested(o,k,v){if(k==='status'&&v==='verified'&&o==='submission'&&!S.submission.receipt.trim()){alert('A real submission receipt reference is required.');render();return}if(k==='status'&&v==='verified'&&o==='writing'&&!S.writing.reference.trim()){alert('Enter a finished draft reference first.');render();return}S[o][k]=v;save()}function setCriterion(k,v){if(v==='verified'){if(['A2','A3','A4','A5'].includes(k)&&S.permissions.reuse!=='verified'){alert('Coursework reuse permission remains unresolved.');render();return}if(['A3','A5'].includes(k)&&S.permissions.baseline!=='verified'){alert('Baseline eligibility has not been verified.');render();return}if(k==='A3'&&S.evidence.filter(e=>e.kind==='Existing school FBA baseline'&&e.status==='verified'&&e.context==='yes'&&+e.mins>=15&&+e.mins<=30).length<2){alert('Two eligible existing baseline references are not verified.');render();return}if(k==='A1'&&!S.definition.action.trim()){alert('Draft an observable definition first.');render();return}if(k==='W'&&!S.writing.reference.trim()){alert('A completed draft reference is required.');render();return}}S.criteria[k]=v;save();render()}function addEvidence(){let v=id=>document.getElementById(id).value.trim();let e={kind:v('kind'),code:v('code'),day:v('day'),mins:v('mins'),context:v('context'),status:v('evstatus')};if(!e.code||S.evidence.some(x=>x.code===e.code)){alert('Enter a unique non-identifying reference code.');return}if(e.status==='verified'&&(S.permissions.reuse!=='verified'||(e.kind==='Existing school FBA baseline'&&S.permissions.baseline!=='verified'))){alert('Permission and baseline-equivalence gates must be confirmed before marking verified.');return}S.evidence.push(e);save();render()}function removeEvidence(i){S.evidence.splice(i,1);save();render()}function addDecision(){let q=document.getElementById('question').value.trim(),n=document.getElementById('decisionnext').value.trim();if(!q||!n)return alert('Enter both fields.');S.decisions.push({question:q,next:n,status:'unresolved'});save();render()}function addCloseout(){let x=document.getElementById('closeout').value.trim();if(!x)return;S.closeouts.push(x);save();render()}function dl(name,text,type){let a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}function exportData(){dl('AEOS_PBIP_Section_A_Backup.json',JSON.stringify(S,null,2),'application/json')}function exportText(){dl('AEOS_PBIP_Section_A_Summary.txt',['PBIP Section A · Due Nov 17 2026','Student A; no raw data','Additional timed coursework observations: BLOCKED','PERMISSIONS',JSON.stringify(S.permissions,null,2),'CRITERIA',JSON.stringify(S.criteria,null,2),'DEFINITION',JSON.stringify(S.definition,null,2),'INDEX',JSON.stringify(S.evidence,null,2),'DECISIONS',JSON.stringify(S.decisions,null,2),'WRITING',JSON.stringify(S.writing),'SUBMISSION',JSON.stringify(S.submission)].join('\n\n'),'text/plain')}async function importData(f){if(!f)return;try{let x=JSON.parse(await f.text());if(!x||!x.criteria||!x.permissions||!x.definition)throw Error();S=Object.assign(structuredClone(initial),x);S.permissions.existing='verified';S.permissions.additional='blocked';S.permissions.mentor='verified';save();render()}catch{alert('Invalid app backup')}}render();</script></html>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AEOS • SPED 607 PBIP Section A</title><style>:root{font:15px system-ui;color:#233a34;background:#f5f8f6}*{box-sizing:border-box}body{margin:0}header{background:#204f46;color:white;padding:22px 5%}header h1{margin:4px 0;font-size:24px}header p{margin:4px 0;color:#d4e8df}.wrap{max-width:1200px;margin:auto;padding:22px}.tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px}button{cursor:pointer;border:1px solid #a8c5b9;border-radius:8px;padding:10px 13px;background:white;color:#21574a;font-weight:650}button.active,button.primary{background:#246252;color:white}button.danger{border-color:#d8b3ab;color:#8d3f32}.panel{background:white;border:1px solid #dbe6df;border-radius:12px;padding:20px;margin:0 0 16px}.alert{border-left:5px solid #c2812d;background:#fff5e3;padding:14px 17px;border-radius:7px;margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:white;border:1px solid #dbe6df;border-radius:10px;padding:18px}.stat strong{display:block;font-size:25px;margin:8px 0}.muted,small{color:#5f7065}.skip{position:absolute;left:-9999px}.skip:focus{left:8px;top:8px;background:white;padding:10px;border-radius:7px;z-index:9}.tag{font-size:11px;border-radius:20px;padding:5px 8px;font-weight:700;background:#eaece9}.verified{background:#e2f4e7;color:#1f5c33}.blocked{background:#fbe6e2;color:#8d3f32}.unresolved{background:#ebedea;color:#545954}.tentative{background:#fff0d5;color:#704e1b}.in-progress{background:#e7edff;color:#2f5390}h2{font-size:21px;margin:0 0 9px}h3{font-size:16px;margin:0 0 10px}p,li{line-height:1.55}label{display:block;margin:10px 0;font-size:13px;font-weight:650}input,textarea,select{display:block;width:100%;padding:10px;margin-top:5px;border:1px solid #c7d7cd;border-radius:7px;font:inherit;background:white;color:#243e34}textarea{min-height:80px}ul{padding-left:22px}.row{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:13px 0;border-bottom:1px solid #edf1ed}.row select{max-width:170px}.row p{margin:5px 0}.gap{color:#6f4a1d}a{color:#1a5747}.foot{color:#5f7065;padding:20px 0}.tiny{font-size:12px}.next{background:#e9f3ed;border:1px solid #c9dfd0}.source{border-bottom:1px solid #edf1ed;padding:10px 0}.warn{border-left:4px solid #c2812d;background:#fff5e3;padding:9px 12px;border-radius:6px;margin:8px 0;font-size:13px}.ok{border-left:4px solid #2f7d52;background:#eaf6ee;padding:9px 12px;border-radius:6px;margin:8px 0;font-size:13px}.rowlist{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #edf1ed}:focus-visible{outline:3px solid #1a5747;outline-offset:2px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}@media(max-width:750px){.grid,.stats{grid-template-columns:1fr}.row{align-items:flex-start;flex-direction:column}.row select{max-width:none}}</style><a class="skip" href="#view">Skip to content</a><header><small style="color:#b9e2cf">AEOS / MAT WORKSPACE</small><h1>PBIP Section A • Evidence Readiness</h1><p>SPED 607 · Student A · Due Tuesday, November 17, 2026</p></header><div class="wrap"><div class="alert"><b>Permission boundary — enforced.</b> Authorized: completing existing school FBA forms. <b>Not authorized:</b> additional timed coursework observations. Never enter identifying student information, raw FBA records, actual family details, or school-confidential data into this app. It is a planning and reference index only.</div><nav class="tabs" id="tabs" aria-label="Sections"></nav><p id="announce" role="status" aria-live="polite" class="sr"></p><main id="view"></main><div class="foot">Browser-local prototype. Saving occurs on this device only, in this browser, under the key <code>aeos_pbi_section_a</code>; clear it from Sources &amp; export. An alias is not a data-use authorization. Nothing here is screened for identifiers unless the screen says so.</div></div>
+<script id="aeos-logic">
+/* ===========================================================================
+   PURE LOGIC — no DOM, no storage, no side effects.
+   tests/logic.test.mjs extracts this block verbatim and runs it in node:vm.
+   Everything that decides whether something is "verified" lives HERE, once.
+   =========================================================================== */
+
+var STATUS = ['verified', 'in progress', 'blocked', 'unresolved', 'tentative'];
+var NAMES = { 'verified': 'Verified', 'in progress': 'In progress', 'blocked': 'Blocked', 'unresolved': 'Unresolved', 'tentative': 'Tentative' };
+
+/* Locked by instructor clarification; never user-settable. */
+var LOCKED = { existing: 'verified', additional: 'blocked', mentor: 'verified' };
+
+var PERM_KEYS = ['existing', 'additional', 'mentor', 'reuse', 'team', 'instructor', 'baseline', 'family'];
+var PERM_LABEL = {
+  existing: 'Existing school FBA forms', additional: 'Additional timed coursework observations',
+  mentor: 'No formal mentor required', reuse: 'School authorization for coursework reuse',
+  team: 'School-team coordination', instructor: 'Instructor case acceptance',
+  baseline: 'Existing baseline equivalence', family: 'Family information pathway'
+};
+var DEF_KEYS = ['setting', 'action', 'onset', 'offset', 'exclusions', 'rule', 'impact'];
+/* `impact` is excluded: its own label says to leave it blank until supported. */
+var A1_REQUIRED = ['action', 'onset', 'offset', 'exclusions', 'rule'];
+var MEASURES = ['frequency', 'duration', 'latency', 'interval'];
+var EVIDENCE_KINDS = ['Existing school FBA baseline', 'Existing record review', 'Teacher input via approved channel', 'Family input via approved channel', 'Existing behavior checklist'];
+var BASELINE_KIND = 'Existing school FBA baseline';
+var FAMILY_KIND = 'Family input via approved channel';
+var DAY_LABELS = ['', 'Day 1', 'Day 2', 'Day 3'];
+var CONTEXTS = ['unresolved', 'yes', 'no'];
+var MIN_MINS = 15, MAX_MINS = 30, MIN_BASELINE_DAYS = 2, MIN_A4_KINDS = 2;
+
+var CRITERIA = [
+  { id: 'A1', name: 'Observable target behavior', need: 'Define one observable and measurable behavior, start/stop, exclusions and educational impact.', gap: 'Case-specific observed impact; actual target definition' },
+  { id: 'A2', name: 'Justification', need: 'Explain educational significance using developmental/disability considerations and relevant cultural/family context without stereotyping.', gap: 'Approved case context and appropriate family information' },
+  { id: 'A3', name: 'Baseline data', need: 'Two separate days, same context, 15–30 minutes each; method and dated/timed original raw sheets.', gap: 'Qualifying authorized school records and instructor acceptance; additional coursework observations blocked' },
+  { id: 'A4', name: 'Multiple-source synthesis', need: 'Compare baseline, record review, family information and other approved methods or interviews.', gap: 'Approved access and corroborated findings' },
+  { id: 'A5', name: 'Functional hypothesis', need: 'Use evidence to support a tentative function and compare competing explanations.', gap: 'Approved baseline and ABC/multiple-source evidence' },
+  { id: 'W', name: 'Professional writing', need: 'Narrative, defined acronyms, clear citations, authorized attachments, proofreading.', gap: 'Finished de-identified narrative and submission instructions' }
+];
+var CRITERIA_IDS = CRITERIA.map(function (c) { return c.id });
+
+/* --- coercion helpers: every external value passes through one of these --- */
+function asString(v, max) { return typeof v === 'string' ? v.slice(0, max) : '' }
+function oneOf(v, allowed, fallback) { return allowed.indexOf(v) >= 0 ? v : fallback }
+function asMinutes(v) {
+  var n = parseInt(v, 10);
+  return (isFinite(n) && n >= 1 && n <= 120) ? String(n) : '';
+}
+
+function initialState() {
+  return {
+    permissions: { existing: 'verified', additional: 'blocked', mentor: 'verified', reuse: 'unresolved', team: 'unresolved', instructor: 'unresolved', baseline: 'unresolved', family: 'unresolved' },
+    criteria: { A1: 'unresolved', A2: 'unresolved', A3: 'blocked', A4: 'unresolved', A5: 'blocked', W: 'unresolved' },
+    definition: { setting: '', action: '', onset: '', offset: '', exclusions: '', measure: 'frequency', rule: '', impact: '' },
+    evidence: [], decisions: [], closeouts: [],
+    writing: { status: 'unresolved', reference: '' },
+    submission: { status: 'unresolved', receipt: '', destination: 'unresolved' }
+  };
+}
+
+/* THE trust boundary. Both the load path and the import path go through this,
+   so a restored backup can never be shaped differently from a fresh state.
+   Anything unrecognised is dropped, never carried through. */
+function normalize(raw) {
+  var S = initialState();
+  var r = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  var obj = function (k) { return (r[k] && typeof r[k] === 'object' && !Array.isArray(r[k])) ? r[k] : {} };
+  var i, k, e, d, t;
+
+  var p = obj('permissions');
+  for (i = 0; i < PERM_KEYS.length; i++) { k = PERM_KEYS[i]; S.permissions[k] = oneOf(p[k], STATUS, S.permissions[k]) }
+  for (k in LOCKED) S.permissions[k] = LOCKED[k];
+
+  var c = obj('criteria');
+  for (i = 0; i < CRITERIA_IDS.length; i++) { k = CRITERIA_IDS[i]; S.criteria[k] = oneOf(c[k], STATUS, S.criteria[k]) }
+
+  var def = obj('definition');
+  for (i = 0; i < DEF_KEYS.length; i++) { k = DEF_KEYS[i]; S.definition[k] = asString(def[k], 2000) }
+  S.definition.measure = oneOf(def.measure, MEASURES, 'frequency');
+
+  var ev = Array.isArray(r.evidence) ? r.evidence : [], seen = {};
+  for (i = 0; i < ev.length && S.evidence.length < 200; i++) {
+    e = ev[i];
+    if (!e || typeof e !== 'object') continue;
+    var code = asString(e.code, 40).trim();
+    if (!code || Object.prototype.hasOwnProperty.call(seen, code)) continue;
+    seen[code] = 1;
+    /* legacy label from the first prototype */
+    var day = e.day === 'Other distinct day' ? 'Day 3' : e.day;
+    S.evidence.push({
+      kind: oneOf(e.kind, EVIDENCE_KINDS, EVIDENCE_KINDS[0]), code: code,
+      day: oneOf(day, DAY_LABELS, ''), mins: asMinutes(e.mins),
+      context: oneOf(e.context, CONTEXTS, 'unresolved'), status: oneOf(e.status, STATUS, 'unresolved')
+    });
+  }
+
+  var dec = Array.isArray(r.decisions) ? r.decisions : [];
+  for (i = 0; i < dec.length && S.decisions.length < 200; i++) {
+    d = dec[i];
+    if (!d || typeof d !== 'object') continue;
+    var q = asString(d.question, 160).trim(), nx = asString(d.next, 220).trim();
+    if (!q || !nx) continue;
+    S.decisions.push({ question: q, next: nx, status: oneOf(d.status, STATUS, 'unresolved') });
+  }
+
+  var co = Array.isArray(r.closeouts) ? r.closeouts : [];
+  for (i = 0; i < co.length && S.closeouts.length < 200; i++) { t = asString(co[i], 220).trim(); if (t) S.closeouts.push(t) }
+
+  var w = obj('writing');
+  S.writing.status = oneOf(w.status, STATUS, 'unresolved');
+  S.writing.reference = asString(w.reference, 120);
+
+  var s = obj('submission');
+  S.submission.status = oneOf(s.status, STATUS, 'unresolved');
+  S.submission.receipt = asString(s.receipt, 120);
+  S.submission.destination = oneOf(s.destination, STATUS, 'unresolved');
+  return S;
+}
+
+/* --- evidence predicates --- */
+
+/* Distinct days, not row count. Two rows on "Day 1" are one day, and a row
+   whose day is unknown cannot establish distinctness at all. */
+function qualifyingBaselineDays(S) {
+  var days = {}, n = 0;
+  for (var i = 0; i < S.evidence.length; i++) {
+    var e = S.evidence[i], m = parseInt(e.mins, 10);
+    if (e.kind !== BASELINE_KIND || e.status !== 'verified' || e.context !== 'yes') continue;
+    if (!isFinite(m) || m < MIN_MINS || m > MAX_MINS) continue;
+    if (!e.day) continue;
+    if (!Object.prototype.hasOwnProperty.call(days, e.day)) { days[e.day] = 1; n++ }
+  }
+  return n;
+}
+function verifiedKindCount(S) {
+  var kinds = {}, n = 0;
+  for (var i = 0; i < S.evidence.length; i++) {
+    var e = S.evidence[i];
+    if (e.status !== 'verified') continue;
+    if (!Object.prototype.hasOwnProperty.call(kinds, e.kind)) { kinds[e.kind] = 1; n++ }
+  }
+  return n;
+}
+
+/* --- the gates: one definition, used by set, revalidate and next --- */
+
+var CRITERION_PERMS = { A2: ['reuse'], A3: ['reuse', 'baseline', 'instructor'], A4: ['reuse'], A5: ['reuse', 'baseline', 'instructor'] };
+
+function gateFailure(S, k) {
+  var i, missing;
+  if (k === 'A1') {
+    missing = [];
+    for (i = 0; i < A1_REQUIRED.length; i++) if (!S.definition[A1_REQUIRED[i]].trim()) missing.push(A1_REQUIRED[i]);
+    return missing.length ? 'The measurement definition is incomplete — still blank: ' + missing.join(', ') + '.' : null;
+  }
+  if (k === 'W') return S.writing.reference.trim() ? null : 'A completed, de-identified draft reference is required first.';
+  var needs = CRITERION_PERMS[k] || [];
+  for (i = 0; i < needs.length; i++) if (S.permissions[needs[i]] !== 'verified') return PERM_LABEL[needs[i]] + ' is not verified.';
+  if (k === 'A2' || k === 'A4') {
+    for (i = 0; i < S.evidence.length; i++) {
+      if (S.evidence[i].kind === FAMILY_KIND && S.permissions.family !== 'verified')
+        return 'A family-sourced reference is indexed, so ' + PERM_LABEL.family + ' must be verified.';
+    }
+  }
+  if (k === 'A3') {
+    var days = qualifyingBaselineDays(S);
+    if (days < MIN_BASELINE_DAYS) return 'A3 needs ' + MIN_BASELINE_DAYS + ' verified baseline references on DIFFERENT days, same context, ' + MIN_MINS + '–' + MAX_MINS + ' minutes each. Distinct qualifying days so far: ' + days + '.';
+  }
+  if (k === 'A4') {
+    var kinds = verifiedKindCount(S);
+    if (kinds < MIN_A4_KINDS) return 'Multiple-source synthesis needs verified references of at least ' + MIN_A4_KINDS + ' different kinds. Currently ' + kinds + '.';
+  }
+  if (k === 'A5' && S.criteria.A3 !== 'verified') return 'A5 rests on baseline evidence, so A3 must be verified first.';
+  return null;
+}
+
+function evidenceGateFailure(S, e) {
+  if (S.permissions.reuse !== 'verified') return PERM_LABEL.reuse + ' is not verified.';
+  if (e.kind === BASELINE_KIND && S.permissions.baseline !== 'verified') return PERM_LABEL.baseline + ' is not verified.';
+  if (e.kind === FAMILY_KIND && S.permissions.family !== 'verified') return PERM_LABEL.family + ' is not verified.';
+  return null;
+}
+
+/* You cannot hold school authorization for reuse without having identified who
+   in the school gave it. Encoding that stops `team` being a decorative row. */
+function permGateFailure(S, k, v) {
+  if (v === 'verified' && k === 'reuse' && S.permissions.team !== 'verified')
+    return 'Identify the school FBA lead or administrator first — ' + PERM_LABEL.team + ' is not verified.';
+  return null;
+}
+
+/* Gates are continuous, not write-once. Any change re-tests everything already
+   marked verified and demotes whatever no longer holds. Runs to a fixed point
+   because A5 depends on A3, which can itself be demoted. */
+function revalidate(S) {
+  var demoted = [], pass, changed, i, k, why;
+  for (pass = 0; pass < 8; pass++) {
+    changed = false;
+    for (i = 0; i < S.evidence.length; i++) {
+      if (S.evidence[i].status !== 'verified') continue;
+      why = evidenceGateFailure(S, S.evidence[i]);
+      if (why) { demoted.push({ what: 'Evidence reference ' + S.evidence[i].code, why: why }); S.evidence[i].status = 'unresolved'; changed = true }
+    }
+    for (i = 0; i < CRITERIA_IDS.length; i++) {
+      k = CRITERIA_IDS[i];
+      if (S.criteria[k] !== 'verified') continue;
+      why = gateFailure(S, k);
+      if (why) { demoted.push({ what: 'Criterion ' + k, why: why }); S.criteria[k] = 'unresolved'; changed = true }
+    }
+    /* The lane statuses are gated on free-text fields that stay editable after
+       the status is set, so clearing one must retract the status too. */
+    if (S.writing.status === 'verified' && !S.writing.reference.trim()) {
+      demoted.push({ what: 'Writing status', why: 'the draft reference is blank' }); S.writing.status = 'unresolved'; changed = true;
+    }
+    if (S.submission.status === 'verified' && !S.submission.receipt.trim()) {
+      demoted.push({ what: 'Submission status', why: 'the receipt reference is blank' }); S.submission.status = 'unresolved'; changed = true;
+    }
+    if (!changed) break;
+  }
+  return demoted;
+}
+
+function nextAction(S) {
+  if (S.permissions.team !== 'verified') return ['Identify the school FBA lead', 'Name the person who can say what existing records may be referenced. Do not invent verification: this status is your own note, not their approval.', 'permissions'];
+  if (S.permissions.reuse !== 'verified') return ['Verify school coursework-reuse permission', 'Ask the school FBA lead what existing records may be referenced for the assignment, and what must remain in approved school storage.', 'permissions'];
+  if (S.permissions.baseline !== 'verified' || S.permissions.instructor !== 'verified') return ['Ask Dr. Johnson about baseline equivalence', 'Can existing authorized FBA forms meet the two-day, 15–30-minute same-context requirement? What permitted alternative applies if not?', 'coordination'];
+  var a1 = gateFailure(S, 'A1');
+  if (a1) return ['Finish the observable behavior definition', a1 + ' Write what another observer would see or hear, with no student identifiers.', 'definition'];
+  var open = [];
+  for (var i = 0; i < CRITERIA_IDS.length; i++) if (S.criteria[CRITERIA_IDS[i]] !== 'verified') open.push(CRITERIA_IDS[i]);
+  if (!open.length) return ['All six criteria are marked verified', 'Nothing in this tracker is outstanding. These statuses are your own notes and not an instructor grade — confirm the current Blackboard rubric and the submission channel before relying on them.', 'completion'];
+  var k = open[0], c = CRITERIA.filter(function (x) { return x.id === k })[0];
+  return ['Resolve ' + k + ' — ' + c.name, gateFailure(S, k) || 'Use approved evidence references only; do not create additional timed observations.', k === 'W' ? 'completion' : 'criteria'];
+}
+
+/* --- identifier screen: advisory only, never a gate, never a guarantee --- */
+var SCREENS = [
+  [/\b(?:Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+[A-Z][a-z]+/, 'a title followed by a name'],
+  [/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/, 'a date'],
+  [/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}\b/i, 'a date'],
+  [/[\w.+-]+@[\w-]+\.[\w.]+/, 'an email address'],
+  [/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/, 'a phone number'],
+  [/\broom\s*#?\s*\d+/i, 'a room number'],
+  [/\d{4,}/, 'a run of four or more digits']
+];
+function screenText(s) {
+  var out = [];
+  if (typeof s !== 'string' || !s) return out;
+  for (var i = 0; i < SCREENS.length; i++) if (SCREENS[i][0].test(s)) out.push(SCREENS[i][1]);
+  return out;
+}
+function screenState(S) {
+  var flags = [], i, r;
+  function check(where, v) { r = screenText(v); for (var j = 0; j < r.length; j++) flags.push({ where: where, why: r[j] }) }
+  for (i = 0; i < DEF_KEYS.length; i++) check('Measurement · ' + DEF_KEYS[i], S.definition[DEF_KEYS[i]]);
+  for (i = 0; i < S.evidence.length; i++) check('Evidence code', S.evidence[i].code);
+  for (i = 0; i < S.decisions.length; i++) { check('Decision question', S.decisions[i].question); check('Decision next step', S.decisions[i].next) }
+  for (i = 0; i < S.closeouts.length; i++) check('Closeout ' + (i + 1), S.closeouts[i]);
+  check('Draft reference', S.writing.reference);
+  check('Submission receipt', S.submission.receipt);
+  return flags;
+}
+
+function verifiedCount(S) { var n = 0; for (var i = 0; i < CRITERIA_IDS.length; i++) if (S.criteria[CRITERIA_IDS[i]] === 'verified') n++; return n }
+function blockedCount(S) { var n = 0; for (var i = 0; i < CRITERIA_IDS.length; i++) if (S.criteria[CRITERIA_IDS[i]] === 'blocked') n++; return n }
+
+/* Readable export. Must carry every field exportData() carries, and must not
+   assert de-identification it has not checked. */
+function summaryText(S) {
+  var flags = screenState(S), lines = [], i;
+  lines.push('PBIP Section A · SPED 607 · due Nov 17 2026');
+  lines.push('Additional timed coursework observations: BLOCKED');
+  lines.push('');
+  if (flags.length) {
+    lines.push('!! IDENTIFIER SCREEN: ' + flags.length + ' FIELD(S) FLAGGED — REVIEW BEFORE SHARING');
+    for (i = 0; i < flags.length; i++) lines.push('   - ' + flags[i].where + ': looks like ' + flags[i].why);
+  } else {
+    lines.push('Identifier screen: no flags raised.');
+    lines.push('A screen is not a guarantee. Read every field below before sharing this file.');
+  }
+  lines.push('');
+  lines.push('CRITERION STATUSES ARE SELF-TRACKED NOTES, NOT AN INSTRUCTOR GRADE.');
+  var parts = [['PERMISSIONS', S.permissions], ['CRITERIA', S.criteria], ['DEFINITION', S.definition],
+  ['EVIDENCE INDEX', S.evidence], ['DECISIONS', S.decisions], ['CLOSEOUTS', S.closeouts],
+  ['WRITING', S.writing], ['SUBMISSION', S.submission]];
+  for (i = 0; i < parts.length; i++) { lines.push(''); lines.push(parts[i][0]); lines.push(JSON.stringify(parts[i][1], null, 2)) }
+  return lines.join('\n');
+}
+</script>
+<script id="aeos-ui">
+/* ===========================================================================
+   UI — DOM and storage only. No gate decisions are made in this block.
+   =========================================================================== */
+var KEY = 'aeos_pbi_section_a';
+var S, page = 'dashboard', notice = '', focusKey = '';
+var PAGES = [['dashboard', 'Next action'], ['criteria', 'Rubric gaps'], ['permissions', 'Permission gates'], ['definition', 'Measurement'], ['evidence', 'Evidence index'], ['coordination', 'Coordination'], ['completion', 'Completion & submission'], ['sources', 'Sources & export']];
+
+function readStored() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch (e) { return {} } }
+S = normalize(readStored());
+
+var E = function (x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] }) };
+/* Enum-only. An unknown value can never reach the attribute. */
+var badge = function (s) {
+  var k = Object.prototype.hasOwnProperty.call(NAMES, s) ? s : 'unresolved';
+  return '<span class="tag ' + k.replace(/ /g, '-') + '">' + E(NAMES[k]) + '</span>';
+};
+/* Coerce before building options. If no <option> matched, the browser would
+   show the FIRST one — which is 'verified' — so an unknown value would render
+   as Verified. normalize() should make that unreachable; this makes it
+   impossible. */
+var sel = function (v) {
+  var cur = Object.prototype.hasOwnProperty.call(NAMES, v) ? v : 'unresolved';
+  return STATUS.map(function (s) { return '<option value="' + E(s) + '"' + (cur === s ? ' selected' : '') + '>' + E(NAMES[s]) + '</option>' }).join('');
+};
+var opts = function (list, v) { return list.map(function (s) { return '<option value="' + E(s) + '"' + (v === s ? ' selected' : '') + '>' + E(s || 'Unknown / not applicable') + '</option>' }).join('') };
+
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)) } catch (e) { alert('Local save failed — export a backup now.') } }
+function announce(m) { notice = m || ''; var a = document.getElementById('announce'); if (a) a.textContent = m || '' }
+
+/* Every mutation goes through here: change, re-test every gate, persist, redraw. */
+function commit(fn) {
+  var msg = fn() || '';
+  var demoted = revalidate(S);
+  if (demoted.length) {
+    msg = (msg ? msg + ' ' : '') + 'Demoted because its conditions no longer hold: ' +
+      demoted.map(function (d) { return d.what + ' (' + d.why + ')' }).join(' ');
+  }
+  save(); announce(msg); render();
+}
+
+function renderRecovery(err) {
+  var raw = '';
+  try { raw = localStorage.getItem(KEY) || '' } catch (e) { raw = '' }
+  document.getElementById('view').innerHTML =
+    '<div class="panel"><h2>This workspace could not be drawn</h2>' +
+    '<p>Your saved data is still on this device and has not been changed. Export it before doing anything else, then reset.</p>' +
+    '<p class="tiny muted">' + E(String(err && err.message || err)) + '</p>' +
+    '<button class="primary" onclick="exportRaw()">Export raw saved data</button> ' +
+    '<button class="danger" onclick="resetAll()">Reset this workspace</button></div>';
+}
+/* A throw must never leave the view blank: that is what bricked the prototype. */
+function render() { try { draw() } catch (err) { try { renderRecovery(err) } catch (e) { } } }
+
+/* Inputs not backed by state. render() replaces #view wholesale, so without
+   this a redraw triggered by an unrelated dropdown — or by a REFUSED edit —
+   silently discards whatever the user had typed into them. */
+var TRANSIENT = ['kind', 'code', 'day', 'mins', 'context', 'evstatus', 'question', 'decisionnext', 'closeout'];
+function captureTransient() {
+  var o = {}, el;
+  for (var i = 0; i < TRANSIENT.length; i++) { el = document.getElementById(TRANSIENT[i]); if (el) o[TRANSIENT[i]] = el.value }
+  return o;
+}
+function restoreTransient(o) {
+  var el;
+  for (var k in o) { el = document.getElementById(k); if (el) el.value = o[k] }
+}
+function clearTransient(ids) {
+  for (var i = 0; i < ids.length; i++) { var el = document.getElementById(ids[i]); if (el) el.value = '' }
+}
+
+function draw() {
+  var carried = captureTransient();
+  document.getElementById('tabs').innerHTML = PAGES.map(function (p) {
+    return '<button class="' + (page === p[0] ? 'active' : '') + '"' + (page === p[0] ? ' aria-current="page"' : '') + ' onclick="go(\'' + p[0] + '\')">' + E(p[1]) + '</button>';
+  }).join('');
+  var html = '', flags = screenState(S);
+  var noticeHtml = notice ? '<div class="warn"><b>Note.</b> ' + E(notice) + '</div>' : '';
+
+  if (page === 'dashboard') {
+    var a = nextAction(S);
+    html = '<div class="stats">' +
+      '<div class="stat">Criteria verified<strong>' + verifiedCount(S) + '/' + CRITERIA_IDS.length + '</strong><small>Self-tracked, not a grade</small></div>' +
+      '<div class="stat">Blocked criteria<strong>' + blockedCount(S) + '</strong></div>' +
+      '<div class="stat">Indexed references<strong>' + S.evidence.length + '</strong><small>' + (flags.length ? E(flags.length + ' field(s) flagged') : 'No identifier flags') + '</small></div>' +
+      '<div class="stat">Submission proof<strong>' + E(NAMES[S.submission.status] || 'Unresolved') + '</strong></div></div>' +
+      noticeHtml +
+      '<div class="panel next"><small>SMALLEST NEXT ACTION · 5–10 MINUTES</small><h2>' + E(a[0]) + '</h2><p>' + E(a[1]) + '</p>' +
+      '<button class="primary" onclick="go(\'' + E(a[2]) + '\')">Open workspace</button></div>' +
+      (flags.length ? '<div class="warn"><b>' + flags.length + ' field(s) look like they may identify someone.</b> This screen is advisory and not a guarantee. ' + E(flags.map(function (f) { return f.where }).filter(function (v, i, s) { return s.indexOf(v) === i }).join('; ')) + '</div>' : '') +
+      '<div class="grid"><div class="panel"><h3>Known boundaries</h3><p>Existing school FBA forms ' + badge('verified') +
+      '<br><br>Additional timed observations ' + badge('blocked') + '<br><br>Coursework reuse ' + badge(S.permissions.reuse) + '</p></div>' +
+      '<div class="panel"><h3>Separate evidence lanes</h3><p>Reading a source ≠ collecting baseline. Completing a draft ≠ submitting. Indexing a school record ≠ authorization to share it.</p></div></div>';
+  }
+
+  if (page === 'criteria') {
+    html = '<div class="panel"><h2>Criterion-level evidence gaps</h2><p class="muted">Six 0–3 criteria from the working Section A template; verify the actual current Blackboard rubric. Status is not a grade. A criterion whose conditions stop holding is demoted automatically.</p></div>' + noticeHtml +
+      '<div class="grid">' + CRITERIA.map(function (c) {
+        var why = gateFailure(S, c.id);
+        return '<div class="panel"><small>' + E(c.id) + '</small><h3>' + E(c.name) + '</h3><p>' + E(c.need) + '</p>' +
+          '<p class="gap"><b>Gap:</b> ' + E(c.gap) + '</p>' +
+          (why ? '<p class="tiny gap"><b>Cannot be verified yet:</b> ' + E(why) + '</p>' : '<p class="tiny"><b>All recorded conditions met.</b></p>') +
+          '<label>Readiness <select data-f="crit-' + E(c.id) + '" aria-label="Readiness of ' + E(c.id) + ' — ' + E(c.name) + '" onchange="setCriterion(\'' + E(c.id) + '\',this.value)">' + sel(S.criteria[c.id]) + '</select></label></div>';
+      }).join('') + '</div>';
+  }
+
+  if (page === 'permissions') {
+    var rows = [['existing', 'Authorized existing school duties only.', 1], ['additional', 'Blocked; do not conduct or schedule them.', 1], ['mentor', 'Instructor clarification November 7; does not verify any school-team sign-off.', 1],
+    ['team', 'Identify an appropriate FBA lead or administrator; do not invent verification. Required before coursework reuse.', 0],
+    ['reuse', 'Separate written approval needed. Gates A2–A5.', 0],
+    ['instructor', 'Ask whether the proposed case/evidence route is acceptable. Gates A3 and A5.', 0],
+    ['baseline', 'Instructor must confirm two-day, 15–30-minute, same-context equivalence. Gates A3 and A5.', 0],
+    ['family', 'Use only existing information through an approved school process. Required once a family-sourced reference is indexed.', 0]];
+    html = '<div class="panel"><h2>Permission &amp; eligibility gates</h2><p>Statuses are your tracking notes, not grants of permission. Formal mentor appointment was waived by Dr. Johnson; school coordination remains necessary. Downgrading a permission immediately demotes anything that rested on it.</p>' + noticeHtml +
+      rows.map(function (r) {
+        return '<div class="row"><div><b>' + E(PERM_LABEL[r[0]]) + '</b><p class="muted tiny">' + E(r[1]) + '</p></div>' +
+          (r[2] ? badge(S.permissions[r[0]]) : '<select data-f="perm-' + E(r[0]) + '" aria-label="' + E(PERM_LABEL[r[0]]) + '" onchange="setPerm(\'' + E(r[0]) + '\',this.value)">' + sel(S.permissions[r[0]]) + '</select>') + '</div>';
+      }).join('') + '</div>';
+  }
+
+  if (page === 'definition') {
+    html = '<div class="panel"><h2>Operational measurement definition</h2><p>Draft only. Nothing below establishes an actual observation or behavior function. A1 needs every field except educational impact.</p>' + noticeHtml +
+      '<div class="grid">' + [['setting', 'Generic setting / activity'], ['action', 'Directly visible or audible behavior'], ['onset', 'Event start rule'], ['offset', 'Event end rule'], ['exclusions', 'Nonexamples, accommodations and exclusions'], ['rule', 'Counting or timing rule'], ['impact', 'Documented educational impact (leave blank until supported)']].map(function (f) {
+        var fl = screenText(S.definition[f[0]]);
+        return '<label>' + E(f[1]) + (A1_REQUIRED.indexOf(f[0]) >= 0 ? ' <span class="tiny muted">(required for A1)</span>' : '') +
+          '<textarea data-f="def-' + E(f[0]) + '" oninput="setDef(\'' + E(f[0]) + '\',this.value)">' + E(S.definition[f[0]]) + '</textarea></label>' +
+          (fl.length ? '<div class="warn tiny">Looks like it may contain ' + E(fl.join(', ')) + '. Re-read before this leaves the device.</div>' : '');
+      }).join('') +
+      '<label>Measurement type<select data-f="def-measure" onchange="setDefNow(\'measure\',this.value)">' + opts(MEASURES, S.definition.measure) + '</select></label></div>' +
+      '<p class="muted">Quality check: Can two observers use the same definition? Are start/end boundaries, exclusions and opportunities explicit? Is the measurement unit appropriate?</p></div>';
+  }
+
+  if (page === 'evidence') {
+    html = '<div class="panel"><h2>Non-identifying evidence reference index</h2><p>Store only abstract source references, not raw school records. No dates, names, school IDs, observation narratives, family statements or identifying links. Codes are screened for obvious identifiers, which is not a guarantee.</p>' + noticeHtml +
+      '<div class="grid"><label>Type<select id="kind">' + opts(EVIDENCE_KINDS, EVIDENCE_KINDS[0]) + '</select></label>' +
+      '<label>Nonidentifying reference code<input id="code" placeholder="INDEX-01" maxlength="40"></label>' +
+      '<label>Distinct-day label <span class="tiny muted">(baseline references need two different days)</span><select id="day">' + opts(DAY_LABELS, '') + '</select></label>' +
+      '<label>Existing duration in minutes, if known<input id="mins" type="number" min="1" max="120"></label>' +
+      '<label>Same context confirmed?<select id="context">' + opts(CONTEXTS, 'unresolved') + '</select></label>' +
+      '<label>Reference status<select id="evstatus">' + sel('unresolved') + '</select></label></div>' +
+      '<button class="primary" onclick="addEvidence()">Add reference</button></div>' +
+      '<div class="panel"><h3>References (' + S.evidence.length + ')</h3>' +
+      (S.evidence.length ? S.evidence.map(function (e, i) {
+        return '<div class="row"><div><b>' + E(e.kind) + ' · ' + E(e.code) + '</b><p class="tiny">' + E(e.day || 'day unresolved') + ' · ' + E(e.mins || '?') + ' min · context ' + E(e.context) + '</p></div>' +
+          '<select data-f="ev-' + i + '" aria-label="Status of reference ' + E(e.code) + '" onchange="setEvidenceStatus(' + i + ',this.value)">' + sel(e.status) + '</select> ' +
+          '<button class="danger" onclick="removeEvidence(' + i + ')">Remove</button></div>';
+      }).join('') : '<p class="muted">No actual case evidence indexed.</p>') +
+      '<p class="gap">Metadata entries do not prove qualifying baseline observations. Original dated and timed school forms must remain in approved storage and their coursework eligibility must be confirmed. Qualifying distinct baseline days recorded here: ' + qualifyingBaselineDays(S) + ' of ' + MIN_BASELINE_DAYS + '.</p></div>';
+  }
+
+  if (page === 'coordination') {
+    html = '<div class="grid"><div class="panel"><h3>School FBA lead</h3><p>May I use a de-identified reference to existing school FBA records for coursework? Which records and transfer channels are approved? I am not authorized to conduct additional timed observations.</p></div>' +
+      '<div class="panel"><h3>Dr. Johnson</h3><p>Do existing authorized FBA records satisfy the two-day, same-context, 15–30-minute baseline requirement? If not, what permitted alternative applies?</p></div></div>' + noticeHtml +
+      '<div class="panel"><h2>Decision log</h2>' +
+      (S.decisions.length ? S.decisions.map(function (d, i) {
+        return '<div class="row"><div><b>' + E(d.question) + '</b><p>' + E(d.next) + '</p></div>' +
+          '<select data-f="dec-' + i + '" aria-label="Status" onchange="setDecision(' + i + ',this.value)">' + sel(d.status) + '</select> ' +
+          '<button class="danger" onclick="removeDecision(' + i + ')">Remove</button></div>';
+      }).join('') : '<p class="muted">No open questions logged.</p>') +
+      '<label>Unresolved question<input id="question" maxlength="160"></label>' +
+      '<label>Next authorized verification step<input id="decisionnext" maxlength="220"></label>' +
+      '<button class="primary" onclick="addDecision()">Add decision</button></div>';
+  }
+
+  if (page === 'completion') {
+    html = '<div class="grid"><div class="panel"><h3>Lane 1: Readings</h3><p>Reading notes and fictional examples are learning resources, not Student A baseline evidence.</p></div>' +
+      '<div class="panel"><h3>Lane 2: Section A artifact</h3>' +
+      '<label>Writing status<select data-f="w-status" onchange="setNested(\'writing\',\'status\',this.value)">' + sel(S.writing.status) + '</select></label>' +
+      '<label>Nonidentifying draft reference<input data-f="w-ref" value="' + E(S.writing.reference) + '" oninput="setNested(\'writing\',\'reference\',this.value)" placeholder="PBIP_A_draft_v1"></label></div>' +
+      '<div class="panel"><h3>Lane 3: Submission</h3>' +
+      '<label>Submission status<select data-f="s-status" onchange="setNested(\'submission\',\'status\',this.value)">' + sel(S.submission.status) + '</select></label>' +
+      '<label>Submission destination verified?<select data-f="s-dest" onchange="setNested(\'submission\',\'destination\',this.value)">' + sel(S.submission.destination) + '</select></label>' +
+      '<label>Receipt reference (no student details)<input data-f="s-rec" value="' + E(S.submission.receipt) + '" oninput="setNested(\'submission\',\'receipt\',this.value)" placeholder="Not yet submitted"></label>' +
+      '<p class="muted tiny">Verify the Section A channel in Blackboard. The syllabus identifies Watermark SLL for the final PBIP signature assessment.</p></div></div>' + noticeHtml +
+      '<div class="panel"><h3>Session closeout</h3><label>One completed step and one next step<input id="closeout" maxlength="220" placeholder="Completed __; next verify __"></label>' +
+      '<button class="primary" onclick="addCloseout()">Save closeout</button>' +
+      (S.closeouts.length ? S.closeouts.map(function (x, i) {
+        return '<div class="rowlist"><p class="tiny">' + E(x) + '</p><button class="danger" onclick="removeCloseout(' + i + ')">Remove</button></div>';
+      }).reverse().join('') : '<p class="muted tiny">No closeouts saved.</p>') + '</div>';
+  }
+
+  if (page === 'sources') {
+    var docs = [['Section A assignment template and working rubric', 'https://docs.google.com/document/d/1fbG7riMa3EX_Ag7lf1_QVgyoVIwlxN_j/edit'],
+    ['Revised PBIP plan — no formal mentor', 'https://docs.google.com/document/d/1EI5bUAev6-cr3bI4a6WvKP8Gx09TGD5AxPS88VwQyAY/edit'],
+    ['SPED 607 syllabus', 'https://docs.google.com/document/d/1pFFzMmetXl4Yyu3_qd807sxMirt3KGgJ/edit'],
+    ['Fictional behavior practice page — NOT case evidence', 'https://docs.google.com/document/d/1WRhI8r8T4sdnVZUmEjFkVLQNVL8_gfYlwGM4apcyiIY/edit']];
+    html = '<div class="panel"><h2>Source documents</h2>' + docs.map(function (d) {
+      return '<div class="source"><a href="' + E(d[1]) + '" target="_blank" rel="noopener">' + E(d[0]) + ' ↗</a></div>';
+    }).join('') + '<p class="muted">The planning rubric is not proof of instructor scoring. Current Blackboard instructions and school permission remain external verification gates.</p></div>' + noticeHtml +
+      '<div class="panel"><h3>Identifier screen</h3>' +
+      (flags.length
+        ? '<div class="warn"><b>' + flags.length + ' field(s) flagged.</b> Advisory only — a screen is not a guarantee, and it cannot see what it was not taught to look for.</div><ul>' + flags.map(function (f) { return '<li class="tiny">' + E(f.where) + ' — looks like ' + E(f.why) + '</li>' }).join('') + '</ul>'
+        : '<div class="ok">No flags raised. A screen is not a guarantee: read every field before sharing.</div>') + '</div>' +
+      '<div class="panel"><h3>Backup your work</h3><p>The export contains only what you entered, including closeouts. It is not screened on your behalf — the readable summary states what the screen found.</p>' +
+      '<button class="primary" onclick="exportData()">Export JSON</button> <button onclick="exportText()">Export readable summary</button>' +
+      '<label>Restore from previous app export<input type="file" accept="application/json" onchange="importData(this.files[0])"></label>' +
+      '<p class="muted tiny">Restoring replaces everything currently saved. If the restored file cannot be drawn, the previous data is put back untouched.</p></div>' +
+      '<div class="panel"><h3>Delete local data</h3><p>Removes <code>aeos_pbi_section_a</code> from this browser. Export first: this cannot be undone.</p>' +
+      '<button class="danger" onclick="resetAll()">Delete all local data</button></div>';
+  }
+
+  document.getElementById('view').innerHTML = html;
+  restoreTransient(carried);
+  if (focusKey) { var el = document.querySelector('[data-f="' + focusKey + '"]'); if (el && el.focus) el.focus(); }
+}
+
+/* --- handlers: thin. All decisions come from the logic block. --- */
+function go(p) { page = p; focusKey = ''; announce(''); render(); window.scrollTo(0, 0) }
+
+function setPerm(k, v) {
+  focusKey = 'perm-' + k;
+  commit(function () {
+    var why = permGateFailure(S, k, v);
+    if (why) return 'Not changed. ' + why;
+    S.permissions[k] = oneOf(v, STATUS, S.permissions[k]);
+    return '';
+  });
+}
+function setCriterion(k, v) {
+  focusKey = 'crit-' + k;
+  commit(function () {
+    if (v === 'verified') { var why = gateFailure(S, k); if (why) return 'Not changed. ' + why }
+    S.criteria[k] = oneOf(v, STATUS, S.criteria[k]);
+    return '';
+  });
+}
+/* Typing does not re-render (that would steal focus) and is not persisted on
+   every keystroke; it settles shortly after you stop. */
+var settleTimer = null;
+function settle() {
+  if (settleTimer) clearTimeout(settleTimer);
+  settleTimer = setTimeout(function () {
+    settleTimer = null;
+    var d = revalidate(S);
+    save();
+    if (d.length) {
+      announce('Demoted because its conditions no longer hold: ' + d.map(function (x) { return x.what + ' (' + x.why + ')' }).join(' '));
+      render();
+    }
+  }, 400);
+}
+function setDef(k, v) { S.definition[k] = asString(v, 2000); settle() }
+function setDefNow(k, v) { focusKey = 'def-' + k; commit(function () { S.definition[k] = oneOf(v, MEASURES, S.definition[k]); return '' }) }
+function setNested(o, k, v) {
+  focusKey = (o === 'writing' ? 'w-' : 's-') + (k === 'reference' ? 'ref' : k === 'receipt' ? 'rec' : k === 'destination' ? 'dest' : 'status');
+  if (k === 'status' && v === 'verified' && o === 'submission' && !S.submission.receipt.trim()) { announce('Not changed. A real submission receipt reference is required.'); render(); return }
+  if (k === 'status' && v === 'verified' && o === 'writing' && !S.writing.reference.trim()) { announce('Not changed. Enter a finished draft reference first.'); render(); return }
+  /* settle(), not save(): clearing the field a status was gated on must retract
+     that status rather than leave it reading Verified. */
+  if (k === 'reference' || k === 'receipt') { S[o][k] = asString(v, 120); settle(); return }
+  commit(function () { S[o][k] = oneOf(v, STATUS, S[o][k]); return '' });
+}
+function setEvidenceStatus(i, v) {
+  focusKey = 'ev-' + i;
+  commit(function () {
+    var e = S.evidence[i]; if (!e) return '';
+    if (v === 'verified') { var why = evidenceGateFailure(S, e); if (why) return 'Not changed. ' + why }
+    e.status = oneOf(v, STATUS, e.status);
+    return '';
+  });
+}
+function setDecision(i, v) { focusKey = 'dec-' + i; commit(function () { if (S.decisions[i]) S.decisions[i].status = oneOf(v, STATUS, S.decisions[i].status); return '' }) }
+
+function val(id) { var el = document.getElementById(id); return el ? String(el.value).trim() : '' }
+function addEvidence() {
+  commit(function () {
+    var e = { kind: oneOf(val('kind'), EVIDENCE_KINDS, EVIDENCE_KINDS[0]), code: val('code').slice(0, 40), day: oneOf(val('day'), DAY_LABELS, ''), mins: asMinutes(val('mins')), context: oneOf(val('context'), CONTEXTS, 'unresolved'), status: oneOf(val('evstatus'), STATUS, 'unresolved') };
+    if (!e.code) return 'Not added. Enter a non-identifying reference code.';
+    for (var i = 0; i < S.evidence.length; i++) if (S.evidence[i].code === e.code) return 'Not added. That reference code is already indexed.';
+    var note = '';
+    if (e.status === 'verified') {
+      var why = evidenceGateFailure(S, e);
+      if (why) { e.status = 'unresolved'; note = 'Added as unresolved instead of verified. ' + why + ' ' }
+    }
+    S.evidence.push(e);
+    clearTransient(['kind', 'code', 'day', 'mins', 'context', 'evstatus']);
+    var fl = screenText(e.code);
+    return note + (fl.length ? 'That code looks like it may contain ' + fl.join(', ') + '.' : '');
+  });
+}
+function removeEvidence(i) {
+  var e = S.evidence[i];
+  if (!e) return;
+  if (!confirm('Remove evidence reference ' + e.code + '?\n\nThis cannot be undone, and any criterion that relied on it will be demoted.')) return;
+  commit(function () { S.evidence.splice(i, 1); return 'Removed reference ' + e.code + '.' });
+}
+function addDecision() {
+  commit(function () {
+    var q = val('question').slice(0, 160), n = val('decisionnext').slice(0, 220);
+    if (!q || !n) return 'Not added. Enter both fields.';
+    S.decisions.push({ question: q, next: n, status: 'unresolved' });
+    clearTransient(['question', 'decisionnext']);
+    var fl = screenText(q + ' ' + n);
+    return fl.length ? 'Added. That entry looks like it may contain ' + fl.join(', ') + '.' : '';
+  });
+}
+function removeDecision(i) {
+  if (!S.decisions[i]) return;
+  if (!confirm('Remove this logged question?\n\n' + S.decisions[i].question + '\n\nThis cannot be undone.')) return;
+  commit(function () { S.decisions.splice(i, 1); return 'Removed one logged question.' });
+}
+function addCloseout() {
+  commit(function () {
+    var x = val('closeout').slice(0, 220);
+    if (!x) return 'Not added. Enter one completed step and one next step.';
+    S.closeouts.push(x);
+    clearTransient(['closeout']);
+    var fl = screenText(x);
+    return fl.length ? 'Added. That entry looks like it may contain ' + fl.join(', ') + '.' : '';
+  });
+}
+function removeCloseout(i) {
+  if (!S.closeouts[i]) return;
+  if (!confirm('Remove this closeout?\n\n' + S.closeouts[i] + '\n\nThis cannot be undone.')) return;
+  commit(function () { S.closeouts.splice(i, 1); return 'Removed one closeout.' });
+}
+
+function stamp() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n }; return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) }
+function dl(name, text, type) {
+  var a = document.createElement('a'), url = URL.createObjectURL(new Blob([text], { type: type }));
+  a.href = url; a.download = name; a.click(); setTimeout(function () { URL.revokeObjectURL(url) }, 1000);
+}
+function exportData() { dl('AEOS_PBIP_Section_A_Backup_' + stamp() + '.json', JSON.stringify(S, null, 2), 'application/json') }
+function exportText() { dl('AEOS_PBIP_Section_A_Summary_' + stamp() + '.txt', summaryText(S), 'text/plain') }
+function exportRaw() { var raw = ''; try { raw = localStorage.getItem(KEY) || '' } catch (e) { } dl('AEOS_PBIP_Section_A_Raw_' + stamp() + '.json', raw, 'application/json') }
+
+/* Atomic: nothing is persisted until the imported state has actually drawn. */
+function importData(f) {
+  if (!f) return;
+  var prevState = S, prevRaw = null;
+  try { prevRaw = localStorage.getItem(KEY) } catch (e) { prevRaw = null }
+  f.text().then(function (txt) {
+    var parsed;
+    try { parsed = JSON.parse(txt) } catch (e) { announce('Not restored. That file is not valid JSON; your saved data is unchanged.'); render(); return }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { announce('Not restored. That file is not an app backup; your saved data is unchanged.'); render(); return }
+    S = normalize(parsed);
+    var demoted = revalidate(S);
+    try {
+      draw();
+    } catch (err) {
+      S = prevState;
+      try { if (prevRaw === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, prevRaw) } catch (e) { }
+      announce('Not restored. That backup could not be drawn, so your previous data was put back unchanged.');
+      render(); return;
+    }
+    save();
+    announce('Restored. ' + (demoted.length ? demoted.length + ' item(s) were demoted because their conditions do not hold. ' : '') + 'Unrecognised values were dropped.');
+    render();
+  }, function () { announce('Not restored. That file could not be read; your saved data is unchanged.'); render() });
+}
+
+function resetAll() {
+  if (!confirm('Delete all locally saved PBIP Section A data from this browser? Export first — this cannot be undone.')) return;
+  try { localStorage.removeItem(KEY) } catch (e) { }
+  S = normalize({}); page = 'dashboard'; announce('All local data deleted from this browser.'); render();
+}
+
+/* A stored state written by an older build may violate today's gates. */
+(function () { var d = revalidate(S); if (d.length) { save(); notice = d.length + ' item(s) were demoted on load because their conditions do not hold.' } })();
+render();
+</script>
+</html>

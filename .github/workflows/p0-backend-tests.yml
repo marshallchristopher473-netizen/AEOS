@@ -188,3 +188,31 @@ jobs:
       - name: Audit dependencies (fails on high+, prints all advisories)
         working-directory: frontend
         run: npm audit --audit-level=high
+
+  # The PBIP Section A tool ships as one self-contained HTML file with no
+  # dependencies, so there is nothing to install and nothing to build. The suite
+  # extracts the inline logic block out of index.html and exercises it directly.
+  #
+  # It runs here because a regression suite that never executes on a pull
+  # request is decoration. Each test corresponds to a defect confirmed in the
+  # audit recorded in pbip-section-a/README.md.
+  pbip-section-a:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run the gate-logic regression suite
+        run: node --test pbip-section-a/tests/logic.test.mjs
+
+      # End-to-end scenarios against a stubbed DOM: the brick path, atomic
+      # import, injection, distinct-day enforcement, permission revocation,
+      # export completeness and the render-failure recovery panel.
+      - name: Run the end-to-end scenario harness
+        run: node pbip-section-a/tests/scenarios.mjs
