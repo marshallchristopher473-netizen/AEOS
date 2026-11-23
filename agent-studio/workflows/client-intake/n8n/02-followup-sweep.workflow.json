@@ -1,0 +1,110 @@
+{
+  "name": "AEOS — Intake Follow-Up Sweep v0.1 (non-AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "daily-schedule",
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-300, 300]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Intake",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-intake-rows",
+      "name": "Read Intake Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-60, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AEOS Client Intake v0.1 — decision rule D3 from SPEC.md §3.\n// overdue = status in {New, Contacted} AND now > sla_due_at.\n// Returns a single digest item, or [] when nothing is overdue (ends the run).\n\nconst OPEN_STATUSES = ['New', 'Contacted'];\nconst now = new Date();\n\nconst overdue = $input\n  .all()\n  .map((item) => item.json)\n  .filter((row) => {\n    const status = (row.status || '').trim();\n    if (!OPEN_STATUSES.includes(status)) return false;\n\n    const due = new Date(row.sla_due_at);\n    if (Number.isNaN(due.getTime())) return false;\n\n    return now > due;\n  })\n  .sort((a, b) => new Date(a.sla_due_at) - new Date(b.sla_due_at));\n\nif (overdue.length === 0) {\n  return [];\n}\n\nconst hoursLate = (row) =>\n  Math.floor((now - new Date(row.sla_due_at)) / (60 * 60 * 1000));\n\nconst lines = overdue.map(\n  (row) =>\n    `- [${row.priority}] ${row.organization} — ${row.full_name} <${row.work_email}> · ${hoursLate(row)}h past deadline · status \"${row.status}\" · ${row.submission_id}`,\n);\n\nreturn [\n  {\n    json: {\n      overdue_count: overdue.length,\n      p1_count: overdue.filter((row) => row.priority === 'P1').length,\n      generated_at: now.toISOString(),\n      digest: lines.join('\\n'),\n    },\n  },\n];\n"
+      },
+      "id": "flag-overdue",
+      "name": "Flag Overdue (D3)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_WITH_OPERATOR_EMAIL",
+        "subject": "={{ $json.overdue_count }} intake lead(s) past deadline ({{ $json.p1_count }} P1)",
+        "emailType": "text",
+        "message": "=These intake rows are past their reply deadline and still open:\n\n{{ $json.digest }}\n\nClear one by contacting the lead, then setting status, owner and first_contact_at in the Intake sheet by hand. This sweep only reads the sheet; it never changes a row and it never emails a client.\n\nGenerated {{ $json.generated_at }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "send-overdue-digest",
+      "name": "A4 — Send Overdue Digest",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [420, 300]
+    }
+  ],
+  "connections": {
+    "Daily 08:00": {
+      "main": [
+        [
+          {
+            "node": "Read Intake Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Intake Rows": {
+      "main": [
+        [
+          {
+            "node": "Flag Overdue (D3)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Overdue (D3)": {
+      "main": [
+        [
+          {
+            "node": "A4 — Send Overdue Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
