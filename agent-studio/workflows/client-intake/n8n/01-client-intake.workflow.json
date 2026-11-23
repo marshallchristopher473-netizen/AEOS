@@ -1,0 +1,312 @@
+{
+  "name": "AEOS — Client Intake v0.1 (non-AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "aeos-client-intake",
+        "formTitle": "Start a conversation with AEOS",
+        "formDescription": "Tell us what you are trying to solve. A person reads every submission. Please do not include any student names or student records.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Work email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Phone",
+              "placeholder": "Optional",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Organization",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Role",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Teacher" },
+                  { "option": "Paraeducator" },
+                  { "option": "Special Educator" },
+                  { "option": "Instructional Coach" },
+                  { "option": "School Administrator" },
+                  { "option": "District Administrator" },
+                  { "option": "Parent" },
+                  { "option": "Other" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Students served",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "1-30" },
+                  { "option": "31-150" },
+                  { "option": "151-500" },
+                  { "option": "501-2,000" },
+                  { "option": "2,000+" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "What problem are you trying to solve?",
+              "fieldType": "textarea",
+              "placeholder": "No student names or student records, please.",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Timeline",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Immediately" },
+                  { "option": "This month" },
+                  { "option": "This quarter" },
+                  { "option": "This school year" },
+                  { "option": "Just exploring" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Budget authority",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "I control the budget" },
+                  { "option": "I influence the budget" },
+                  { "option": "I do not control the budget" },
+                  { "option": "Not sure" }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "Thank you. Your request is logged and a person will reply by email."
+            }
+          }
+        }
+      },
+      "id": "intake-form-trigger",
+      "name": "Intake Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [-320, 300],
+      "webhookId": "aeos-client-intake-v01"
+    },
+    {
+      "parameters": {
+        "jsCode": "// AEOS Client Intake v0.1 — decision rules D1 and D2 from SPEC.md §3.\n// Deterministic only. No model, no network call, no randomness.\n\nconst P1_TIMELINES = ['Immediately', 'This month'];\nconst P1_AUTHORITY = ['I control the budget', 'I influence the budget'];\nconst SLA_HOURS = { P1: 24, P2: 72 };\n\nconst out = [];\n\n$input.all().forEach((item, index) => {\n  const f = item.json;\n  const submittedAt = new Date();\n\n  // D1 — priority tier\n  const timeline = (f['Timeline'] || '').trim();\n  const budgetAuthority = (f['Budget authority'] || '').trim();\n  const priority =\n    P1_TIMELINES.includes(timeline) && P1_AUTHORITY.includes(budgetAuthority)\n      ? 'P1'\n      : 'P2';\n\n  // D2 — response deadline\n  const slaDueAt = new Date(\n    submittedAt.getTime() + SLA_HOURS[priority] * 60 * 60 * 1000,\n  );\n\n  out.push({\n    json: {\n      submission_id: `AEOS-${$execution.id}-${index + 1}`,\n      submitted_at: submittedAt.toISOString(),\n      full_name: (f['Full name'] || '').trim(),\n      work_email: (f['Work email'] || '').trim(),\n      phone: (f['Phone'] || '').trim(),\n      organization: (f['Organization'] || '').trim(),\n      role: (f['Role'] || '').trim(),\n      students_served: (f['Students served'] || '').trim(),\n      problem_statement: (f['What problem are you trying to solve?'] || '').trim(),\n      timeline,\n      budget_authority: budgetAuthority,\n      priority,\n      sla_due_at: slaDueAt.toISOString(),\n      status: 'New',\n      owner: '',\n      first_contact_at: '',\n      outcome: '',\n      notes: '',\n    },\n  });\n});\n\nreturn out;\n"
+      },
+      "id": "apply-decision-rules",
+      "name": "Apply Decision Rules (D1, D2)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Intake",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "submission_id": "={{ $json.submission_id }}",
+            "submitted_at": "={{ $json.submitted_at }}",
+            "full_name": "={{ $json.full_name }}",
+            "work_email": "={{ $json.work_email }}",
+            "phone": "={{ $json.phone }}",
+            "organization": "={{ $json.organization }}",
+            "role": "={{ $json.role }}",
+            "students_served": "={{ $json.students_served }}",
+            "problem_statement": "={{ $json.problem_statement }}",
+            "timeline": "={{ $json.timeline }}",
+            "budget_authority": "={{ $json.budget_authority }}",
+            "priority": "={{ $json.priority }}",
+            "sla_due_at": "={{ $json.sla_due_at }}",
+            "status": "={{ $json.status }}",
+            "owner": "={{ $json.owner }}",
+            "first_contact_at": "={{ $json.first_contact_at }}",
+            "outcome": "={{ $json.outcome }}",
+            "notes": "={{ $json.notes }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "append-intake-row",
+      "name": "A1 — Append Intake Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [140, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.work_email }}",
+        "subject": "We received your request — AEOS",
+        "emailType": "text",
+        "message": "=Hi {{ $json.full_name }},\n\nThank you for reaching out about AEOS. Your request is logged and a person — not an automated system — will read it and reply.\n\nWhat you told us:\n- Organization: {{ $json.organization }}\n- Role: {{ $json.role }}\n- Timeline: {{ $json.timeline }}\n- What you are trying to solve: {{ $json.problem_statement }}\n\nIf anything above is wrong, just reply to this email and correct it.\n\nYou will hear from us by {{ new Date($json.sla_due_at).toUTCString() }}.\n\nReference: {{ $json.submission_id }}\n\n— AEOS",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "acknowledge-submitter",
+      "name": "A2 — Acknowledge Submitter",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [400, 440]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-p1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "P1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-by-priority",
+      "name": "Route by Priority",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [400, 160]
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_WITH_OPERATOR_EMAIL",
+        "subject": "=URGENT (P1) intake — {{ $json.organization }} — reply by {{ new Date($json.sla_due_at).toUTCString() }}",
+        "emailType": "text",
+        "message": "=P1 intake. Budget authority and timeline both qualify.\n\nName: {{ $json.full_name }}\nEmail: {{ $json.work_email }}\nPhone: {{ $json.phone }}\nOrganization: {{ $json.organization }}\nRole: {{ $json.role }}\nStudents served: {{ $json.students_served }}\nTimeline: {{ $json.timeline }}\nBudget authority: {{ $json.budget_authority }}\n\nProblem:\n{{ $json.problem_statement }}\n\nReply deadline: {{ new Date($json.sla_due_at).toUTCString() }}\nReference: {{ $json.submission_id }}\n\nNext step: contact the lead, then set status, owner and first_contact_at in the Intake sheet by hand.",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "notify-operator-urgent",
+      "name": "A3 — Notify Operator (Urgent)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [660, 60]
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_WITH_OPERATOR_EMAIL",
+        "subject": "=New intake (P2) — {{ $json.organization }} — reply by {{ new Date($json.sla_due_at).toUTCString() }}",
+        "emailType": "text",
+        "message": "=P2 intake.\n\nName: {{ $json.full_name }}\nEmail: {{ $json.work_email }}\nPhone: {{ $json.phone }}\nOrganization: {{ $json.organization }}\nRole: {{ $json.role }}\nStudents served: {{ $json.students_served }}\nTimeline: {{ $json.timeline }}\nBudget authority: {{ $json.budget_authority }}\n\nProblem:\n{{ $json.problem_statement }}\n\nReply deadline: {{ new Date($json.sla_due_at).toUTCString() }}\nReference: {{ $json.submission_id }}\n\nNext step: contact the lead, then set status, owner and first_contact_at in the Intake sheet by hand.",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "notify-operator-standard",
+      "name": "A3 — Notify Operator (Standard)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [660, 260]
+    }
+  ],
+  "connections": {
+    "Intake Form": {
+      "main": [
+        [
+          {
+            "node": "Apply Decision Rules (D1, D2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Decision Rules (D1, D2)": {
+      "main": [
+        [
+          {
+            "node": "A1 — Append Intake Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A1 — Append Intake Row": {
+      "main": [
+        [
+          {
+            "node": "Route by Priority",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "A2 — Acknowledge Submitter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Priority": {
+      "main": [
+        [
+          {
+            "node": "A3 — Notify Operator (Urgent)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A3 — Notify Operator (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
