@@ -1,0 +1,37 @@
+name: Claude readiness audit (manual, advisory)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: aeos-claude-readiness-audit
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.ref == 'refs/heads/main' && vars.AEOS_ENABLE_CLAUDE_AUDIT == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout reviewed main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Advisory read-only analysis
+        uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Inspect only tracked, public-code README and configuration files and existing test definitions.
+            Report one evidenced engineering blocker for a synthetic-data pilot.
+            Cite file paths, distinguish actual evidence from assumptions and propose one bounded next test.
+            Do not inspect environment files, secrets, private data, issue comments, or user records.
+            Do not execute project code, edit files, post comments, push, deploy, or claim a test was run.
+          claude_args: '--max-turns 5 --permission-mode plan --allowedTools "Read,Glob,Grep" --disallowedTools "Bash,Edit,Write,WebFetch,WebSearch,Agent"'
